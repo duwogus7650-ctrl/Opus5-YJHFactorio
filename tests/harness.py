@@ -26,6 +26,13 @@ DRIVER = os.path.join(ROOT, 'tests', sys.argv[1] if len(sys.argv) > 1 else 'driv
 if not os.path.isabs(DRIVER) and not os.path.isfile(DRIVER):
     DRIVER = os.path.abspath(sys.argv[1])
 
+# 엔진도 바꿔 끼울 수 있다. 기본은 Edge(Chromium) 의 --dump-dom 경로.
+# firefox / webkit / chromium 은 Playwright 러너를 거친다 — --dump-dom 이 Chromium
+# 전용이라 다른 엔진에서는 쓸 수 없기 때문이다. **판정 로직은 여기 한 곳뿐이다**;
+# 엔진마다 다른 채점기를 만들면 어느 쪽이 맞는지 알 수 없게 된다.
+ENGINE = (sys.argv[2] if len(sys.argv) > 2 else 'edge').lower()
+PW_ENGINES = ('firefox', 'webkit', 'chromium')
+
 EDGE_CANDIDATES = [
     r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
     r'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
@@ -71,38 +78,60 @@ def run_browser(exe, page_path, args, timeout=300):
         shutil.rmtree(profile, ignore_errors=True)
 
 
+def run_playwright(engine, driver_path, timeout=600):
+    """Playwright 러너로 다른 엔진에서 돌린다. 표준출력이 그대로 판정 채널이다."""
+    cmd = ['node', os.path.join(ROOT, 'tests', 'pwrun.js'), engine, driver_path, '400000']
+    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=timeout)
+    return (p.returncode,
+            p.stdout.decode('utf-8', 'replace'),
+            p.stderr.decode('utf-8', 'replace'))
+
+
 def main():
     if not os.path.isfile(DIST):
         print('FATAL: 산출물이 없다 — python build.py 먼저')
         return 2
-    exe = find_browser()
-    if not exe:
-        print('FATAL: 헤드리스 브라우저를 찾을 수 없다')
-        return 2
 
-    page = build_test_page(read(DRIVER))
-    tmpdir = tempfile.mkdtemp(prefix='lf-run-')
-    page_path = os.path.join(tmpdir, 'test-run.html')
-    with io.open(page_path, 'w', encoding='utf-8') as f:
-        f.write(page)
+    if ENGINE in PW_ENGINES:
+        exe = ENGINE + ' (playwright)'
+        rc, payload, err = run_playwright(ENGINE, DRIVER)
+        if START not in payload or END not in payload:
+            print('FATAL: 드라이버 결과를 찾지 못했다 (엔진 %s, rc=%s)' % (ENGINE, rc))
+            print('  stdout(앞 400자): %r' % payload[:400])
+            print('--- stderr (마지막 3000자) ---')
+            print(err[-3000:])
+            return 2
+        raw = payload[payload.index(START) + len(START): payload.index(END)]
+        # Playwright 는 textContent 를 그대로 준다 — dump-dom 처럼 이스케이프되지 않는다
+    else:
+        exe = find_browser()
+        if not exe:
+            print('FATAL: 헤드리스 브라우저를 찾을 수 없다')
+            return 2
 
-    rc, dom, err = run_browser(exe, page_path, ['--dump-dom', '--virtual-time-budget=120000'])
+        page = build_test_page(read(DRIVER))
+        tmpdir = tempfile.mkdtemp(prefix='lf-run-')
+        page_path = os.path.join(tmpdir, 'test-run.html')
+        with io.open(page_path, 'w', encoding='utf-8') as f:
+            f.write(page)
 
-    # 마커 문자열은 주입된 드라이버 소스에도 남아 있다. 문서 전체를 뒤지면 스크립트
-    # 본문을 결과로 오인하므로 #testout 요소만 판정 채널로 쓴다.
-    m = re.search(r'<div id="testout">(.*?)</div>', dom, re.S)
-    payload = m.group(1) if m else ''
-    if START not in payload or END not in payload:
-        print('FATAL: 드라이버 결과를 찾지 못했다 (게임이 부팅조차 못 했을 수 있다)')
-        print('  브라우저: %s (rc=%s)' % (exe, rc))
-        print('  #testout 내용(앞 400자): %r' % payload[:400])
-        print('--- stderr (마지막 3000자) ---')
-        print(err[-3000:])
-        return 2
+        rc, dom, err = run_browser(exe, page_path, ['--dump-dom', '--virtual-time-budget=120000'])
 
-    raw = payload[payload.index(START) + len(START): payload.index(END)]
-    raw = (raw.replace('&quot;', '"').replace('&lt;', '<')
-              .replace('&gt;', '>').replace('&amp;', '&'))
+        # 마커 문자열은 주입된 드라이버 소스에도 남아 있다. 문서 전체를 뒤지면 스크립트
+        # 본문을 결과로 오인하므로 #testout 요소만 판정 채널로 쓴다.
+        m = re.search(r'<div id="testout">(.*?)</div>', dom, re.S)
+        payload = m.group(1) if m else ''
+        if START not in payload or END not in payload:
+            print('FATAL: 드라이버 결과를 찾지 못했다 (게임이 부팅조차 못 했을 수 있다)')
+            print('  브라우저: %s (rc=%s)' % (exe, rc))
+            print('  #testout 내용(앞 400자): %r' % payload[:400])
+            print('--- stderr (마지막 3000자) ---')
+            print(err[-3000:])
+            return 2
+
+        raw = payload[payload.index(START) + len(START): payload.index(END)]
+        raw = (raw.replace('&quot;', '"').replace('&lt;', '<')
+                  .replace('&gt;', '>').replace('&amp;', '&'))
     try:
         res = json.loads(raw)
     except Exception as e:

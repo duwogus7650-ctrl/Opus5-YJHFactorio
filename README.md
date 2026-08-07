@@ -77,9 +77,21 @@ node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실�
 python tests/harness.py              # 모델 게이트 57건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 24건 (합성 마우스/키 이벤트)
 python tests/mutate.py               # 게이트가 실패를 잡는지 역검정 (소스를 고의로 깬다, 단독 실행)
+python tests/crossbrowser.py         # 엔진 4개 × 드라이버 2개 = 8조합
 python tests/balance.py              # 30분 시뮬 3시나리오 페이싱 측정 (게이트 아님)
-python tests/shots.py                # shots/ 에 장면 스크린샷 4장
+python tests/shots.py                # shots/ 에 장면 스크린샷 4장 (Edge)
+node tests/pwshot.js firefox shots/engine-firefox.png   # 엔진별 같은 장면 촬영
 ```
+
+교차 브라우저는 Playwright 가 필요하다(한 번만):
+
+```bash
+npm i -D playwright && npx playwright install chromium firefox webkit
+```
+
+`harness.py <드라이버> <엔진>` 으로 엔진을 갈아끼운다. Chromium 계열은 `--dump-dom`,
+나머지는 Playwright 러너(`tests/pwrun.js`)를 거치지만 **판정 로직은 harness.py 한 곳뿐이다** —
+엔진마다 다른 채점기를 두면 어느 쪽이 맞는지 알 수 없게 된다.
 
 ### 검증 결과 (2026-08-08, 배포본 바이트 기준)
 
@@ -88,8 +100,20 @@ syntax_check.js       GREEN — 인라인 스크립트 파싱 통과
 harness.py            GREEN — 실검사 57건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js GREEN — 실검사 27건 전부 통과 (고의 실패 1건 정상 검출)
 mutate.py             GREEN — 돌연변이 23건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+crossbrowser.py       GREEN — 엔진 4개 × 드라이버 2개 = 8조합 전부 통과
 balance.py            런타임 오류 0건 · 페이싱 표는 아래
 ```
+
+| 엔진 | 모델 57건 | 클릭 27건 | 장면 렌더 |
+|---|---|---|---|
+| Edge (Chromium 151) | GREEN | GREEN | 기준 |
+| Chromium 151 (Playwright) | GREEN | GREEN | 색 238종 · 엔티티 80 |
+| **Firefox** (Playwright) | GREEN | GREEN | 색 249종 · 엔티티 80 · 페이지 오류 0 |
+| **WebKit** = Safari 엔진 (Playwright) | GREEN | GREEN | 색 228종 · 엔티티 80 · 페이지 오류 0 |
+
+네 엔진에서 같은 장면(`tests/scene-factory.js`)을 찍어 눈으로 대조했다 — `shots/engine-*.png`.
+차이는 한글 폰트 메트릭뿐이고 배치·색·아이콘·전선·UI 는 동일하다. Safari 자체는 Windows 에서
+돌지 않으므로 **WebKit 엔진으로 대신했다** (실기 Safari 는 미검증).
 
 ### 게이트가 무엇을 보증하는가
 
@@ -205,6 +229,7 @@ src/60_game.js      루프, 저장/불러오기, __GAME 테스트 API
 - **제어기는 전기를 쓰지 않는다.** 전력을 요구하면 부하 차단 배선이 자기 전원을 끊고
   자멸한다(Factorio의 회로망도 같은 이유로 무전력이다).
 - 저장은 `localStorage` 한 칸(약 140 KB). 여러 슬롯은 없다. `F2`/`F3` 또는 창고 패널 버튼.
-- 검증은 헤드리스 Edge 기준이다. **다른 브라우저에서의 장시간 플레이와 "재미"는 사람이
-  봐야 한다** — 페이싱 표는 규칙이 맞는지만 보여주고 재미는 못 잰다.
+- 검증은 헤드리스 4엔진(Edge·Chromium·Firefox·WebKit) 기준이다. **실기 Safari 와 모바일,
+  그리고 "재미"는 미검증** — 페이싱 표는 규칙이 맞는지만 보여주고 재미는 못 잰다.
+- 터치 입력을 고려하지 않았다. 마우스+키보드 전제다.
 - 페이싱 측정은 "기계가 굶지 않는 완벽한 공장" 가정 위의 **상한**이다. 실제 플레이는 더 느리다.
