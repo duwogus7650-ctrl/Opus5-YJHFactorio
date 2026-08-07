@@ -17,6 +17,7 @@ function openLogic(e) {
   if (!e.graph) e.graph = newGraph();
   document.getElementById('logic').style.display = 'block';
   document.getElementById('ctrlName').textContent = '#' + e.id;
+  tutorial.flags.openedEditor = true;    // 상태로는 못 보는 사건이라 여기서 표시한다
   renderPalette();
   renderGraph();
   if (liveTimer) clearInterval(liveTimer);
@@ -152,7 +153,7 @@ function buildNodeDom(inner, g, n) {
       btn.className = 'entbtn';
       var te = entities[n.cfg[cf.k]];
       btn.textContent = te ? (BUILDINGS[te.type].name + ' #' + te.id) : '지정 안 됨 ▸';
-      if (!te) btn.style.color = '#d9544a';
+      if (!te) btn.style.color = 'var(--stop)';
       btn.onclick = (function (node, key, filter) {
         return function () { startPick(curCtrl.id, node.nid, key, filter); };
       })(n, cf.k, cf.filter);
@@ -258,7 +259,7 @@ function updateLinks(tempTo) {
     var a = portPos(lk.fn, lk.fp, true), b = portPos(lk.tn, lk.tp, false);
     if (!a || !b) continue;
     var dx = Math.max(28, Math.abs(b.x - a.x) * 0.45);
-    var col = lk.back ? '#f0a92b' : '#4a86c4';
+    var col = lk.back ? '#b23a10' : '#2c5470';
     parts.push('<path d="M' + a.x + ' ' + a.y + ' C' + (a.x + dx) + ' ' + a.y + ',' +
       (b.x - dx) + ' ' + b.y + ',' + b.x + ' ' + b.y + '" fill="none" stroke="' + col +
       '" stroke-width="2"' + (lk.back ? ' stroke-dasharray="6 4"' : '') + '/>');
@@ -268,7 +269,7 @@ function updateLinks(tempTo) {
     var s = portPos(linking.nid, linking.port, true);
     if (s) {
       parts.push('<path d="M' + s.x + ' ' + s.y + ' L' + tempTo.x + ' ' + tempTo.y +
-        '" fill="none" stroke="#f0a92b" stroke-width="2" stroke-dasharray="5 4"/>');
+        '" fill="none" stroke="#b23a10" stroke-width="2" stroke-dasharray="5 4"/>');
     }
   }
   svg.innerHTML = parts.join('');

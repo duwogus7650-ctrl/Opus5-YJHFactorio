@@ -5,158 +5,273 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LOGIC FOUNDRY — 프로그래머블 공정자동화</title>
 <style>
-  /* 산업용 다크 — blueprint steel(#2f5f8f) + amber(#f0a92b), 수치는 등폭 */
-  :root{
-    --bg:#12161b; --panel:#1a2027; --panel2:#212a33; --line:#2e3a45;
-    --ink:#d6dee6; --dim:#8b98a6; --steel:#2f5f8f; --steel-lt:#4a86c4;
-    --amber:#f0a92b; --green:#49c05a; --red:#d9544a; --purple:#8a5fc0;
-    --mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
-    font-family:"Segoe UI","Malgun Gothic",system-ui,sans-serif;font-size:13px;user-select:none}
-  canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
-  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+/* ===========================================================================
+   계기반 (Instrument faceplate)
 
-  .panel{position:absolute;background:rgba(26,32,39,.94);border:1px solid var(--line);
-    border-radius:4px;backdrop-filter:blur(3px);box-shadow:0 4px 18px rgba(0,0,0,.45)}
-  .panel h3{margin:0;padding:7px 10px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
-    color:var(--dim);border-bottom:1px solid var(--line);background:rgba(47,95,143,.13)}
-  .pad{padding:8px 10px}
+   개념: UI 는 창(window)이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝은
+   아노다이즈 알루미늄 판이 얹혀 있고, 라벨은 판에 각인돼 있고, 수치는 판에
+   박힌 **어두운 계기창(well)** 안에서 빛난다. 게임 화면과 UI 가 같은 톤이면
+   서로 섞여 읽히므로, 일부러 반대로 간다.
 
-  /* 상단 상태바 */
-  #top{top:8px;left:50%;transform:translateX(-50%);display:flex;gap:0;align-items:stretch;z-index:5}
-  #top .stat{padding:6px 12px;border-right:1px solid var(--line);text-align:center;min-width:74px}
-  #top .stat:last-child{border-right:none}
-  #top .k{font-size:9.5px;color:var(--dim);letter-spacing:.07em;text-transform:uppercase}
-  #top .v{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums;line-height:1.25}
-  .warnv{color:var(--amber)} .badv{color:var(--red)} .okv{color:var(--green)}
+   시그니처: 밝은 금속판 + 어두운 계기창. 이 대비 하나에 힘을 몰고 나머지는
+   조용히 둔다 (모서리 라운드 없음, 그림자 최소, 장식 없음).
 
-  /* 건설 팔레트 */
-  #build{left:8px;top:8px;width:212px;max-height:calc(100vh - 16px);overflow-y:auto;z-index:5}
-  .bitem{display:flex;gap:8px;align-items:center;padding:5px 8px;cursor:pointer;border-left:3px solid transparent}
-  .bitem:hover{background:rgba(47,95,143,.20)}
-  .bitem.sel{background:rgba(47,95,143,.34);border-left-color:var(--amber)}
-  .bitem.locked{opacity:.34;cursor:not-allowed}
-  .bitem.poor .bn{color:var(--red)}
-  .bkey{font-family:var(--mono);font-size:10px;color:var(--dim);width:14px;text-align:center;
-    border:1px solid var(--line);border-radius:3px;padding:1px 0;flex:none}
-  .bn{flex:1;font-size:12px;white-space:nowrap}
-  .bc{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-align:right;white-space:nowrap}
+   색 규약은 실제 반(盤)의 것을 따른다 — 운전 녹색 / 주의 호박 / 정지·위험 주황적.
+   위험 줄무늬(노랑)는 게임 속 벨트와 같은 색이고 경보 한 곳에만 쓴다.
+   =========================================================================== */
+:root{
+  /* 금속 판 */
+  --face:#d8d4cc; --face-hi:#eae7e0; --face-lo:#c2bdb4;
+  --edge:#6d675e; --rule:#a9a39a;
+  /* 각인된 글자 */
+  /* --ink-3 는 9~10px 라벨에 쓰이므로 밝은 판 위에서 4.5:1 을 넘겨야 한다.
+     처음 #7e837f 로 뒀더니 비용 표기가 읽히지 않았다. */
+  --ink:#1c2024; --ink-2:#585e65; --ink-3:#63696e;
+  /* 계기창 (판에 박힌 어두운 창) */
+  --well:#23282c; --well-ink:#eae6dd; --well-edge:#0e1113; --well-dim:#8b9199;
+  /* 상태색 — 반의 규약 */
+  --run:#1f6b46; --warn:#96610a; --stop:#b23a10; --steel:#2c5470;
+  --hazard:#e2b21c;
+  /* 글꼴: 라틴은 각인체(DIN), 한글은 본문체, 수치는 등폭 */
+  --label:"Bahnschrift","Franklin Gothic","Segoe UI Variable",sans-serif;
+  --body:"Noto Sans KR","Malgun Gothic",sans-serif;
+  --mono:Consolas,"Cascadia Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#0f1214;color:var(--ink);
+  font-family:var(--body);font-size:12.5px;user-select:none;-webkit-font-smoothing:antialiased}
+canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
 
-  /* 우측 스택 */
-  #right{position:absolute;right:8px;top:8px;width:224px;display:flex;flex-direction:column;gap:8px;
-    max-height:calc(100vh - 16px);z-index:5}
-  #right .panel{position:relative;inset:auto}
-  #invList{max-height:190px;overflow-y:auto}
-  .irow{display:flex;justify-content:space-between;padding:2px 10px;font-size:11.5px}
-  .irow .n{color:var(--dim)} .irow .q{font-family:var(--mono)}
-  .craftbtn{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin:2px 0;
-    background:var(--panel2);border:1px solid var(--line);border-radius:3px;cursor:pointer;font-size:11.5px}
-  .craftbtn:hover{border-color:var(--steel-lt)}
-  .craftbtn.no{opacity:.4;cursor:not-allowed}
-  #craftList{max-height:172px;overflow-y:auto;padding:6px 8px}
+/* 각인 라벨 — 판에 새긴 글자는 위가 어둡고 아래에 흰 하이라이트가 남는다 */
+.eng{font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 75;
+  text-transform:uppercase;letter-spacing:.15em;color:var(--ink-2);
+  text-shadow:0 1px 0 rgba(255,255,255,.8)}
 
-  /* 미니맵 */
-  #mini{position:relative;width:100%;height:180px;display:block;background:#0d1114;border-top:1px solid var(--line);cursor:pointer}
+/* 계기창 — 이 UI 의 시그니처. 수치는 반드시 여기 안에서만 산다. */
+.well{background:var(--well);color:var(--well-ink);border:1px solid var(--well-edge);
+  border-radius:2px;box-shadow:inset 0 2px 6px rgba(0,0,0,.8),0 1px 0 var(--face-hi);
+  font-family:var(--mono);font-variant-numeric:tabular-nums}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
-  /* 인스펙터 */
-  #insp{left:206px;bottom:8px;width:288px;display:none;z-index:6;max-height:62vh;overflow-y:auto}
-  .frow{display:flex;gap:6px;align-items:center;margin:5px 0}
-  .frow label{flex:none;width:64px;color:var(--dim);font-size:11px}
-  select,input[type=text],input[type=number]{background:#0f1418;color:var(--ink);border:1px solid var(--line);
-    border-radius:3px;padding:3px 5px;font-family:var(--mono);font-size:11.5px;flex:1;min-width:0}
-  button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:3px;
-    padding:4px 9px;font-size:11.5px;cursor:pointer;font-family:inherit}
-  button:hover{border-color:var(--steel-lt);background:rgba(47,95,143,.26)}
-  button.pri{background:var(--steel);border-color:var(--steel-lt)}
-  button.danger:hover{border-color:var(--red);background:rgba(217,84,74,.22)}
-  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
-  .chip{font-family:var(--mono);font-size:10.5px;background:#0f1418;border:1px solid var(--line);
-    border-radius:3px;padding:2px 5px}
+/* 판 */
+.panel{position:absolute;background:linear-gradient(180deg,#e3dfd8 0,var(--face) 44%,#cdc8bf 100%);
+  border:1px solid var(--edge);border-radius:0;
+  box-shadow:inset 0 1px 0 var(--face-hi),inset 0 -1px 0 rgba(0,0,0,.14),0 5px 16px rgba(0,0,0,.5)}
+.panel h3{margin:0;padding:6px 10px 5px;font-family:var(--label);
+  font-variation-settings:'wght' 700,'wdth' 75;text-transform:uppercase;
+  font-size:10.5px;letter-spacing:.15em;color:var(--ink-2);
+  text-shadow:0 1px 0 rgba(255,255,255,.8);
+  background:linear-gradient(180deg,rgba(0,0,0,.07),rgba(0,0,0,0));
+  border-bottom:1px solid var(--rule)}
+.pad{padding:8px 10px}
 
-  /* 연구 */
-  #tech{left:50%;top:50%;transform:translate(-50%,-50%);width:640px;max-height:78vh;overflow-y:auto;display:none;z-index:20}
-  .trow{display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line)}
-  .trow.done{opacity:.45} .trow.locked{opacity:.42}
-  .trow .tn{flex:1} .trow .td{font-size:11px;color:var(--dim);margin-top:2px}
-  .tcost{font-family:var(--mono);font-size:11px;color:var(--amber);white-space:nowrap}
+/* 색 유틸 (JS 인라인 색을 대신한다) */
+.dim{color:var(--ink-2)} .ok{color:var(--run)} .warn{color:var(--warn)}
+.bad{color:var(--stop)} .lnk{color:var(--steel)}
 
-  /* 로직 에디터 */
-  #logic{position:absolute;inset:0;background:rgba(10,13,17,.965);display:none;z-index:30}
-  #logicBar{position:absolute;top:0;left:0;right:0;height:42px;border-bottom:1px solid var(--line);
-    display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel)}
-  #logicBar .ttl{font-size:13px;letter-spacing:.05em}
-  #logicBar .hint{color:var(--dim);font-size:11px;flex:1}
-  #pal{position:absolute;left:0;top:42px;bottom:0;width:190px;border-right:1px solid var(--line);
-    overflow-y:auto;background:var(--panel)}
-  .pcat{padding:6px 10px;font-size:10px;letter-spacing:.09em;color:var(--dim);text-transform:uppercase;
-    background:rgba(47,95,143,.13);border-bottom:1px solid var(--line);border-top:1px solid var(--line)}
-  .pitem{padding:5px 10px;cursor:pointer;font-size:11.5px;border-left:3px solid transparent}
-  .pitem:hover{background:rgba(47,95,143,.22);border-left-color:var(--amber)}
-  .pitem.locked{opacity:.3;cursor:not-allowed}
-  #graphWrap{position:absolute;left:190px;top:42px;right:0;bottom:0;overflow:hidden;
-    background:
-      linear-gradient(rgba(47,95,143,.10) 1px,transparent 1px) 0 0/22px 22px,
-      linear-gradient(90deg,rgba(47,95,143,.10) 1px,transparent 1px) 0 0/22px 22px,
-      #0e1319;cursor:grab}
-  #graphWrap.panning{cursor:grabbing}
-  #graphInner{position:absolute;left:0;top:0;width:6000px;height:4000px;transform-origin:0 0}
-  #links{position:absolute;left:0;top:0;width:6000px;height:4000px;pointer-events:none;overflow:visible}
-  .node{position:absolute;width:178px;background:var(--panel);border:1px solid var(--line);
-    border-radius:4px;box-shadow:0 3px 12px rgba(0,0,0,.5);font-size:11px}
-  .node.in{border-top:2px solid var(--green)}
-  .node.op{border-top:2px solid var(--steel-lt)}
-  .node.out{border-top:2px solid var(--amber)}
-  .node.sel{outline:1px solid var(--amber)}
-  .nhead{padding:4px 7px;cursor:move;font-size:11px;display:flex;justify-content:space-between;
-    align-items:center;background:rgba(47,95,143,.15);border-bottom:1px solid var(--line)}
-  .nhead .x{color:var(--dim);cursor:pointer;padding:0 3px}
-  .nhead .x:hover{color:var(--red)}
-  .nbody{padding:4px 6px}
-  .nrow{display:flex;align-items:center;gap:4px;margin:2px 0;min-height:17px}
-  .nrow label{color:var(--dim);font-size:10px;flex:none;width:52px}
-  .nrow select,.nrow input{font-size:10.5px;padding:1px 3px}
-  .ports{display:flex;justify-content:space-between;padding:2px 0 4px}
-  .pcol{display:flex;flex-direction:column;gap:3px}
-  .port{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--dim);cursor:crosshair}
-  .pcol.o .port{flex-direction:row-reverse}
-  .dot{width:9px;height:9px;border-radius:50%;background:#0f1418;border:1.5px solid var(--steel-lt);flex:none}
-  .port:hover .dot{background:var(--amber);border-color:var(--amber)}
-  .dot.on{background:var(--green);border-color:var(--green)}
-  .pv{font-family:var(--mono);font-size:10px;color:var(--amber);min-width:26px}
-  .entbtn{font-size:10px;padding:1px 5px;flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 상단 계기열 */
+#top{top:8px;left:50%;transform:translateX(-50%);display:flex;z-index:5}
+#top .stat{padding:5px 11px 6px;border-right:1px solid var(--rule);text-align:center;min-width:78px}
+#top .stat:last-child{border-right:none}
+#top .k{display:block;font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 75;
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);
+  text-shadow:0 1px 0 rgba(255,255,255,.8);margin-bottom:3px}
+#top .v{display:block;padding:2px 6px;font-size:14px;line-height:1.2}
+.okv{color:#7ee0a2} .warnv{color:#f0c15a} .badv{color:#ff8a6a}
 
-  /* 알림 */
-  #toast{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);z-index:40;
-    display:flex;flex-direction:column;gap:5px;align-items:center;pointer-events:none}
-  .tmsg{background:rgba(26,32,39,.96);border:1px solid var(--line);border-left:3px solid var(--amber);
-    border-radius:3px;padding:6px 13px;font-size:12px;box-shadow:0 3px 12px rgba(0,0,0,.5)}
-  .tmsg.bad{border-left-color:var(--red)} .tmsg.good{border-left-color:var(--green)}
+/* 건설 판 */
+#build{left:8px;top:8px;width:214px;max-height:calc(100vh - 16px);overflow-y:auto;z-index:5}
+.bhint{padding:3px 10px;font-family:var(--label);font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--rule)}
+.bitem{display:flex;gap:7px;align-items:center;padding:4px 8px;cursor:pointer;
+  border-left:3px solid transparent;border-bottom:1px solid rgba(0,0,0,.055)}
+.bitem:hover{background:rgba(255,255,255,.4)}
+.bitem.sel{background:rgba(178,58,16,.13);border-left-color:var(--stop)}
+.bitem.locked{opacity:.36;cursor:not-allowed}
+.bitem.poor .bn{color:var(--stop)}
+.bkey{font-family:var(--mono);font-size:9.5px;color:var(--well-ink);background:var(--well);
+  width:15px;text-align:center;border-radius:1px;padding:1px 0;flex:none;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.7)}
+.bn{flex:1;font-size:12px;white-space:nowrap;color:var(--ink)}
+.bc{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);text-align:right;white-space:nowrap}
 
-  #alarms{position:absolute;left:50%;top:70px;transform:translateX(-50%);z-index:6;display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
-  .alarm{background:rgba(217,84,74,.92);color:#fff;border-radius:3px;padding:3px 10px;font-size:11.5px;
-    font-family:var(--mono);animation:blink 1s infinite}
-  @keyframes blink{0%,100%{opacity:1}50%{opacity:.45}}
-  #dispRow{position:absolute;left:50%;top:70px;transform:translateX(-50%);z-index:5;display:flex;gap:6px}
-  .disp{background:rgba(26,32,39,.9);border:1px solid var(--line);border-radius:3px;padding:3px 9px;
-    font-family:var(--mono);font-size:11.5px}
-  .disp b{color:var(--amber);font-weight:600}
+/* 우측 열 */
+#right{position:absolute;right:8px;top:8px;width:226px;display:flex;flex-direction:column;
+  gap:8px;max-height:calc(100vh - 16px);z-index:5}
+/* 기본 flex-shrink 가 1 이라 세로가 모자라면 위 판들이 눌려 내용이 잘린다
+   (창고 마지막 줄이 반쯤 잘려 있었다). 판은 줄어들지 않게 하고,
+   남는 높이는 지도 판(인라인 flex:1)이 가져간다. */
+#right .panel{position:relative;inset:auto;flex:0 0 auto}
+/* 품목이 15종뿐이라 다 들어간다. 잘라서 스크롤시키면 마지막 줄이 반쯤 잘려
+   보여 "패널이 깨진 것"처럼 읽힌다. */
+#invList{max-height:252px;overflow-y:auto;padding:3px 0;scrollbar-width:thin}
+.irow{display:flex;justify-content:space-between;padding:1.5px 10px;font-size:11.5px}
+.irow .n{color:var(--ink-2)}
+.irow .q{font-family:var(--mono);color:var(--ink)}
+.craftbtn{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin:2px 0;
+  background:linear-gradient(180deg,#e6e2da,#d2cdc4);border:1px solid var(--rule);
+  box-shadow:inset 0 1px 0 #fff;cursor:pointer;font-size:11.5px;color:var(--ink)}
+.craftbtn:hover{border-color:var(--edge)}
+.craftbtn:active{box-shadow:inset 0 2px 4px rgba(0,0,0,.3)}
+.craftbtn.no{opacity:.42;cursor:not-allowed}
+#craftList{max-height:200px;overflow-y:auto;padding:5px 8px;scrollbar-width:thin}
+/* 지도는 판에 박힌 창이다 */
+#mini{position:relative;width:100%;height:178px;display:block;background:var(--well);
+  border-top:1px solid var(--well-edge);cursor:pointer;
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.8)}
 
-  /* 도움말 */
-  #help{left:50%;top:50%;transform:translate(-50%,-50%);width:660px;max-height:80vh;overflow-y:auto;display:none;z-index:25;line-height:1.62}
-  #help .pad{font-size:12.5px}
-  #help h4{margin:14px 0 5px;color:var(--amber);font-size:12px;letter-spacing:.05em}
-  #help code{font-family:var(--mono);background:#0f1418;border:1px solid var(--line);
-    border-radius:3px;padding:1px 5px;color:var(--steel-lt)}
-  #help ul{margin:4px 0;padding-left:18px} #help li{margin:3px 0}
-  .close{position:absolute;right:8px;top:6px;cursor:pointer;color:var(--dim);font-size:16px}
-  .close:hover{color:var(--red)}
+/* 튜토리얼 */
+#tutor{left:230px;bottom:8px;width:356px;display:none;z-index:6;max-height:56vh;overflow-y:auto}
+.tdone{color:var(--ink-3);font-size:11px;line-height:1.6;margin-bottom:7px;
+  border-bottom:1px solid var(--rule);padding-bottom:6px}
+.tchk{color:var(--run)}
+.tnow{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:5px;line-height:1.35}
+.twhy{font-size:11.5px;color:var(--warn);line-height:1.6;margin-bottom:6px}
+.thow{font-size:11.5px;color:var(--ink-2);line-height:1.65}
+#tutorFoot{display:flex;gap:6px;padding:0 11px 9px}
 
-  #pickBanner{position:absolute;left:50%;top:52%;transform:translateX(-50%);z-index:35;display:none;
-    background:rgba(47,95,143,.95);padding:9px 18px;border-radius:4px;font-size:13px;
-    box-shadow:0 4px 20px rgba(0,0,0,.6)}
-  #testout{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}
+/* 인스펙터 */
+#insp{left:594px;bottom:8px;width:296px;display:none;z-index:6;max-height:62vh;overflow-y:auto}
+.frow{display:flex;gap:6px;align-items:center;margin:4px 0}
+.frow label{flex:none;width:62px;font-family:var(--label);font-size:9.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-2);text-shadow:0 1px 0 rgba(255,255,255,.8)}
+select,input[type=text],input[type=number]{background:#f2efe9;color:var(--ink);
+  border:1px solid var(--rule);border-radius:1px;padding:3px 5px;font-family:var(--mono);
+  font-size:11.5px;flex:1;min-width:0;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+select:focus,input:focus{outline:2px solid var(--steel);outline-offset:-1px}
+
+/* 버튼은 반의 스위치다 — 눌리면 실제로 들어간다 */
+button{font-family:var(--label);font-variation-settings:'wght' 600,'wdth' 87.5;
+  letter-spacing:.06em;background:linear-gradient(180deg,#e9e5de,#cfcac1);color:var(--ink);
+  border:1px solid var(--edge);border-radius:1px;padding:4px 10px;font-size:11.5px;cursor:pointer;
+  box-shadow:inset 0 1px 0 #fff,0 1px 0 rgba(0,0,0,.22)}
+button:hover{background:linear-gradient(180deg,#f2eee7,#d6d1c8)}
+button:active{box-shadow:inset 0 2px 5px rgba(0,0,0,.35);transform:translateY(1px)}
+button:focus-visible{outline:2px solid var(--steel);outline-offset:1px}
+button[disabled]{opacity:.4;cursor:not-allowed}
+button.pri{background:linear-gradient(180deg,#3a6a8c,#25506e);color:#f2efe9;border-color:#183a52;
+  text-shadow:0 1px 0 rgba(0,0,0,.4)}
+button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;border-color:#732207;
+  text-shadow:0 1px 0 rgba(0,0,0,.4)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.chip{font-family:var(--mono);font-size:10.5px;background:var(--well);color:var(--well-ink);
+  border-radius:1px;padding:2px 5px;box-shadow:inset 0 1px 3px rgba(0,0,0,.7)}
+
+/* 연구 */
+#tech{left:50%;top:50%;transform:translate(-50%,-50%);width:660px;max-height:78vh;
+  overflow-y:auto;display:none;z-index:20}
+.trow{display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--rule)}
+.trow.done{opacity:.5} .trow.locked{opacity:.45}
+.trow .tn{flex:1;color:var(--ink)}
+.trow .td{font-size:11px;color:var(--ink-2);margin-top:2px;line-height:1.55}
+.tcost{font-family:var(--mono);font-size:11px;color:var(--stop);white-space:nowrap}
+
+/* 노드 편집기 — 같은 반 위의 작업대 */
+#logic{position:absolute;inset:0;background:#c6c3bb;display:none;z-index:30}
+#logicBar{position:absolute;top:0;left:0;right:0;height:42px;
+  border-bottom:1px solid var(--edge);display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:linear-gradient(180deg,#e3dfd8,#cdc8bf);
+  box-shadow:inset 0 1px 0 var(--face-hi),0 2px 6px rgba(0,0,0,.28)}
+#logicBar .ttl{font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 75;
+  text-transform:uppercase;letter-spacing:.15em;font-size:11px;color:var(--ink-2);
+  text-shadow:0 1px 0 rgba(255,255,255,.8)}
+#logicBar .hint{color:var(--ink-3);font-size:11px;flex:1}
+#pal{position:absolute;left:0;top:42px;bottom:0;width:196px;border-right:1px solid var(--edge);
+  overflow-y:auto;background:linear-gradient(180deg,#ded9d2,#cfcac1)}
+.pcat{padding:5px 10px;font-family:var(--label);font-size:9px;letter-spacing:.16em;
+  color:var(--ink-2);text-transform:uppercase;text-shadow:0 1px 0 rgba(255,255,255,.8);
+  background:rgba(0,0,0,.07);border-bottom:1px solid var(--rule);border-top:1px solid var(--rule)}
+.pitem{padding:4.5px 10px;cursor:pointer;font-size:11.5px;color:var(--ink);
+  border-left:3px solid transparent}
+.pitem:hover{background:rgba(255,255,255,.5);border-left-color:var(--stop)}
+.pitem.locked{opacity:.34;cursor:not-allowed}
+/* 작업대 표면: 미세 격자 방안 */
+#graphWrap{position:absolute;left:196px;top:42px;right:0;bottom:0;overflow:hidden;
+  background:
+    linear-gradient(rgba(0,0,0,.055) 1px,transparent 1px) 0 0/24px 24px,
+    linear-gradient(90deg,rgba(0,0,0,.055) 1px,transparent 1px) 0 0/24px 24px,
+    #d3cfc7;
+  cursor:grab}
+#graphWrap.panning{cursor:grabbing}
+#graphInner{position:absolute;left:0;top:0;width:6000px;height:4000px;transform-origin:0 0}
+#links{position:absolute;left:0;top:0;width:6000px;height:4000px;pointer-events:none;overflow:visible}
+/* 노드는 판에 붙인 작은 모듈 */
+.node{position:absolute;width:184px;
+  background:linear-gradient(180deg,#e7e3dc,#d4cfc6);border:1px solid var(--edge);
+  box-shadow:inset 0 1px 0 #fff,0 3px 9px rgba(0,0,0,.35);font-size:11px;color:var(--ink)}
+.node.in{border-top:3px solid var(--run)}
+.node.op{border-top:3px solid var(--steel)}
+.node.out{border-top:3px solid var(--stop)}
+.node.sel{outline:1px solid var(--stop)}
+.nhead{padding:4px 7px;cursor:move;font-family:var(--label);
+  font-variation-settings:'wght' 700,'wdth' 87.5;font-size:10.5px;letter-spacing:.05em;
+  display:flex;justify-content:space-between;align-items:center;
+  background:rgba(0,0,0,.06);border-bottom:1px solid var(--rule);
+  text-shadow:0 1px 0 rgba(255,255,255,.7)}
+.nhead .x{color:var(--ink-3);cursor:pointer;padding:0 3px}
+.nhead .x:hover{color:var(--stop)}
+.nbody{padding:4px 6px}
+.nrow{display:flex;align-items:center;gap:4px;margin:2px 0;min-height:17px}
+.nrow label{font-family:var(--label);color:var(--ink-2);font-size:9.5px;letter-spacing:.08em;
+  text-transform:uppercase;flex:none;width:54px}
+.nrow select,.nrow input{font-size:10.5px;padding:1px 3px}
+.ports{display:flex;justify-content:space-between;padding:2px 0 4px}
+.pcol{display:flex;flex-direction:column;gap:3px}
+.port{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink-2);cursor:crosshair}
+.pcol.o .port{flex-direction:row-reverse}
+.dot{width:9px;height:9px;border-radius:50%;background:#f2efe9;border:1.5px solid var(--steel);flex:none;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
+.port:hover .dot{background:var(--stop);border-color:var(--stop)}
+.dot.on{background:var(--run);border-color:var(--run)}
+/* 포트 값도 계기창 안에 */
+.pv{font-family:var(--mono);font-size:10px;min-width:30px;text-align:right;
+  background:var(--well);color:var(--well-ink);border-radius:1px;padding:0 3px;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.7)}
+.entbtn{font-size:10px;padding:1px 5px;flex:1;text-align:left;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;letter-spacing:0}
+
+/* 알림 */
+#toast{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);z-index:40;
+  display:flex;flex-direction:column;gap:5px;align-items:center;pointer-events:none}
+.tmsg{background:linear-gradient(180deg,#e6e2da,#d2cdc4);border:1px solid var(--edge);
+  border-left:4px solid var(--warn);padding:6px 13px;font-size:12px;color:var(--ink);
+  box-shadow:inset 0 1px 0 #fff,0 3px 10px rgba(0,0,0,.4)}
+.tmsg.bad{border-left-color:var(--stop)}
+.tmsg.good{border-left-color:var(--run)}
+
+/* 경보 — 여기 한 곳에만 위험 줄무늬를 쓴다 */
+#alarms{position:absolute;left:50%;top:74px;transform:translateX(-50%);z-index:6;
+  display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.alarm{background:var(--stop);color:#fdf5ef;font-family:var(--mono);font-size:11.5px;
+  padding:3px 11px;border:1px solid #732207;border-top:3px solid var(--hazard);
+  box-shadow:0 2px 8px rgba(0,0,0,.45);animation:blink 1.1s steps(2,end) infinite}
+@keyframes blink{50%{opacity:.42}}
+#dispRow{position:absolute;left:50%;top:74px;transform:translateX(-50%);z-index:5;display:flex;gap:6px}
+.disp{background:var(--well);color:var(--well-ink);border:1px solid var(--well-edge);
+  padding:3px 9px;font-family:var(--mono);font-size:11.5px;border-radius:2px;
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.8)}
+.disp b{color:#f0c15a;font-weight:600}
+
+/* 도움말 */
+#help{left:50%;top:50%;transform:translate(-50%,-50%);width:680px;max-height:80vh;
+  overflow-y:auto;display:none;z-index:25;line-height:1.62}
+#help .pad{font-size:12.5px;color:var(--ink)}
+#help h4{margin:14px 0 5px;font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 75;
+  text-transform:uppercase;letter-spacing:.15em;color:var(--stop);font-size:11px;
+  text-shadow:0 1px 0 rgba(255,255,255,.8)}
+#help code{font-family:var(--mono);background:var(--well);color:var(--well-ink);
+  border-radius:1px;padding:1px 5px;box-shadow:inset 0 1px 3px rgba(0,0,0,.7)}
+#help ul{margin:4px 0;padding-left:18px} #help li{margin:3px 0}
+#help p{margin:6px 0}
+.close{position:absolute;right:8px;top:5px;cursor:pointer;color:var(--ink-3);font-size:15px}
+.close:hover{color:var(--stop)}
+
+#pickBanner{position:absolute;left:50%;top:52%;transform:translateX(-50%);z-index:35;display:none;
+  background:linear-gradient(180deg,#3a6a8c,#25506e);color:#f2efe9;padding:9px 18px;
+  border:1px solid #183a52;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,.6)}
+#testout{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}
+
+@media (prefers-reduced-motion: reduce){ .alarm{animation:none} }
 </style>
 </head>
 <body>
@@ -167,13 +282,18 @@
 <div id="dispRow"></div>
 
 <div class="panel" id="build">
-  <h3>건설 <span style="float:right;color:#4a86c4">R 회전 · 우클릭 철거</span></h3>
+  <h3>Build 건설
+    <span style="float:right">
+      <button id="tutorBtn" style="padding:1px 7px;font-size:10px" title="대화형 튜토리얼">튜토리얼</button>
+    </span>
+  </h3>
+  <div class="bhint">R 회전 · 우클릭 철거</div>
   <div id="buildList"></div>
 </div>
 
 <div id="right">
   <div class="panel">
-    <h3>창고
+    <h3>Stores 창고
       <span style="float:right;display:flex;gap:4px">
         <button id="saveBtn" style="padding:1px 7px;font-size:10px" title="F2">저장</button>
         <button id="loadBtn" style="padding:1px 7px;font-size:10px" title="F3">불러오기</button>
@@ -182,13 +302,21 @@
     <div id="invList"></div>
   </div>
   <div class="panel">
-    <h3>손 조립 <span style="float:right;color:#8b98a6">클릭 = 1개</span></h3>
+    <h3>Handcraft 손 조립 <span style="float:right;color:var(--ink-3)">클릭 = 1개</span></h3>
     <div id="craftList"></div>
   </div>
   <div class="panel" style="flex:1;display:flex;flex-direction:column;min-height:0">
-    <h3>지도 <span style="float:right;color:#8b98a6">클릭 = 이동</span></h3>
-    <canvas id="mini" width="212" height="180"></canvas>
+    <h3>Survey 지도 <span style="float:right;color:var(--ink-3)">클릭 = 이동</span></h3>
+    <canvas id="mini" width="224" height="178"></canvas>
   </div>
+</div>
+
+<div class="panel" id="tutor">
+  <h3><span id="tutorHead">튜토리얼</span>
+    <span class="close" id="tutorClose" title="닫기 (건설 판의 튜토리얼 버튼으로 다시 연다)">✕</span>
+  </h3>
+  <div class="pad" id="tutorBody"></div>
+  <div id="tutorFoot"><button id="tutorSkip">이 단계 건너뛰기</button></div>
 </div>
 
 <div class="panel" id="insp">
@@ -198,21 +326,21 @@
 
 <div class="panel" id="tech">
   <span class="close" onclick="closeTech()">✕</span>
-  <h3>연구</h3>
+  <h3>Research 연구</h3>
   <div class="pad" id="techBody"></div>
 </div>
 
 <div class="panel" id="help">
   <span class="close" onclick="closeHelp()">✕</span>
-  <h3>LOGIC FOUNDRY — 조작과 개념</h3>
+  <h3>Logic Foundry — 조작과 개념</h3>
   <div class="pad" id="helpBody"></div>
 </div>
 
 <div id="logic">
   <div id="logicBar">
-    <span class="ttl">제어기 <span id="ctrlName" class="num"></span></span>
+    <span class="ttl">Controller <span id="ctrlName" class="num"></span></span>
     <span class="hint">출력 포트에서 입력 포트로 끌어 배선 · 입력 포트 클릭 = 연결 해제 · 배경 드래그 = 이동 · 휠 = 확대</span>
-    <span id="cycleInfo" class="num" style="color:var(--amber)"></span>
+    <span id="cycleInfo" class="num" style="color:var(--stop)"></span>
     <button onclick="loadExample()">예제 불러오기</button>
     <button class="pri" onclick="closeLogic()">닫기 (ESC)</button>
   </div>

@@ -5,158 +5,273 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LOGIC FOUNDRY — 프로그래머블 공정자동화</title>
 <style>
-  /* 산업용 다크 — blueprint steel(#2f5f8f) + amber(#f0a92b), 수치는 등폭 */
-  :root{
-    --bg:#12161b; --panel:#1a2027; --panel2:#212a33; --line:#2e3a45;
-    --ink:#d6dee6; --dim:#8b98a6; --steel:#2f5f8f; --steel-lt:#4a86c4;
-    --amber:#f0a92b; --green:#49c05a; --red:#d9544a; --purple:#8a5fc0;
-    --mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
-    font-family:"Segoe UI","Malgun Gothic",system-ui,sans-serif;font-size:13px;user-select:none}
-  canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
-  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+/* ===========================================================================
+   계기반 (Instrument faceplate)
 
-  .panel{position:absolute;background:rgba(26,32,39,.94);border:1px solid var(--line);
-    border-radius:4px;backdrop-filter:blur(3px);box-shadow:0 4px 18px rgba(0,0,0,.45)}
-  .panel h3{margin:0;padding:7px 10px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
-    color:var(--dim);border-bottom:1px solid var(--line);background:rgba(47,95,143,.13)}
-  .pad{padding:8px 10px}
+   개념: UI 는 창(window)이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝은
+   아노다이즈 알루미늄 판이 얹혀 있고, 라벨은 판에 각인돼 있고, 수치는 판에
+   박힌 **어두운 계기창(well)** 안에서 빛난다. 게임 화면과 UI 가 같은 톤이면
+   서로 섞여 읽히므로, 일부러 반대로 간다.
 
-  /* 상단 상태바 */
-  #top{top:8px;left:50%;transform:translateX(-50%);display:flex;gap:0;align-items:stretch;z-index:5}
-  #top .stat{padding:6px 12px;border-right:1px solid var(--line);text-align:center;min-width:74px}
-  #top .stat:last-child{border-right:none}
-  #top .k{font-size:9.5px;color:var(--dim);letter-spacing:.07em;text-transform:uppercase}
-  #top .v{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums;line-height:1.25}
-  .warnv{color:var(--amber)} .badv{color:var(--red)} .okv{color:var(--green)}
+   시그니처: 밝은 금속판 + 어두운 계기창. 이 대비 하나에 힘을 몰고 나머지는
+   조용히 둔다 (모서리 라운드 없음, 그림자 최소, 장식 없음).
 
-  /* 건설 팔레트 */
-  #build{left:8px;top:8px;width:212px;max-height:calc(100vh - 16px);overflow-y:auto;z-index:5}
-  .bitem{display:flex;gap:8px;align-items:center;padding:5px 8px;cursor:pointer;border-left:3px solid transparent}
-  .bitem:hover{background:rgba(47,95,143,.20)}
-  .bitem.sel{background:rgba(47,95,143,.34);border-left-color:var(--amber)}
-  .bitem.locked{opacity:.34;cursor:not-allowed}
-  .bitem.poor .bn{color:var(--red)}
-  .bkey{font-family:var(--mono);font-size:10px;color:var(--dim);width:14px;text-align:center;
-    border:1px solid var(--line);border-radius:3px;padding:1px 0;flex:none}
-  .bn{flex:1;font-size:12px;white-space:nowrap}
-  .bc{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-align:right;white-space:nowrap}
+   색 규약은 실제 반(盤)의 것을 따른다 — 운전 녹색 / 주의 호박 / 정지·위험 주황적.
+   위험 줄무늬(노랑)는 게임 속 벨트와 같은 색이고 경보 한 곳에만 쓴다.
+   =========================================================================== */
+:root{
+  /* 금속 판 */
+  --face:#d8d4cc; --face-hi:#eae7e0; --face-lo:#c2bdb4;
+  --edge:#6d675e; --rule:#a9a39a;
+  /* 각인된 글자 */
+  /* --ink-3 는 9~10px 라벨에 쓰이므로 밝은 판 위에서 4.5:1 을 넘겨야 한다.
+     처음 #7e837f 로 뒀더니 비용 표기가 읽히지 않았다. */
+  --ink:#1c2024; --ink-2:#585e65; --ink-3:#63696e;
+  /* 계기창 (판에 박힌 어두운 창) */
+  --well:#23282c; --well-ink:#eae6dd; --well-edge:#0e1113; --well-dim:#8b9199;
+  /* 상태색 — 반의 규약 */
+  --run:#1f6b46; --warn:#96610a; --stop:#b23a10; --steel:#2c5470;
+  --hazard:#e2b21c;
+  /* 글꼴: 라틴은 각인체(DIN), 한글은 본문체, 수치는 등폭 */
+  --label:"Bahnschrift","Franklin Gothic","Segoe UI Variable",sans-serif;
+  --body:"Noto Sans KR","Malgun Gothic",sans-serif;
+  --mono:Consolas,"Cascadia Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#0f1214;color:var(--ink);
+  font-family:var(--body);font-size:12.5px;user-select:none;-webkit-font-smoothing:antialiased}
+canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
 
-  /* 우측 스택 */
-  #right{position:absolute;right:8px;top:8px;width:224px;display:flex;flex-direction:column;gap:8px;
-    max-height:calc(100vh - 16px);z-index:5}
-  #right .panel{position:relative;inset:auto}
-  #invList{max-height:190px;overflow-y:auto}
-  .irow{display:flex;justify-content:space-between;padding:2px 10px;font-size:11.5px}
-  .irow .n{color:var(--dim)} .irow .q{font-family:var(--mono)}
-  .craftbtn{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin:2px 0;
-    background:var(--panel2);border:1px solid var(--line);border-radius:3px;cursor:pointer;font-size:11.5px}
-  .craftbtn:hover{border-color:var(--steel-lt)}
-  .craftbtn.no{opacity:.4;cursor:not-allowed}
-  #craftList{max-height:172px;overflow-y:auto;padding:6px 8px}
+/* 각인 라벨 — 판에 새긴 글자는 위가 어둡고 아래에 흰 하이라이트가 남는다 */
+.eng{font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 75;
+  text-transform:uppercase;letter-spacing:.15em;color:var(--ink-2);
+  text-shadow:0 1px 0 rgba(255,255,255,.8)}
 
-  /* 미니맵 */
-  #mini{position:relative;width:100%;height:180px;display:block;background:#0d1114;border-top:1px solid var(--line);cursor:pointer}
+/* 계기창 — 이 UI 의 시그니처. 수치는 반드시 여기 안에서만 산다. */
+.well{background:var(--well);color:var(--well-ink);border:1px solid var(--well-edge);
+  border-radius:2px;box-shadow:inset 0 2px 6px rgba(0,0,0,.8),0 1px 0 var(--face-hi);
+  font-family:var(--mono);font-variant-numeric:tabular-nums}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
-  /* 인스펙터 */
-  #insp{left:206px;bottom:8px;width:288px;display:none;z-index:6;max-height:62vh;overflow-y:auto}
-  .frow{display:flex;gap:6px;align-items:center;margin:5px 0}
-  .frow label{flex:none;width:64px;color:var(--dim);font-size:11px}
-  select,input[type=text],input[type=number]{background:#0f1418;color:var(--ink);border:1px solid var(--line);
-    border-radius:3px;padding:3px 5px;font-family:var(--mono);font-size:11.5px;flex:1;min-width:0}
-  button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:3px;
-    padding:4px 9px;font-size:11.5px;cursor:pointer;font-family:inherit}
-  button:hover{border-color:var(--steel-lt);background:rgba(47,95,143,.26)}
-  button.pri{background:var(--steel);border-color:var(--steel-lt)}
-  button.danger:hover{border-color:var(--red);background:rgba(217,84,74,.22)}
-  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
-  .chip{font-family:var(--mono);font-size:10.5px;background:#0f1418;border:1px solid var(--line);
-    border-radius:3px;padding:2px 5px}
+/* 판 */
+.panel{position:absolute;background:linear-gradient(180deg,#e3dfd8 0,var(--face) 44%,#cdc8bf 100%);
+  border:1px solid var(--edge);border-radius:0;
+  box-shadow:inset 0 1px 0 var(--face-hi),inset 0 -1px 0 rgba(0,0,0,.14),0 5px 16px rgba(0,0,0,.5)}
+.panel h3{margin:0;padding:6px 10px 5px;font-family:var(--label);
+  font-variation-settings:'wght' 700,'wdth' 75;text-transform:uppercase;
+  font-size:10.5px;letter-spacing:.15em;color:var(--ink-2);
+  text-shadow:0 1px 0 rgba(255,255,255,.8);
+  background:linear-gradient(180deg,rgba(0,0,0,.07),rgba(0,0,0,0));
+  border-bottom:1px solid var(--rule)}
+.pad{padding:8px 10px}
 
-  /* 연구 */
-  #tech{left:50%;top:50%;transform:translate(-50%,-50%);width:640px;max-height:78vh;overflow-y:auto;display:none;z-index:20}
-  .trow{display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line)}
-  .trow.done{opacity:.45} .trow.locked{opacity:.42}
-  .trow .tn{flex:1} .trow .td{font-size:11px;color:var(--dim);margin-top:2px}
-  .tcost{font-family:var(--mono);font-size:11px;color:var(--amber);white-space:nowrap}
+/* 색 유틸 (JS 인라인 색을 대신한다) */
+.dim{color:var(--ink-2)} .ok{color:var(--run)} .warn{color:var(--warn)}
+.bad{color:var(--stop)} .lnk{color:var(--steel)}
 
-  /* 로직 에디터 */
-  #logic{position:absolute;inset:0;background:rgba(10,13,17,.965);display:none;z-index:30}
-  #logicBar{position:absolute;top:0;left:0;right:0;height:42px;border-bottom:1px solid var(--line);
-    display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel)}
-  #logicBar .ttl{font-size:13px;letter-spacing:.05em}
-  #logicBar .hint{color:var(--dim);font-size:11px;flex:1}
-  #pal{position:absolute;left:0;top:42px;bottom:0;width:190px;border-right:1px solid var(--line);
-    overflow-y:auto;background:var(--panel)}
-  .pcat{padding:6px 10px;font-size:10px;letter-spacing:.09em;color:var(--dim);text-transform:uppercase;
-    background:rgba(47,95,143,.13);border-bottom:1px solid var(--line);border-top:1px solid var(--line)}
-  .pitem{padding:5px 10px;cursor:pointer;font-size:11.5px;border-left:3px solid transparent}
-  .pitem:hover{background:rgba(47,95,143,.22);border-left-color:var(--amber)}
-  .pitem.locked{opacity:.3;cursor:not-allowed}
-  #graphWrap{position:absolute;left:190px;top:42px;right:0;bottom:0;overflow:hidden;
-    background:
-      linear-gradient(rgba(47,95,143,.10) 1px,transparent 1px) 0 0/22px 22px,
-      linear-gradient(90deg,rgba(47,95,143,.10) 1px,transparent 1px) 0 0/22px 22px,
-      #0e1319;cursor:grab}
-  #graphWrap.panning{cursor:grabbing}
-  #graphInner{position:absolute;left:0;top:0;width:6000px;height:4000px;transform-origin:0 0}
-  #links{position:absolute;left:0;top:0;width:6000px;height:4000px;pointer-events:none;overflow:visible}
-  .node{position:absolute;width:178px;background:var(--panel);border:1px solid var(--line);
-    border-radius:4px;box-shadow:0 3px 12px rgba(0,0,0,.5);font-size:11px}
-  .node.in{border-top:2px solid var(--green)}
-  .node.op{border-top:2px solid var(--steel-lt)}
-  .node.out{border-top:2px solid var(--amber)}
-  .node.sel{outline:1px solid var(--amber)}
-  .nhead{padding:4px 7px;cursor:move;font-size:11px;display:flex;justify-content:space-between;
-    align-items:center;background:rgba(47,95,143,.15);border-bottom:1px solid var(--line)}
-  .nhead .x{color:var(--dim);cursor:pointer;padding:0 3px}
-  .nhead .x:hover{color:var(--red)}
-  .nbody{padding:4px 6px}
-  .nrow{display:flex;align-items:center;gap:4px;margin:2px 0;min-height:17px}
-  .nrow label{color:var(--dim);font-size:10px;flex:none;width:52px}
-  .nrow select,.nrow input{font-size:10.5px;padding:1px 3px}
-  .ports{display:flex;justify-content:space-between;padding:2px 0 4px}
-  .pcol{display:flex;flex-direction:column;gap:3px}
-  .port{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--dim);cursor:crosshair}
-  .pcol.o .port{flex-direction:row-reverse}
-  .dot{width:9px;height:9px;border-radius:50%;background:#0f1418;border:1.5px solid var(--steel-lt);flex:none}
-  .port:hover .dot{background:var(--amber);border-color:var(--amber)}
-  .dot.on{background:var(--green);border-color:var(--green)}
-  .pv{font-family:var(--mono);font-size:10px;color:var(--amber);min-width:26px}
-  .entbtn{font-size:10px;padding:1px 5px;flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 상단 계기열 */
+#top{top:8px;left:50%;transform:translateX(-50%);display:flex;z-index:5}
+#top .stat{padding:5px 11px 6px;border-right:1px solid var(--rule);text-align:center;min-width:78px}
+#top .stat:last-child{border-right:none}
+#top .k{display:block;font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 75;
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);
+  text-shadow:0 1px 0 rgba(255,255,255,.8);margin-bottom:3px}
+#top .v{display:block;padding:2px 6px;font-size:14px;line-height:1.2}
+.okv{color:#7ee0a2} .warnv{color:#f0c15a} .badv{color:#ff8a6a}
 
-  /* 알림 */
-  #toast{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);z-index:40;
-    display:flex;flex-direction:column;gap:5px;align-items:center;pointer-events:none}
-  .tmsg{background:rgba(26,32,39,.96);border:1px solid var(--line);border-left:3px solid var(--amber);
-    border-radius:3px;padding:6px 13px;font-size:12px;box-shadow:0 3px 12px rgba(0,0,0,.5)}
-  .tmsg.bad{border-left-color:var(--red)} .tmsg.good{border-left-color:var(--green)}
+/* 건설 판 */
+#build{left:8px;top:8px;width:214px;max-height:calc(100vh - 16px);overflow-y:auto;z-index:5}
+.bhint{padding:3px 10px;font-family:var(--label);font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--rule)}
+.bitem{display:flex;gap:7px;align-items:center;padding:4px 8px;cursor:pointer;
+  border-left:3px solid transparent;border-bottom:1px solid rgba(0,0,0,.055)}
+.bitem:hover{background:rgba(255,255,255,.4)}
+.bitem.sel{background:rgba(178,58,16,.13);border-left-color:var(--stop)}
+.bitem.locked{opacity:.36;cursor:not-allowed}
+.bitem.poor .bn{color:var(--stop)}
+.bkey{font-family:var(--mono);font-size:9.5px;color:var(--well-ink);background:var(--well);
+  width:15px;text-align:center;border-radius:1px;padding:1px 0;flex:none;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.7)}
+.bn{flex:1;font-size:12px;white-space:nowrap;color:var(--ink)}
+.bc{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);text-align:right;white-space:nowrap}
 
-  #alarms{position:absolute;left:50%;top:70px;transform:translateX(-50%);z-index:6;display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
-  .alarm{background:rgba(217,84,74,.92);color:#fff;border-radius:3px;padding:3px 10px;font-size:11.5px;
-    font-family:var(--mono);animation:blink 1s infinite}
-  @keyframes blink{0%,100%{opacity:1}50%{opacity:.45}}
-  #dispRow{position:absolute;left:50%;top:70px;transform:translateX(-50%);z-index:5;display:flex;gap:6px}
-  .disp{background:rgba(26,32,39,.9);border:1px solid var(--line);border-radius:3px;padding:3px 9px;
-    font-family:var(--mono);font-size:11.5px}
-  .disp b{color:var(--amber);font-weight:600}
+/* 우측 열 */
+#right{position:absolute;right:8px;top:8px;width:226px;display:flex;flex-direction:column;
+  gap:8px;max-height:calc(100vh - 16px);z-index:5}
+/* 기본 flex-shrink 가 1 이라 세로가 모자라면 위 판들이 눌려 내용이 잘린다
+   (창고 마지막 줄이 반쯤 잘려 있었다). 판은 줄어들지 않게 하고,
+   남는 높이는 지도 판(인라인 flex:1)이 가져간다. */
+#right .panel{position:relative;inset:auto;flex:0 0 auto}
+/* 품목이 15종뿐이라 다 들어간다. 잘라서 스크롤시키면 마지막 줄이 반쯤 잘려
+   보여 "패널이 깨진 것"처럼 읽힌다. */
+#invList{max-height:252px;overflow-y:auto;padding:3px 0;scrollbar-width:thin}
+.irow{display:flex;justify-content:space-between;padding:1.5px 10px;font-size:11.5px}
+.irow .n{color:var(--ink-2)}
+.irow .q{font-family:var(--mono);color:var(--ink)}
+.craftbtn{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin:2px 0;
+  background:linear-gradient(180deg,#e6e2da,#d2cdc4);border:1px solid var(--rule);
+  box-shadow:inset 0 1px 0 #fff;cursor:pointer;font-size:11.5px;color:var(--ink)}
+.craftbtn:hover{border-color:var(--edge)}
+.craftbtn:active{box-shadow:inset 0 2px 4px rgba(0,0,0,.3)}
+.craftbtn.no{opacity:.42;cursor:not-allowed}
+#craftList{max-height:200px;overflow-y:auto;padding:5px 8px;scrollbar-width:thin}
+/* 지도는 판에 박힌 창이다 */
+#mini{position:relative;width:100%;height:178px;display:block;background:var(--well);
+  border-top:1px solid var(--well-edge);cursor:pointer;
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.8)}
 
-  /* 도움말 */
-  #help{left:50%;top:50%;transform:translate(-50%,-50%);width:660px;max-height:80vh;overflow-y:auto;display:none;z-index:25;line-height:1.62}
-  #help .pad{font-size:12.5px}
-  #help h4{margin:14px 0 5px;color:var(--amber);font-size:12px;letter-spacing:.05em}
-  #help code{font-family:var(--mono);background:#0f1418;border:1px solid var(--line);
-    border-radius:3px;padding:1px 5px;color:var(--steel-lt)}
-  #help ul{margin:4px 0;padding-left:18px} #help li{margin:3px 0}
-  .close{position:absolute;right:8px;top:6px;cursor:pointer;color:var(--dim);font-size:16px}
-  .close:hover{color:var(--red)}
+/* 튜토리얼 */
+#tutor{left:230px;bottom:8px;width:356px;display:none;z-index:6;max-height:56vh;overflow-y:auto}
+.tdone{color:var(--ink-3);font-size:11px;line-height:1.6;margin-bottom:7px;
+  border-bottom:1px solid var(--rule);padding-bottom:6px}
+.tchk{color:var(--run)}
+.tnow{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:5px;line-height:1.35}
+.twhy{font-size:11.5px;color:var(--warn);line-height:1.6;margin-bottom:6px}
+.thow{font-size:11.5px;color:var(--ink-2);line-height:1.65}
+#tutorFoot{display:flex;gap:6px;padding:0 11px 9px}
 
-  #pickBanner{position:absolute;left:50%;top:52%;transform:translateX(-50%);z-index:35;display:none;
-    background:rgba(47,95,143,.95);padding:9px 18px;border-radius:4px;font-size:13px;
-    box-shadow:0 4px 20px rgba(0,0,0,.6)}
-  #testout{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}
+/* 인스펙터 */
+#insp{left:594px;bottom:8px;width:296px;display:none;z-index:6;max-height:62vh;overflow-y:auto}
+.frow{display:flex;gap:6px;align-items:center;margin:4px 0}
+.frow label{flex:none;width:62px;font-family:var(--label);font-size:9.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-2);text-shadow:0 1px 0 rgba(255,255,255,.8)}
+select,input[type=text],input[type=number]{background:#f2efe9;color:var(--ink);
+  border:1px solid var(--rule);border-radius:1px;padding:3px 5px;font-family:var(--mono);
+  font-size:11.5px;flex:1;min-width:0;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+select:focus,input:focus{outline:2px solid var(--steel);outline-offset:-1px}
+
+/* 버튼은 반의 스위치다 — 눌리면 실제로 들어간다 */
+button{font-family:var(--label);font-variation-settings:'wght' 600,'wdth' 87.5;
+  letter-spacing:.06em;background:linear-gradient(180deg,#e9e5de,#cfcac1);color:var(--ink);
+  border:1px solid var(--edge);border-radius:1px;padding:4px 10px;font-size:11.5px;cursor:pointer;
+  box-shadow:inset 0 1px 0 #fff,0 1px 0 rgba(0,0,0,.22)}
+button:hover{background:linear-gradient(180deg,#f2eee7,#d6d1c8)}
+button:active{box-shadow:inset 0 2px 5px rgba(0,0,0,.35);transform:translateY(1px)}
+button:focus-visible{outline:2px solid var(--steel);outline-offset:1px}
+button[disabled]{opacity:.4;cursor:not-allowed}
+button.pri{background:linear-gradient(180deg,#3a6a8c,#25506e);color:#f2efe9;border-color:#183a52;
+  text-shadow:0 1px 0 rgba(0,0,0,.4)}
+button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;border-color:#732207;
+  text-shadow:0 1px 0 rgba(0,0,0,.4)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.chip{font-family:var(--mono);font-size:10.5px;background:var(--well);color:var(--well-ink);
+  border-radius:1px;padding:2px 5px;box-shadow:inset 0 1px 3px rgba(0,0,0,.7)}
+
+/* 연구 */
+#tech{left:50%;top:50%;transform:translate(-50%,-50%);width:660px;max-height:78vh;
+  overflow-y:auto;display:none;z-index:20}
+.trow{display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--rule)}
+.trow.done{opacity:.5} .trow.locked{opacity:.45}
+.trow .tn{flex:1;color:var(--ink)}
+.trow .td{font-size:11px;color:var(--ink-2);margin-top:2px;line-height:1.55}
+.tcost{font-family:var(--mono);font-size:11px;color:var(--stop);white-space:nowrap}
+
+/* 노드 편집기 — 같은 반 위의 작업대 */
+#logic{position:absolute;inset:0;background:#c6c3bb;display:none;z-index:30}
+#logicBar{position:absolute;top:0;left:0;right:0;height:42px;
+  border-bottom:1px solid var(--edge);display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:linear-gradient(180deg,#e3dfd8,#cdc8bf);
+  box-shadow:inset 0 1px 0 var(--face-hi),0 2px 6px rgba(0,0,0,.28)}
+#logicBar .ttl{font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 75;
+  text-transform:uppercase;letter-spacing:.15em;font-size:11px;color:var(--ink-2);
+  text-shadow:0 1px 0 rgba(255,255,255,.8)}
+#logicBar .hint{color:var(--ink-3);font-size:11px;flex:1}
+#pal{position:absolute;left:0;top:42px;bottom:0;width:196px;border-right:1px solid var(--edge);
+  overflow-y:auto;background:linear-gradient(180deg,#ded9d2,#cfcac1)}
+.pcat{padding:5px 10px;font-family:var(--label);font-size:9px;letter-spacing:.16em;
+  color:var(--ink-2);text-transform:uppercase;text-shadow:0 1px 0 rgba(255,255,255,.8);
+  background:rgba(0,0,0,.07);border-bottom:1px solid var(--rule);border-top:1px solid var(--rule)}
+.pitem{padding:4.5px 10px;cursor:pointer;font-size:11.5px;color:var(--ink);
+  border-left:3px solid transparent}
+.pitem:hover{background:rgba(255,255,255,.5);border-left-color:var(--stop)}
+.pitem.locked{opacity:.34;cursor:not-allowed}
+/* 작업대 표면: 미세 격자 방안 */
+#graphWrap{position:absolute;left:196px;top:42px;right:0;bottom:0;overflow:hidden;
+  background:
+    linear-gradient(rgba(0,0,0,.055) 1px,transparent 1px) 0 0/24px 24px,
+    linear-gradient(90deg,rgba(0,0,0,.055) 1px,transparent 1px) 0 0/24px 24px,
+    #d3cfc7;
+  cursor:grab}
+#graphWrap.panning{cursor:grabbing}
+#graphInner{position:absolute;left:0;top:0;width:6000px;height:4000px;transform-origin:0 0}
+#links{position:absolute;left:0;top:0;width:6000px;height:4000px;pointer-events:none;overflow:visible}
+/* 노드는 판에 붙인 작은 모듈 */
+.node{position:absolute;width:184px;
+  background:linear-gradient(180deg,#e7e3dc,#d4cfc6);border:1px solid var(--edge);
+  box-shadow:inset 0 1px 0 #fff,0 3px 9px rgba(0,0,0,.35);font-size:11px;color:var(--ink)}
+.node.in{border-top:3px solid var(--run)}
+.node.op{border-top:3px solid var(--steel)}
+.node.out{border-top:3px solid var(--stop)}
+.node.sel{outline:1px solid var(--stop)}
+.nhead{padding:4px 7px;cursor:move;font-family:var(--label);
+  font-variation-settings:'wght' 700,'wdth' 87.5;font-size:10.5px;letter-spacing:.05em;
+  display:flex;justify-content:space-between;align-items:center;
+  background:rgba(0,0,0,.06);border-bottom:1px solid var(--rule);
+  text-shadow:0 1px 0 rgba(255,255,255,.7)}
+.nhead .x{color:var(--ink-3);cursor:pointer;padding:0 3px}
+.nhead .x:hover{color:var(--stop)}
+.nbody{padding:4px 6px}
+.nrow{display:flex;align-items:center;gap:4px;margin:2px 0;min-height:17px}
+.nrow label{font-family:var(--label);color:var(--ink-2);font-size:9.5px;letter-spacing:.08em;
+  text-transform:uppercase;flex:none;width:54px}
+.nrow select,.nrow input{font-size:10.5px;padding:1px 3px}
+.ports{display:flex;justify-content:space-between;padding:2px 0 4px}
+.pcol{display:flex;flex-direction:column;gap:3px}
+.port{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink-2);cursor:crosshair}
+.pcol.o .port{flex-direction:row-reverse}
+.dot{width:9px;height:9px;border-radius:50%;background:#f2efe9;border:1.5px solid var(--steel);flex:none;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
+.port:hover .dot{background:var(--stop);border-color:var(--stop)}
+.dot.on{background:var(--run);border-color:var(--run)}
+/* 포트 값도 계기창 안에 */
+.pv{font-family:var(--mono);font-size:10px;min-width:30px;text-align:right;
+  background:var(--well);color:var(--well-ink);border-radius:1px;padding:0 3px;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.7)}
+.entbtn{font-size:10px;padding:1px 5px;flex:1;text-align:left;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;letter-spacing:0}
+
+/* 알림 */
+#toast{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);z-index:40;
+  display:flex;flex-direction:column;gap:5px;align-items:center;pointer-events:none}
+.tmsg{background:linear-gradient(180deg,#e6e2da,#d2cdc4);border:1px solid var(--edge);
+  border-left:4px solid var(--warn);padding:6px 13px;font-size:12px;color:var(--ink);
+  box-shadow:inset 0 1px 0 #fff,0 3px 10px rgba(0,0,0,.4)}
+.tmsg.bad{border-left-color:var(--stop)}
+.tmsg.good{border-left-color:var(--run)}
+
+/* 경보 — 여기 한 곳에만 위험 줄무늬를 쓴다 */
+#alarms{position:absolute;left:50%;top:74px;transform:translateX(-50%);z-index:6;
+  display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.alarm{background:var(--stop);color:#fdf5ef;font-family:var(--mono);font-size:11.5px;
+  padding:3px 11px;border:1px solid #732207;border-top:3px solid var(--hazard);
+  box-shadow:0 2px 8px rgba(0,0,0,.45);animation:blink 1.1s steps(2,end) infinite}
+@keyframes blink{50%{opacity:.42}}
+#dispRow{position:absolute;left:50%;top:74px;transform:translateX(-50%);z-index:5;display:flex;gap:6px}
+.disp{background:var(--well);color:var(--well-ink);border:1px solid var(--well-edge);
+  padding:3px 9px;font-family:var(--mono);font-size:11.5px;border-radius:2px;
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.8)}
+.disp b{color:#f0c15a;font-weight:600}
+
+/* 도움말 */
+#help{left:50%;top:50%;transform:translate(-50%,-50%);width:680px;max-height:80vh;
+  overflow-y:auto;display:none;z-index:25;line-height:1.62}
+#help .pad{font-size:12.5px;color:var(--ink)}
+#help h4{margin:14px 0 5px;font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 75;
+  text-transform:uppercase;letter-spacing:.15em;color:var(--stop);font-size:11px;
+  text-shadow:0 1px 0 rgba(255,255,255,.8)}
+#help code{font-family:var(--mono);background:var(--well);color:var(--well-ink);
+  border-radius:1px;padding:1px 5px;box-shadow:inset 0 1px 3px rgba(0,0,0,.7)}
+#help ul{margin:4px 0;padding-left:18px} #help li{margin:3px 0}
+#help p{margin:6px 0}
+.close{position:absolute;right:8px;top:5px;cursor:pointer;color:var(--ink-3);font-size:15px}
+.close:hover{color:var(--stop)}
+
+#pickBanner{position:absolute;left:50%;top:52%;transform:translateX(-50%);z-index:35;display:none;
+  background:linear-gradient(180deg,#3a6a8c,#25506e);color:#f2efe9;padding:9px 18px;
+  border:1px solid #183a52;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,.6)}
+#testout{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}
+
+@media (prefers-reduced-motion: reduce){ .alarm{animation:none} }
 </style>
 </head>
 <body>
@@ -167,13 +282,18 @@
 <div id="dispRow"></div>
 
 <div class="panel" id="build">
-  <h3>건설 <span style="float:right;color:#4a86c4">R 회전 · 우클릭 철거</span></h3>
+  <h3>Build 건설
+    <span style="float:right">
+      <button id="tutorBtn" style="padding:1px 7px;font-size:10px" title="대화형 튜토리얼">튜토리얼</button>
+    </span>
+  </h3>
+  <div class="bhint">R 회전 · 우클릭 철거</div>
   <div id="buildList"></div>
 </div>
 
 <div id="right">
   <div class="panel">
-    <h3>창고
+    <h3>Stores 창고
       <span style="float:right;display:flex;gap:4px">
         <button id="saveBtn" style="padding:1px 7px;font-size:10px" title="F2">저장</button>
         <button id="loadBtn" style="padding:1px 7px;font-size:10px" title="F3">불러오기</button>
@@ -182,13 +302,21 @@
     <div id="invList"></div>
   </div>
   <div class="panel">
-    <h3>손 조립 <span style="float:right;color:#8b98a6">클릭 = 1개</span></h3>
+    <h3>Handcraft 손 조립 <span style="float:right;color:var(--ink-3)">클릭 = 1개</span></h3>
     <div id="craftList"></div>
   </div>
   <div class="panel" style="flex:1;display:flex;flex-direction:column;min-height:0">
-    <h3>지도 <span style="float:right;color:#8b98a6">클릭 = 이동</span></h3>
-    <canvas id="mini" width="212" height="180"></canvas>
+    <h3>Survey 지도 <span style="float:right;color:var(--ink-3)">클릭 = 이동</span></h3>
+    <canvas id="mini" width="224" height="178"></canvas>
   </div>
+</div>
+
+<div class="panel" id="tutor">
+  <h3><span id="tutorHead">튜토리얼</span>
+    <span class="close" id="tutorClose" title="닫기 (건설 판의 튜토리얼 버튼으로 다시 연다)">✕</span>
+  </h3>
+  <div class="pad" id="tutorBody"></div>
+  <div id="tutorFoot"><button id="tutorSkip">이 단계 건너뛰기</button></div>
 </div>
 
 <div class="panel" id="insp">
@@ -198,21 +326,21 @@
 
 <div class="panel" id="tech">
   <span class="close" onclick="closeTech()">✕</span>
-  <h3>연구</h3>
+  <h3>Research 연구</h3>
   <div class="pad" id="techBody"></div>
 </div>
 
 <div class="panel" id="help">
   <span class="close" onclick="closeHelp()">✕</span>
-  <h3>LOGIC FOUNDRY — 조작과 개념</h3>
+  <h3>Logic Foundry — 조작과 개념</h3>
   <div class="pad" id="helpBody"></div>
 </div>
 
 <div id="logic">
   <div id="logicBar">
-    <span class="ttl">제어기 <span id="ctrlName" class="num"></span></span>
+    <span class="ttl">Controller <span id="ctrlName" class="num"></span></span>
     <span class="hint">출력 포트에서 입력 포트로 끌어 배선 · 입력 포트 클릭 = 연결 해제 · 배경 드래그 = 이동 · 휠 = 확대</span>
-    <span id="cycleInfo" class="num" style="color:var(--amber)"></span>
+    <span id="cycleInfo" class="num" style="color:var(--stop)"></span>
     <button onclick="loadExample()">예제 불러오기</button>
     <button class="pri" onclick="closeLogic()">닫기 (ESC)</button>
   </div>
@@ -1349,6 +1477,11 @@ function stepCrafter(e, dt, speed) {
   if (e.progress >= 1) {
     e.progress = 0;
     for (var o in rec.out) invAdd(e.out, o, rec.out[o]);
+    // 누적 생산 통계 — 튜토리얼 판정이 쓴다. "지금 버퍼에 있는가"로 보면
+    // 인서터가 빼 가는 순간을 놓쳐 영원히 다음 단계로 못 넘어간다.
+    if (e.type === 'furnace') prodStats.smelted++;
+    else prodStats.crafted++;
+    prodStats.byRecipe[e.recipe] = (prodStats.byRecipe[e.recipe] || 0) + 1;
     emitPollution(e, 4);
   }
 }
@@ -1714,23 +1847,23 @@ var NODE_DEFS = {
   'const':   { label: '상수', cat: 'in', ins: [], outs: ['값'],
                cfg: [{ k: 'value', t: 'num', label: '값', def: 1 }] },
   'chest':   { label: '상자 재고', cat: 'in', ins: [], outs: ['개수'],
-               cfg: [{ k: 'ent', t: 'ent', label: '대상 상자', filter: ['chest'] },
-                     { k: 'item', t: 'item', label: '품목(빈칸=전체)' }] },
+               cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['chest'] },
+                     { k: 'item', t: 'item', label: '품목' }] },
   'machine': { label: '기계 상태', cat: 'in', ins: [], outs: ['가동', '정체', '진행%'],
-               cfg: [{ k: 'ent', t: 'ent', label: '대상 기계' }] },
+               cfg: [{ k: 'ent', t: 'ent', label: '대상' }] },
   'power':   { label: '전력 만족도', cat: 'in', ins: [], outs: ['만족%', '공급kW', '수요kW'],
                cfg: [] },
   'timer':   { label: '타이머', cat: 'in', ins: [], outs: ['펄스', '위상%'],
-               cfg: [{ k: 'period', t: 'num', label: '주기(초)', def: 5 }] },
+               cfg: [{ k: 'period', t: 'num', label: '주기', def: 5 }] },
   'belt':    { label: '벨트 센서', cat: 'in', ins: [], outs: ['개수'],
-               cfg: [{ k: 'ent', t: 'ent', label: '대상 벨트', filter: ['belt', 'splitter'] },
-                     { k: 'item', t: 'item', label: '품목(빈칸=전체)' }] },
+               cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['belt', 'splitter'] },
+                     { k: 'item', t: 'item', label: '품목' }] },
   'invsense':{ label: '창고 재고', cat: 'in', ins: [], outs: ['개수'],
                cfg: [{ k: 'item', t: 'item', label: '품목' }] },
   'research':{ label: '연구 진행', cat: 'in', ins: [], outs: ['진행%', '연구중'],
                cfg: [] },
   'enemy':   { label: '적 근접', cat: 'in', ins: [], outs: ['마릿수', '최근접거리'],
-               cfg: [{ k: 'radius', t: 'num', label: '감지 반경(타일)', def: 30 }],
+               cfg: [{ k: 'radius', t: 'num', label: '반경', def: 30 }],
                tech: 'defense-ai' },
 
   // ---- 연산 ----
@@ -1745,26 +1878,26 @@ var NODE_DEFS = {
   'select':  { label: '선택 (조건 ? A : B)', cat: 'op', ins: ['조건', 'A', 'B'], outs: ['값'], cfg: [] },
   'latch':   { label: 'SR 래치', cat: 'op', ins: ['SET', 'RESET'], outs: ['Q'], cfg: [], tech: 'logic-mem' },
   'counter': { label: '카운터', cat: 'op', ins: ['증가', '리셋'], outs: ['값'],
-               cfg: [{ k: 'max', t: 'num', label: '상한(0=무제한)', def: 0 }], tech: 'logic-mem' },
+               cfg: [{ k: 'max', t: 'num', label: '상한', def: 0 }], tech: 'logic-mem' },
   'edge':    { label: '엣지 검출', cat: 'op', ins: ['A'], outs: ['펄스'],
                cfg: [{ k: 'mode', t: 'opsel', label: '검출', opts: ['상승', '하강', '양쪽'], def: '상승' }], tech: 'logic-mem' },
   'hold':    { label: '샘플 홀드', cat: 'op', ins: ['값', '샘플'], outs: ['유지값'], cfg: [], tech: 'logic-mem' },
   'pid':     { label: 'PID 제어', cat: 'op', ins: ['목표', '측정'], outs: ['출력', '오차'],
                cfg: [{ k: 'kp', t: 'num', label: 'Kp', def: 1 }, { k: 'ki', t: 'num', label: 'Ki', def: 0 },
-                     { k: 'kd', t: 'num', label: 'Kd', def: 0 }, { k: 'lim', t: 'num', label: '출력 제한', def: 100 }],
+                     { k: 'kd', t: 'num', label: 'Kd', def: 0 }, { k: 'lim', t: 'num', label: '제한', def: 100 }],
                tech: 'logic-ctrl' },
 
   // ---- 출력 ----
   'enable':  { label: '기계 가동/정지', cat: 'out', ins: ['가동'], outs: [],
                cfg: [{ k: 'ent', t: 'ent', label: '대상' }] },
   'gate':    { label: '벨트 게이트', cat: 'out', ins: ['열림'], outs: [],
-               cfg: [{ k: 'ent', t: 'ent', label: '대상 벨트', filter: ['belt', 'splitter'] }], tech: 'logic-ctrl' },
+               cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['belt', 'splitter'] }], tech: 'logic-ctrl' },
   'filter':  { label: '인서터 필터', cat: 'out', ins: ['선택'], outs: [],
-               cfg: [{ k: 'ent', t: 'ent', label: '대상 인서터', filter: ['inserter'] },
-                     { k: 'a', t: 'item', label: '0일 때 품목' },
-                     { k: 'b', t: 'item', label: '1 이상일 때 품목' }], tech: 'logic-ctrl' },
+               cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['inserter'] },
+                     { k: 'a', t: 'item', label: '0일 때' },
+                     { k: 'b', t: 'item', label: '1일 때' }], tech: 'logic-ctrl' },
   'fire':    { label: '터렛 사격허가', cat: 'out', ins: ['허가'], outs: [],
-               cfg: [{ k: 'ent', t: 'ent', label: '대상 터렛', filter: ['turret'] }], tech: 'defense-ai' },
+               cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['turret'] }], tech: 'defense-ai' },
   'lamp':    { label: '경보 램프', cat: 'out', ins: ['점등'], outs: [],
                cfg: [{ k: 'label', t: 'text', label: '문구', def: '경보' }] },
   'display': { label: '수치 표시', cat: 'out', ins: ['값'], outs: [],
@@ -3533,7 +3666,7 @@ function renderCraftList() {
     var outN = 0; for (var o in r.out) outN = r.out[o];
     html.push('<div class="craftbtn' + (ok ? '' : ' no') + '" data-r="' + rid + '">' +
       '<span>' + ITEMS[Object.keys(r.out)[0]].name + (outN > 1 ? ' ×' + outN : '') + '</span>' +
-      '<span style="color:#8b98a6;font-size:10px">' + inp.join(' ') + '</span></div>');
+      '<span class="dim" style="font-size:10px">' + inp.join(' ') + '</span></div>');
   }
   host.innerHTML = html.join('');
   var btns = host.querySelectorAll('.craftbtn');
@@ -3564,9 +3697,10 @@ function renderTop() {
     stat('적', String(enemies.length), threat > 0 ? 'badv' : '', '접근 ' + threat) +
     stat('연구', res, currentResearch ? 'okv' : 'warnv') +
     stat('손실', String(waveStats.buildingsLost), waveStats.buildingsLost ? 'badv' : '');
+  // 라벨은 판에 각인, 값은 판에 박힌 계기창(well) 안에서 빛난다 — 이 UI 의 시그니처
   function stat(k, v, cls, sub) {
-    return '<div class="stat" title="' + (sub || '') + '"><div class="k">' + k + '</div>' +
-      '<div class="v ' + (cls || '') + '">' + v + '</div></div>';
+    return '<div class="stat" title="' + (sub || '') + '"><span class="k">' + k + '</span>' +
+      '<span class="v well ' + (cls || '') + '">' + v + '</span></div>';
   }
 }
 
@@ -3625,7 +3759,7 @@ function refreshInsp() {
   if (sig !== lastInspSig) {
     lastInspSig = sig;
     var c = [];
-    c.push('<div style="color:#8b98a6;font-size:11px;margin-bottom:6px">' + B.desc + '</div>');
+    c.push('<div class="dim" style="font-size:11px;margin-bottom:6px">' + B.desc + '</div>');
     if (e.type === 'assembler') {
       c.push('<div class="frow"><label>레시피</label><select id="recSel"><option value="">— 없음 —</option>' +
         RECIPE_IDS.filter(function (r) {
@@ -3657,7 +3791,7 @@ function refreshInsp() {
       '<button id="tglBtn">' + (e.playerEnabled === false ? '가동' : '정지') + '</button>' +
       '<button class="danger" id="delBtn">철거</button></div>');
     if (e.logicForced) {
-      c.push('<div style="color:#49c05a;font-size:11px;margin-top:5px">⛓ 제어기 지배 중 — 수동 조작은 지배가 풀린 뒤 적용된다</div>');
+      c.push('<div class="ok" style="font-size:11px;margin-top:5px">⛓ 제어기 지배 중 — 수동 조작은 지배가 풀린 뒤 적용된다</div>');
     }
     b.innerHTML = '<div id="inspStat"></div>' + c.join('');
     bindInspControls(e);
@@ -3667,25 +3801,25 @@ function refreshInsp() {
   var s = [];
   if (B.power) {
     s.push('<div class="frow"><label>전력</label><span class="num" style="color:' +
-      (e.powerSat > 0.99 ? '#49c05a' : (e.powerSat > 0 ? '#f0a92b' : '#d9544a')) + '">' +
+      (e.powerSat > 0.99 ? 'var(--run)' : (e.powerSat > 0 ? 'var(--warn)' : 'var(--stop)')) + '">' +
       Math.round(e.powerSat * 100) + '% · ' + Math.round(B.power * machinePowerMul) + ' kW' +
-      (e.net < 0 ? ' · <b style="color:#d9544a">망 미연결</b>' : '') + '</span></div>');
+      (e.net < 0 ? ' · <b class="bad">망 미연결</b>' : '') + '</span></div>');
   }
   s.push('<div class="frow"><label>체력</label><span class="num">' + Math.round(e.hp) + ' / ' + e.maxHp + '</span></div>');
   if (e.type === 'generator') {
     s.push('<div class="frow"><label>연료</label><span class="num">' + fmt(e.fuel / 1000, 1) + ' MJ · 부하 ' +
       Math.round((e.load || 0) * 100) + '% · 창고 석탄 ' + (inventory['coal'] || 0) +
-      (e.net < 0 ? ' · <b style="color:#d9544a">망 미연결</b>' : '') + '</span></div>');
+      (e.net < 0 ? ' · <b class="bad">망 미연결</b>' : '') + '</span></div>');
   }
   if (e.type === 'turret') {
     s.push('<div class="frow"><label>탄약</label><span class="num">' + e.ammo + ' 발' +
-      (e.fireOk ? '' : ' · <b style="color:#d9544a">사격 금지</b>') + '</span></div>');
+      (e.fireOk ? '' : ' · <b class="bad">사격 금지</b>') + '</span></div>');
   }
   if (e.type === 'miner') {
     s.push('<div class="frow"><label>광맥</label><span class="num">' +
       (e.surveyed && e.surveyed.item
         ? ITEMS[e.surveyed.item].name + ' ' + fmtShort(surveyOre(e.tx, e.ty, e.w, e.h).total)
-        : '없음') + (e.depleted ? ' · <b style="color:#d9544a">고갈</b>' : '') + '</span></div>');
+        : '없음') + (e.depleted ? ' · <b class="bad">고갈</b>' : '') + '</span></div>');
   }
   var inv = {};
   for (var k in e.inv) inv[k] = e.inv[k];
@@ -3741,7 +3875,7 @@ function renderTech() {
   var body = document.getElementById('techBody');
   if (!body) return;
   var h = [];
-  h.push('<div style="color:#8b98a6;font-size:11.5px;margin-bottom:8px">' +
+  h.push('<div class="dim" style="font-size:11.5px;margin-bottom:8px">' +
     '연구소가 연구팩을 소비해 진행한다. 한 사이클마다 표시된 팩을 각각 1개씩 먹는다.</div>');
   for (var i = 0; i < TECH_IDS.length; i++) {
     var tid = TECH_IDS[i], T = TECHS[tid];
@@ -3750,12 +3884,12 @@ function renderTech() {
     var cost = Object.keys(T.cost).map(function (k) { return T.cost[k] + '× ' + ITEMS[k].name.replace(' 연구팩', ''); }).join(' + ');
     var prog = (currentResearch === tid) ? ' — 진행 ' + Math.round(researchFrac() * 100) + '%' : '';
     h.push('<div class="trow ' + cls + '"><div class="tn"><b>' + T.name + '</b>' + prog +
-      '<div class="td">' + T.desc + ' <span style="color:#4a86c4">해제: ' + T.unlock.join(', ') + '</span>' +
-      (T.needs.length ? ' <span style="color:#8b98a6">· 선행: ' + T.needs.map(function (n) { return TECHS[n].name; }).join(', ') + '</span>' : '') +
+      '<div class="td">' + T.desc + ' <span class="lnk">해제: ' + T.unlock.join(', ') + '</span>' +
+      (T.needs.length ? ' <span class="dim">· 선행: ' + T.needs.map(function (n) { return TECHS[n].name; }).join(', ') + '</span>' : '') +
       '</div></div><div class="tcost">' + cost + '</div>' +
-      (done ? '<span style="color:#49c05a">완료</span>'
+      (done ? '<span class="ok">완료</span>'
         : (avail ? '<button data-t="' + tid + '" class="' + (currentResearch === tid ? '' : 'pri') + '">' +
-          (currentResearch === tid ? '진행 중' : '시작') + '</button>' : '<span style="color:#8b98a6">잠김</span>')) +
+          (currentResearch === tid ? '진행 중' : '시작') + '</button>' : '<span class="dim">잠김</span>')) +
       '</div>');
   }
   body.innerHTML = h.join('');
@@ -3805,9 +3939,11 @@ function fillHelp() {
     '되먹임이 있는 제어를 짤 때 늘 만나는 문제이고, 이 게임에서 가장 배울 것이 많은 지점이다.</li>',
     '<li><b>방어 자동화</b> — 적 근접 센서가 적을 감지하면 생산 라인을 끄고 그 전력을 방어에 몰아준다.</li>',
     '</ul>',
-    '<p style="color:#8b98a6">편집기의 <b>예제 불러오기</b>를 누르면 위 히스테리시스 회로가 배선된 채로 들어온다.',
+    '<p class="dim">편집기의 <b>예제 불러오기</b>를 누르면 위 히스테리시스 회로가 배선된 채로 들어온다.',
     '한 번 보고 나면 나머지는 응용이다.</p>'
-  ].join('');
+  // 공백으로 잇는다 — ''로 이으면 줄 끝과 다음 줄 첫 글자가 붙어 "만든다.정답 배선은"
+  // 처럼 문장이 뭉개진다 (실제로 첫 화면에서 그렇게 보였다). HTML 은 여분 공백을 접는다.
+  ].join(' ');
 }
 
 // --- 미니맵 ------------------------------------------------------------------
@@ -3873,6 +4009,238 @@ function bindMini() {
   });
 }
 
+/* ===================== 52_tutorial.js ===================== */
+// ===========================================================================
+//  52_tutorial.js — 대화형 튜토리얼
+//
+//  설계 원칙: **문장을 읽었는지가 아니라 공장이 실제로 그렇게 됐는지로 판정한다.**
+//  각 단계는 check() 하나이고, 그 함수는 세계 상태만 본다. "다음" 버튼으로 넘기는
+//  튜토리얼은 아무것도 가르치지 않는다 — 눌러서 넘어가면 손은 배운 게 없다.
+//
+//  단계는 도움말의 "10분 안에 돌아가는 공장"과 같은 순서이고, 마지막 두 단계가
+//  이 게임의 본체(제어기 배선)다. 거기까지 데려가는 것이 이 튜토리얼의 목적이다.
+// ===========================================================================
+
+var tutorial = {
+  on: true,          // 패널을 띄우는가
+  step: 0,           // 현재 단계 인덱스
+  done: false,
+  flags: {},         // 상태로는 못 보는 사건 (편집기를 열었다 등)
+  justDone: -1,      // 방금 완료한 단계 (연출용)
+  celebrateT: 0
+};
+
+// 생산 통계 — 튜토리얼 판정과 HUD 양쪽이 쓴다.
+// "지금 버퍼에 있는가"로 보면 인서터가 빼 가는 순간을 놓치므로 누적으로 센다.
+var prodStats = { smelted: 0, crafted: 0, byRecipe: {} };
+function resetProdStats() { prodStats.smelted = 0; prodStats.crafted = 0; prodStats.byRecipe = {}; }
+
+// --- 판정 도우미 -------------------------------------------------------------
+function anyEntity(fn) {
+  var hit = null;
+  forEachEntity(function (e) { if (!hit && fn(e)) hit = e; });
+  return hit;
+}
+function countEntity(type) {
+  var n = 0;
+  forEachEntity(function (e) { if (e.type === type) n++; });
+  return n;
+}
+// 건물 앞변(출력 방향)에 벨트가 있는가
+function hasBeltInFront(e) {
+  var d = e.dir, pts = [];
+  if (d === 0) { for (var x = e.tx; x < e.tx + e.w; x++) pts.push([x, e.ty - 1]); }
+  else if (d === 2) { for (var x2 = e.tx; x2 < e.tx + e.w; x2++) pts.push([x2, e.ty + e.h]); }
+  else if (d === 1) { for (var y = e.ty; y < e.ty + e.h; y++) pts.push([e.tx + e.w, y]); }
+  else { for (var y2 = e.ty; y2 < e.ty + e.h; y2++) pts.push([e.tx - 1, y2]); }
+  for (var i = 0; i < pts.length; i++) {
+    var c = cellAt(pts[i][0], pts[i][1]);
+    if (c) return true;
+  }
+  return false;
+}
+
+// --- 단계 정의 ---------------------------------------------------------------
+// title: 한 줄 목표 · why: 왜 하는지(개념) · how: 손이 할 일 · check: 세계 상태 판정
+var TUTORIAL_STEPS = [
+  {
+    id: 'miner',
+    title: '채광기를 광맥 위에 놓고 전기를 보낸다',
+    why: '전주 5×5 안에 든 기계만 전기를 받는다. 전력망이 이 게임의 첫 제약이다.',
+    how: '단축키 3 → 지도의 회색 돌무더기(철광맥) 위에 좌클릭. 전기가 안 오면 전주(8)를 사이에 놓아 이어라. 시작 발전기는 이미 연료가 들어 있다.',
+    check: function () {
+      return !!anyEntity(function (e) {
+        return e.type === 'miner' && e.net >= 0 && !e.depleted;
+      });
+    }
+  },
+  {
+    id: 'belt',
+    title: '채광기 출구에 벨트를 잇는다',
+    why: '기계는 스스로 물건을 옮기지 않는다. 벨트가 공장의 혈관이다.',
+    how: '채광기의 노란 화살표가 출구다(R로 회전). 단축키 1 → 출구 칸부터 좌클릭 드래그하면 방향까지 자동으로 이어 깔린다.',
+    check: function () {
+      return !!anyEntity(function (e) { return e.type === 'miner' && hasBeltInFront(e); });
+    }
+  },
+  {
+    id: 'smelt',
+    title: '용광로로 철판을 만든다',
+    why: '광석은 그대로 못 쓴다. 벨트에서 기계로 넣는 일은 인서터가 한다 — 기계끼리는 직접 주고받지 않는다.',
+    how: '단축키 4로 용광로를 놓고, 단축키 2로 인서터를 벨트와 용광로 사이에 놓는다. 인서터는 뒤에서 집어 앞에 놓는다(R로 방향).',
+    check: function () { return prodStats.smelted >= 1; }
+  },
+  {
+    id: 'chest',
+    title: '철판을 상자에 5개 모은다',
+    why: '상자는 저장이자 **제어기의 눈**이다. 뒤에서 재고를 읽어 공장을 판단하게 만든다.',
+    how: '단축키 9로 상자를 놓고, 용광로 → 인서터 → (벨트) → 인서터 → 상자로 잇는다.',
+    check: function () {
+      return !!anyEntity(function (e) {
+        return e.type === 'chest' && invCount(e.inv, 'iron-plate') >= 5;
+      });
+    }
+  },
+  {
+    id: 'assemble',
+    title: '조립기로 톱니를 만든다',
+    why: '조립기는 레시피를 지정해야 움직인다. 여기서부터 생산 사슬이 길어진다.',
+    how: '단축키 5로 조립기를 놓고 좌클릭 → 인스펙터에서 레시피를 "톱니"로. 철판을 인서터로 넣어라.',
+    check: function () { return (prodStats.byRecipe['gear'] || 0) >= 1; }
+  },
+  {
+    id: 'research',
+    title: '연구소를 돌려 연구를 시작한다',
+    why: '연구가 새 건물과 제어기 노드를 연다. 적색 연구팩은 구리판+톱니로 만든다.',
+    how: '단축키 0으로 연구소를 놓고, 조립기 레시피를 "적색 연구팩"으로 바꿔 만든 뒤 인서터로 연구소에 넣는다. T로 연구창을 열어 무엇을 연구할지 고른다.',
+    check: function () { return !!currentResearch && researchProgress >= 1; }
+  },
+  {
+    id: 'controller',
+    title: '제어기를 놓고 편집기를 연다',
+    why: '★ 여기서부터가 이 게임의 본체다. 제어기는 전기를 쓰지 않는다.',
+    how: '건설 목록에서 제어기를 놓고 **좌클릭**하면 노드 편집기가 열린다.',
+    check: function () { return countEntity('controller') >= 1 && !!tutorial.flags.openedEditor; }
+  },
+  {
+    id: 'wire',
+    title: '재고를 보고 기계를 켜고 끄게 배선한다',
+    why: '조건이 바뀌면 공장이 스스로 판단한다. 정답 배선은 없다 — 같은 목표를 여러 방법으로 풀 수 있다.',
+    how: '편집기에서 [예제 불러오기]를 누르면 재고 히스테리시스 회로가 대상까지 물린 채 들어온다. 한 번 보고 나면 나머지는 응용이다. (상자와 조립기를 먼저 지어 두면 자동으로 물린다)',
+    check: function () {
+      return !!anyEntity(function (e) { return e.logicForced && e.fEnable; });
+    }
+  },
+  {
+    id: 'defend',
+    title: '터렛을 세우고 탄약을 넣는다',
+    why: '오염이 퍼지면 적이 온다. 터렛은 탄창을 인서터로 넣어줘야 쏜다 — 방어도 생산 문제다.',
+    how: 'T에서 군수를 연구한 뒤 터렛을 놓고, 조립기로 탄창을 만들어 인서터로 넣는다.',
+    check: function () {
+      return !!anyEntity(function (e) { return e.type === 'turret' && e.ammo > 0; });
+    }
+  }
+];
+
+// --- 진행 --------------------------------------------------------------------
+var tutorTimer = 0;
+function stepTutorial(dt) {
+  if (!tutorial.on || tutorial.done) return;
+  if (tutorial.celebrateT > 0) tutorial.celebrateT -= dt;
+  tutorTimer += dt;
+  if (tutorTimer < 0.25) return;      // 4Hz 로 충분하다
+  tutorTimer = 0;
+  var s = TUTORIAL_STEPS[tutorial.step];
+  if (!s) { tutorial.done = true; return; }
+  var ok = false;
+  try { ok = !!s.check(); } catch (e) { logError('tutorial:' + s.id, e); }
+  if (!ok) return;
+  tutorial.justDone = tutorial.step;
+  tutorial.celebrateT = 2.2;
+  tutorial.step++;
+  if (tutorial.step >= TUTORIAL_STEPS.length) {
+    tutorial.done = true;
+    if (typeof toast === 'function') toast('튜토리얼 완료 — 이제 공장은 당신 것이다', 'good');
+  } else if (typeof toast === 'function') {
+    toast('✔ ' + s.title, 'good');
+  }
+  renderTutorial();
+}
+
+// 건너뛰기는 "이 단계를 안 하고 넘어간다" — 튜토리얼 자체를 끄는 것과 다르다.
+// step 은 총 단계 수를 넘지 않게 고정한다 (넘게 두면 진행 표시가 24/9 처럼 나온다).
+function skipTutorialStep() {
+  if (tutorial.done) return tutorial.step;
+  tutorial.step++;
+  if (tutorial.step >= TUTORIAL_STEPS.length) {
+    tutorial.step = TUTORIAL_STEPS.length;
+    tutorial.done = true;
+  }
+  return tutorial.step;
+}
+
+function resetTutorial(on) {
+  tutorial.on = on !== false;
+  tutorial.step = 0;
+  tutorial.done = false;
+  tutorial.flags = {};
+  tutorial.justDone = -1;
+  tutorial.celebrateT = 0;
+  tutorTimer = 0;
+  resetProdStats();
+}
+
+// --- 패널 --------------------------------------------------------------------
+function renderTutorial() {
+  var host = document.getElementById('tutor');
+  if (!host) return;
+  if (!tutorial.on) { host.style.display = 'none'; return; }
+  host.style.display = 'block';
+
+  var body = document.getElementById('tutorBody');
+  var head = document.getElementById('tutorHead');
+  var n = TUTORIAL_STEPS.length;
+
+  if (tutorial.done) {
+    head.textContent = '튜토리얼 — 완료 ' + n + '/' + n;
+    body.innerHTML =
+      '<div class="ok" style="font-weight:600;margin-bottom:6px">전부 끝냈다.</div>' +
+      '<div class="dim" style="font-size:11.5px;line-height:1.6">' +
+      '이제 스스로 할 차례다. 다음으로 해볼 만한 것: <b>부하 차단</b> — 전력 만족도가 떨어지면 ' +
+      '우선순위가 낮은 라인을 먼저 끈다. 순진하게 배선하면 발진하니 <b>SR 래치 + 타이머</b>가 필요하다. ' +
+      'H를 눌러 도움말에서 자세히 볼 수 있다.</div>';
+    return;
+  }
+
+  head.textContent = '튜토리얼 ' + (tutorial.step + 1) + '/' + n;
+  var s = TUTORIAL_STEPS[tutorial.step];
+  var lines = [];
+  // 지나온 단계는 접어서 성취감만 남긴다
+  if (tutorial.step > 0) {
+    lines.push('<div class="tdone">');
+    for (var i = 0; i < tutorial.step; i++) {
+      lines.push('<span class="tchk">✔</span> ' + TUTORIAL_STEPS[i].title + '<br>');
+    }
+    lines.push('</div>');
+  }
+  lines.push('<div class="tnow">' + s.title + '</div>');
+  lines.push('<div class="twhy">' + s.why + '</div>');
+  lines.push('<div class="thow">' + s.how + '</div>');
+  body.innerHTML = lines.join('');
+}
+
+function bindTutorial() {
+  var sk = document.getElementById('tutorSkip');
+  var cl = document.getElementById('tutorClose');
+  if (sk) sk.onclick = function () { skipTutorialStep(); renderTutorial(); };
+  if (cl) cl.onclick = function () { tutorial.on = false; renderTutorial(); };
+  var re = document.getElementById('tutorBtn');
+  if (re) re.onclick = function () {
+    if (!tutorial.on) { tutorial.on = true; renderTutorial(); return; }
+    resetTutorial(true); renderTutorial();
+  };
+}
+
 /* ===================== 55_logicui.js ===================== */
 // ===========================================================================
 //  55_logicui.js — 노드 그래프 편집기 (DOM 노드 + SVG 배선)
@@ -3893,6 +4261,7 @@ function openLogic(e) {
   if (!e.graph) e.graph = newGraph();
   document.getElementById('logic').style.display = 'block';
   document.getElementById('ctrlName').textContent = '#' + e.id;
+  tutorial.flags.openedEditor = true;    // 상태로는 못 보는 사건이라 여기서 표시한다
   renderPalette();
   renderGraph();
   if (liveTimer) clearInterval(liveTimer);
@@ -4028,7 +4397,7 @@ function buildNodeDom(inner, g, n) {
       btn.className = 'entbtn';
       var te = entities[n.cfg[cf.k]];
       btn.textContent = te ? (BUILDINGS[te.type].name + ' #' + te.id) : '지정 안 됨 ▸';
-      if (!te) btn.style.color = '#d9544a';
+      if (!te) btn.style.color = 'var(--stop)';
       btn.onclick = (function (node, key, filter) {
         return function () { startPick(curCtrl.id, node.nid, key, filter); };
       })(n, cf.k, cf.filter);
@@ -4134,7 +4503,7 @@ function updateLinks(tempTo) {
     var a = portPos(lk.fn, lk.fp, true), b = portPos(lk.tn, lk.tp, false);
     if (!a || !b) continue;
     var dx = Math.max(28, Math.abs(b.x - a.x) * 0.45);
-    var col = lk.back ? '#f0a92b' : '#4a86c4';
+    var col = lk.back ? '#b23a10' : '#2c5470';
     parts.push('<path d="M' + a.x + ' ' + a.y + ' C' + (a.x + dx) + ' ' + a.y + ',' +
       (b.x - dx) + ' ' + b.y + ',' + b.x + ' ' + b.y + '" fill="none" stroke="' + col +
       '" stroke-width="2"' + (lk.back ? ' stroke-dasharray="6 4"' : '') + '/>');
@@ -4144,7 +4513,7 @@ function updateLinks(tempTo) {
     var s = portPos(linking.nid, linking.port, true);
     if (s) {
       parts.push('<path d="M' + s.x + ' ' + s.y + ' L' + tempTo.x + ' ' + tempTo.y +
-        '" fill="none" stroke="#f0a92b" stroke-width="2" stroke-dasharray="5 4"/>');
+        '" fill="none" stroke="#b23a10" stroke-width="2" stroke-dasharray="5 4"/>');
     }
   }
   svg.innerHTML = parts.join('');
@@ -4301,6 +4670,7 @@ function newGame(seed) {
   treeCensusDone = false;
   for (var k in START_INV) inventory[k] = START_INV[k];
 
+  resetTutorial(tutorial ? tutorial.on : true);   // 껐다면 새 판에서도 꺼진 채로 둔다
   markBeltDirty(); markPowerDirty(); markLogicDirty();
   rebuildPower();
 
@@ -4319,7 +4689,7 @@ function newGame(seed) {
 
 function refreshAllUI() {
   if (typeof document === 'undefined' || !document.getElementById('buildList')) return;
-  renderBuildList(); renderInv(); renderCraftList(); renderTech(); renderTop();
+  renderBuildList(); renderInv(); renderCraftList(); renderTech(); renderTop(); renderTutorial();
 }
 
 // --- 한 틱 -------------------------------------------------------------------
@@ -4349,6 +4719,8 @@ function tick(dt) {
   stepTurrets(dt);
   gameTime += dt;
   beltPhase += dt;
+  // 튜토리얼은 세계를 읽기만 한다 — 시뮬레이션에 영향을 주지 않는다(난수도 안 쓴다)
+  guard('tutorial', function () { stepTutorial(dt); });
 }
 
 // 고정 스텝 — 프레임 시간에 상관없이 시뮬은 항상 TICK 단위로 전진한다.
@@ -4443,7 +4815,9 @@ function saveGame() {
     nextId: nextEntId,
     nests: nests.map(function (n) { return [n.x, n.y, n.hp, n.absorbed, n.cool, n.seed]; }),
     enemies: enemies.map(function (e) { return [Math.round(e.x * 100), Math.round(e.y * 100), e.hp, e.tier]; }),
-    evo: evolution, ws: waveStats
+    evo: evolution, ws: waveStats,
+    tut: { on: tutorial.on, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
+    prod: { smelted: prodStats.smelted, crafted: prodStats.crafted, byRecipe: prodStats.byRecipe }
   };
   try {
     localStorage.setItem('logic-foundry-save', JSON.stringify(data));
@@ -4561,6 +4935,15 @@ function loadGame(raw) {
     evolution = data.evo || 0;
     evoPrevPoll = world.totalPollution;     // 증분식이라 기준점을 맞춰야 한다
     if (data.ws) for (var wk in data.ws) waveStats[wk] = data.ws[wk];
+    if (data.tut) {
+      tutorial.on = data.tut.on !== false; tutorial.step = data.tut.step || 0;
+      tutorial.done = !!data.tut.done; tutorial.flags = data.tut.flags || {};
+    }
+    if (data.prod) {
+      prodStats.smelted = data.prod.smelted || 0;
+      prodStats.crafted = data.prod.crafted || 0;
+      prodStats.byRecipe = data.prod.byRecipe || {};
+    }
 
     markBeltDirty(); markPowerDirty(); markLogicDirty();
     rebuildPower();
@@ -4578,6 +4961,7 @@ function boot() {
   bindInput(canvas);
   bindMini();
   bindSaveButtons();
+  bindTutorial();
   bindLogicPane();
   fillHelp();
   newGame(worldSeed);
@@ -4844,6 +5228,27 @@ window.__GAME = {
     return out;
   },
   canAcceptTest: function (id, item) { return canAccept(entities[id], item); },
+  // 튜토리얼 — 판정은 "세계가 실제로 그렇게 됐는가"로만 한다
+  tutorial: function () {
+    return {
+      on: tutorial.on, step: tutorial.step, done: tutorial.done,
+      total: TUTORIAL_STEPS.length,
+      id: tutorial.done ? null : TUTORIAL_STEPS[tutorial.step].id,
+      ids: TUTORIAL_STEPS.map(function (s) { return s.id; }),
+      flags: JSON.parse(JSON.stringify(tutorial.flags)),
+      prod: { smelted: prodStats.smelted, crafted: prodStats.crafted,
+              byRecipe: JSON.parse(JSON.stringify(prodStats.byRecipe)) }
+    };
+  },
+  tutorialReset: function (on) { resetTutorial(on); renderTutorial(); return tutorial.step; },
+  tutorialSkip: function () { var s = skipTutorialStep(); renderTutorial(); return s; },
+  // 각 단계의 check() 를 지금 상태에서 직접 물어본다 (게이트가 단계별로 검정할 때)
+  tutorialCheck: function (idx) {
+    var s = TUTORIAL_STEPS[idx];
+    if (!s) return null;
+    try { return !!s.check(); } catch (e) { return 'ERROR:' + e; }
+  },
+
   setFilter: function (id, item) {
     var e = entities[id];
     if (!e || e.type !== 'inserter') return false;

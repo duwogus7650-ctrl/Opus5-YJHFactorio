@@ -407,7 +407,7 @@ function renderCraftList() {
     var outN = 0; for (var o in r.out) outN = r.out[o];
     html.push('<div class="craftbtn' + (ok ? '' : ' no') + '" data-r="' + rid + '">' +
       '<span>' + ITEMS[Object.keys(r.out)[0]].name + (outN > 1 ? ' ×' + outN : '') + '</span>' +
-      '<span style="color:#8b98a6;font-size:10px">' + inp.join(' ') + '</span></div>');
+      '<span class="dim" style="font-size:10px">' + inp.join(' ') + '</span></div>');
   }
   host.innerHTML = html.join('');
   var btns = host.querySelectorAll('.craftbtn');
@@ -438,9 +438,10 @@ function renderTop() {
     stat('적', String(enemies.length), threat > 0 ? 'badv' : '', '접근 ' + threat) +
     stat('연구', res, currentResearch ? 'okv' : 'warnv') +
     stat('손실', String(waveStats.buildingsLost), waveStats.buildingsLost ? 'badv' : '');
+  // 라벨은 판에 각인, 값은 판에 박힌 계기창(well) 안에서 빛난다 — 이 UI 의 시그니처
   function stat(k, v, cls, sub) {
-    return '<div class="stat" title="' + (sub || '') + '"><div class="k">' + k + '</div>' +
-      '<div class="v ' + (cls || '') + '">' + v + '</div></div>';
+    return '<div class="stat" title="' + (sub || '') + '"><span class="k">' + k + '</span>' +
+      '<span class="v well ' + (cls || '') + '">' + v + '</span></div>';
   }
 }
 
@@ -499,7 +500,7 @@ function refreshInsp() {
   if (sig !== lastInspSig) {
     lastInspSig = sig;
     var c = [];
-    c.push('<div style="color:#8b98a6;font-size:11px;margin-bottom:6px">' + B.desc + '</div>');
+    c.push('<div class="dim" style="font-size:11px;margin-bottom:6px">' + B.desc + '</div>');
     if (e.type === 'assembler') {
       c.push('<div class="frow"><label>레시피</label><select id="recSel"><option value="">— 없음 —</option>' +
         RECIPE_IDS.filter(function (r) {
@@ -531,7 +532,7 @@ function refreshInsp() {
       '<button id="tglBtn">' + (e.playerEnabled === false ? '가동' : '정지') + '</button>' +
       '<button class="danger" id="delBtn">철거</button></div>');
     if (e.logicForced) {
-      c.push('<div style="color:#49c05a;font-size:11px;margin-top:5px">⛓ 제어기 지배 중 — 수동 조작은 지배가 풀린 뒤 적용된다</div>');
+      c.push('<div class="ok" style="font-size:11px;margin-top:5px">⛓ 제어기 지배 중 — 수동 조작은 지배가 풀린 뒤 적용된다</div>');
     }
     b.innerHTML = '<div id="inspStat"></div>' + c.join('');
     bindInspControls(e);
@@ -541,25 +542,25 @@ function refreshInsp() {
   var s = [];
   if (B.power) {
     s.push('<div class="frow"><label>전력</label><span class="num" style="color:' +
-      (e.powerSat > 0.99 ? '#49c05a' : (e.powerSat > 0 ? '#f0a92b' : '#d9544a')) + '">' +
+      (e.powerSat > 0.99 ? 'var(--run)' : (e.powerSat > 0 ? 'var(--warn)' : 'var(--stop)')) + '">' +
       Math.round(e.powerSat * 100) + '% · ' + Math.round(B.power * machinePowerMul) + ' kW' +
-      (e.net < 0 ? ' · <b style="color:#d9544a">망 미연결</b>' : '') + '</span></div>');
+      (e.net < 0 ? ' · <b class="bad">망 미연결</b>' : '') + '</span></div>');
   }
   s.push('<div class="frow"><label>체력</label><span class="num">' + Math.round(e.hp) + ' / ' + e.maxHp + '</span></div>');
   if (e.type === 'generator') {
     s.push('<div class="frow"><label>연료</label><span class="num">' + fmt(e.fuel / 1000, 1) + ' MJ · 부하 ' +
       Math.round((e.load || 0) * 100) + '% · 창고 석탄 ' + (inventory['coal'] || 0) +
-      (e.net < 0 ? ' · <b style="color:#d9544a">망 미연결</b>' : '') + '</span></div>');
+      (e.net < 0 ? ' · <b class="bad">망 미연결</b>' : '') + '</span></div>');
   }
   if (e.type === 'turret') {
     s.push('<div class="frow"><label>탄약</label><span class="num">' + e.ammo + ' 발' +
-      (e.fireOk ? '' : ' · <b style="color:#d9544a">사격 금지</b>') + '</span></div>');
+      (e.fireOk ? '' : ' · <b class="bad">사격 금지</b>') + '</span></div>');
   }
   if (e.type === 'miner') {
     s.push('<div class="frow"><label>광맥</label><span class="num">' +
       (e.surveyed && e.surveyed.item
         ? ITEMS[e.surveyed.item].name + ' ' + fmtShort(surveyOre(e.tx, e.ty, e.w, e.h).total)
-        : '없음') + (e.depleted ? ' · <b style="color:#d9544a">고갈</b>' : '') + '</span></div>');
+        : '없음') + (e.depleted ? ' · <b class="bad">고갈</b>' : '') + '</span></div>');
   }
   var inv = {};
   for (var k in e.inv) inv[k] = e.inv[k];
@@ -615,7 +616,7 @@ function renderTech() {
   var body = document.getElementById('techBody');
   if (!body) return;
   var h = [];
-  h.push('<div style="color:#8b98a6;font-size:11.5px;margin-bottom:8px">' +
+  h.push('<div class="dim" style="font-size:11.5px;margin-bottom:8px">' +
     '연구소가 연구팩을 소비해 진행한다. 한 사이클마다 표시된 팩을 각각 1개씩 먹는다.</div>');
   for (var i = 0; i < TECH_IDS.length; i++) {
     var tid = TECH_IDS[i], T = TECHS[tid];
@@ -624,12 +625,12 @@ function renderTech() {
     var cost = Object.keys(T.cost).map(function (k) { return T.cost[k] + '× ' + ITEMS[k].name.replace(' 연구팩', ''); }).join(' + ');
     var prog = (currentResearch === tid) ? ' — 진행 ' + Math.round(researchFrac() * 100) + '%' : '';
     h.push('<div class="trow ' + cls + '"><div class="tn"><b>' + T.name + '</b>' + prog +
-      '<div class="td">' + T.desc + ' <span style="color:#4a86c4">해제: ' + T.unlock.join(', ') + '</span>' +
-      (T.needs.length ? ' <span style="color:#8b98a6">· 선행: ' + T.needs.map(function (n) { return TECHS[n].name; }).join(', ') + '</span>' : '') +
+      '<div class="td">' + T.desc + ' <span class="lnk">해제: ' + T.unlock.join(', ') + '</span>' +
+      (T.needs.length ? ' <span class="dim">· 선행: ' + T.needs.map(function (n) { return TECHS[n].name; }).join(', ') + '</span>' : '') +
       '</div></div><div class="tcost">' + cost + '</div>' +
-      (done ? '<span style="color:#49c05a">완료</span>'
+      (done ? '<span class="ok">완료</span>'
         : (avail ? '<button data-t="' + tid + '" class="' + (currentResearch === tid ? '' : 'pri') + '">' +
-          (currentResearch === tid ? '진행 중' : '시작') + '</button>' : '<span style="color:#8b98a6">잠김</span>')) +
+          (currentResearch === tid ? '진행 중' : '시작') + '</button>' : '<span class="dim">잠김</span>')) +
       '</div>');
   }
   body.innerHTML = h.join('');
@@ -679,9 +680,11 @@ function fillHelp() {
     '되먹임이 있는 제어를 짤 때 늘 만나는 문제이고, 이 게임에서 가장 배울 것이 많은 지점이다.</li>',
     '<li><b>방어 자동화</b> — 적 근접 센서가 적을 감지하면 생산 라인을 끄고 그 전력을 방어에 몰아준다.</li>',
     '</ul>',
-    '<p style="color:#8b98a6">편집기의 <b>예제 불러오기</b>를 누르면 위 히스테리시스 회로가 배선된 채로 들어온다.',
+    '<p class="dim">편집기의 <b>예제 불러오기</b>를 누르면 위 히스테리시스 회로가 배선된 채로 들어온다.',
     '한 번 보고 나면 나머지는 응용이다.</p>'
-  ].join('');
+  // 공백으로 잇는다 — ''로 이으면 줄 끝과 다음 줄 첫 글자가 붙어 "만든다.정답 배선은"
+  // 처럼 문장이 뭉개진다 (실제로 첫 화면에서 그렇게 보였다). HTML 은 여분 공백을 접는다.
+  ].join(' ');
 }
 
 // --- 미니맵 ------------------------------------------------------------------

@@ -142,6 +142,11 @@ MUTATIONS = [
      b'      n.out[1] = cnt ? Math.round(near * 10) / 10 : 0;',
      ['logic.enemyDistanceWhenNone']),
 
+    ('튜토리얼이 판정 없이 저절로 진행된다', '52_tutorial.js',
+     b'  if (!ok) return;',
+     b'  if (false) return;',
+     ['tutorial.doesNotAdvanceIdle']),
+
     # ---- UI 경로 (uismoke.js 로 판정) ----
     ('인스펙터를 매 갱신마다 통째로 다시 그린다', '50_ui.js',
      b'  if (sig !== lastInspSig) {',

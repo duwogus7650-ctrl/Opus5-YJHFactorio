@@ -767,6 +767,89 @@
         '적 0마리일 때 최근접거리 ' + distNone + ' (반경 30 이상이어야) · 2타일 옆에 적이 생기면 ' +
         distNear + ' (0을 내면 평상시에 방어 배선이 항상 켜진다)');
 
+      // ================= 8c. 튜토리얼 ====================================
+      // 판정은 "세계가 실제로 그렇게 됐는가"로만 한다. '다음' 버튼으로 넘기는
+      // 튜토리얼은 아무것도 가르치지 않으므로, 게이트도 그 원칙을 지키는지를 본다.
+      labSetup();
+      G.tutorialReset(true);
+      var tut0 = G.tutorial();
+      chk('tutorial.startsAtFirstStep',
+        tut0.on === true && tut0.step === 0 && tut0.done === false && tut0.total >= 8 &&
+        tut0.id === 'miner',
+        '단계 ' + tut0.total + '개 · 시작 단계 = ' + tut0.id + ' (진행 ' + tut0.step + ')');
+
+      // 음성 대조군 — 아무것도 안 하고 시간만 흘려도 넘어가면 안 된다.
+      // (이게 통과하면 "저절로 진행되는 튜토리얼"이라 아래 검사가 무의미해진다.)
+      G.run(20);
+      var tutIdle = G.tutorial();
+      chk('tutorial.doesNotAdvanceIdle', tutIdle.step === 0,
+        '20초 동안 아무것도 안 했을 때 단계 ' + tutIdle.step + ' (0이어야) · 현재 ' + tutIdle.id);
+
+      // 1단계: 전기가 통하는 채광기. 광맥 없이 놓으면 안 넘어가야 한다.
+      var tSpot = G.oreSpotNear('iron-ore', 80, 80);
+      var tMiner = tSpot ? G.place('miner', tSpot.x, tSpot.y, 1) : null;
+      G.powerCheat(false);                       // 전력을 진짜로 본다
+      G.run(0.4);
+      var beforePole = G.tutorial().step;
+      G.place('pole', tSpot.x + 2, tSpot.y + 2, 0);
+      var gT = G.place('generator', tSpot.x + 4, tSpot.y + 3, 0);
+      if (gT) G.setFuel(gT, 4000 * 500);
+      G.run(0.6);
+      var afterPole = G.tutorial().step;
+      chk('tutorial.step1NeedsPower',
+        !!tMiner && beforePole === 0 && afterPole === 1,
+        '채광기만 놓았을 때 단계 ' + beforePole + ' (전기 없음 → 0) → 전주·발전기를 잇자 단계 ' +
+        afterPole + ' (조건: 세계 상태가 바뀌어야만 넘어간다)');
+
+      // 2단계: 채광기 출구에 벨트
+      var mEnt = G.ent(tMiner);
+      G.place('belt', mEnt.tx + mEnt.w, mEnt.ty, 1);
+      G.run(0.4);
+      chk('tutorial.step2Belt', G.tutorial().step === 2,
+        '채광기 출구에 벨트를 잇자 단계 ' + G.tutorial().step);
+
+      // 3단계: 실제로 제련이 일어나야 한다 (버퍼를 보는 게 아니라 누적 생산)
+      var tFur = G.place('furnace', mEnt.tx, mEnt.ty + 4, 1);
+      G.setRecipe(tFur, 'iron-plate'); G.fillChest(tFur, 'iron-ore', 20);
+      G.place('pole', mEnt.tx + 2, mEnt.ty + 4, 0);
+      G.run(0.4);
+      var smeltedBefore = G.tutorial().prod.smelted;
+      G.run(8);
+      var tut3 = G.tutorial();
+      chk('tutorial.step3CountsProduction',
+        smeltedBefore === 0 && tut3.prod.smelted >= 1 && tut3.step === 3,
+        '제련 전 누적 ' + smeltedBefore + '개 → 8초 뒤 ' + tut3.prod.smelted + '개 · 단계 ' +
+        tut3.step + ' (버퍼가 아니라 누적으로 세야 인서터가 빼 가도 놓치지 않는다)');
+
+      // 건너뛰기는 단계만 넘긴다 (튜토리얼 자체를 끄는 것과 다르다)
+      var beforeSkip = G.tutorial().step;
+      G.tutorialSkip();
+      var afterSkip = G.tutorial();
+      chk('tutorial.skipAdvancesOnlyOne',
+        afterSkip.step === beforeSkip + 1 && afterSkip.on === true,
+        '건너뛰기 ' + beforeSkip + ' → ' + afterSkip.step + ' · 튜토리얼 켜짐=' + afterSkip.on);
+
+      // 마지막 단계까지 건너뛰면 완료로 끝나야 한다 (무한 진행 방지)
+      for (var ts = 0; ts < 20; ts++) G.tutorialSkip();
+      var tutEnd = G.tutorial();
+      chk('tutorial.terminates', tutEnd.done === true && tutEnd.step === tutEnd.total,
+        '끝까지 건너뛰면 완료=' + tutEnd.done + ' · 단계 ' + tutEnd.step + '/' + tutEnd.total +
+        ' (총 수를 넘어 자라면 진행 표시가 24/9 처럼 나온다)');
+
+      // 저장/복원에서 진행이 유지되어야 한다
+      labSetup();
+      G.tutorialReset(true);
+      G.tutorialSkip(); G.tutorialSkip();
+      var tutSaved = G.tutorial().step;
+      var rawTut = G.saveRaw();
+      G.reset(999);
+      var tutAfterReset = G.tutorial().step;
+      G.load(rawTut);
+      var tutLoaded = G.tutorial().step;
+      chk('tutorial.survivesSaveLoad',
+        tutSaved === 2 && tutAfterReset === 0 && tutLoaded === 2,
+        '저장 시 단계 ' + tutSaved + ' → 리셋 ' + tutAfterReset + ' → 복원 ' + tutLoaded);
+
       // ================= 9. 결정론 =======================================
       function scenarioHash(seed) {
         G.reset(seed); G.giveAll(99999); G.clearEnemies(); G.powerCheat(true);

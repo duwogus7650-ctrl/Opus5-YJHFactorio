@@ -33,6 +33,7 @@ function newGame(seed) {
   treeCensusDone = false;
   for (var k in START_INV) inventory[k] = START_INV[k];
 
+  resetTutorial(tutorial ? tutorial.on : true);   // 껐다면 새 판에서도 꺼진 채로 둔다
   markBeltDirty(); markPowerDirty(); markLogicDirty();
   rebuildPower();
 
@@ -51,7 +52,7 @@ function newGame(seed) {
 
 function refreshAllUI() {
   if (typeof document === 'undefined' || !document.getElementById('buildList')) return;
-  renderBuildList(); renderInv(); renderCraftList(); renderTech(); renderTop();
+  renderBuildList(); renderInv(); renderCraftList(); renderTech(); renderTop(); renderTutorial();
 }
 
 // --- 한 틱 -------------------------------------------------------------------
@@ -81,6 +82,8 @@ function tick(dt) {
   stepTurrets(dt);
   gameTime += dt;
   beltPhase += dt;
+  // 튜토리얼은 세계를 읽기만 한다 — 시뮬레이션에 영향을 주지 않는다(난수도 안 쓴다)
+  guard('tutorial', function () { stepTutorial(dt); });
 }
 
 // 고정 스텝 — 프레임 시간에 상관없이 시뮬은 항상 TICK 단위로 전진한다.
@@ -175,7 +178,9 @@ function saveGame() {
     nextId: nextEntId,
     nests: nests.map(function (n) { return [n.x, n.y, n.hp, n.absorbed, n.cool, n.seed]; }),
     enemies: enemies.map(function (e) { return [Math.round(e.x * 100), Math.round(e.y * 100), e.hp, e.tier]; }),
-    evo: evolution, ws: waveStats
+    evo: evolution, ws: waveStats,
+    tut: { on: tutorial.on, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
+    prod: { smelted: prodStats.smelted, crafted: prodStats.crafted, byRecipe: prodStats.byRecipe }
   };
   try {
     localStorage.setItem('logic-foundry-save', JSON.stringify(data));
@@ -293,6 +298,15 @@ function loadGame(raw) {
     evolution = data.evo || 0;
     evoPrevPoll = world.totalPollution;     // 증분식이라 기준점을 맞춰야 한다
     if (data.ws) for (var wk in data.ws) waveStats[wk] = data.ws[wk];
+    if (data.tut) {
+      tutorial.on = data.tut.on !== false; tutorial.step = data.tut.step || 0;
+      tutorial.done = !!data.tut.done; tutorial.flags = data.tut.flags || {};
+    }
+    if (data.prod) {
+      prodStats.smelted = data.prod.smelted || 0;
+      prodStats.crafted = data.prod.crafted || 0;
+      prodStats.byRecipe = data.prod.byRecipe || {};
+    }
 
     markBeltDirty(); markPowerDirty(); markLogicDirty();
     rebuildPower();
@@ -310,6 +324,7 @@ function boot() {
   bindInput(canvas);
   bindMini();
   bindSaveButtons();
+  bindTutorial();
   bindLogicPane();
   fillHelp();
   newGame(worldSeed);
@@ -576,6 +591,27 @@ window.__GAME = {
     return out;
   },
   canAcceptTest: function (id, item) { return canAccept(entities[id], item); },
+  // 튜토리얼 — 판정은 "세계가 실제로 그렇게 됐는가"로만 한다
+  tutorial: function () {
+    return {
+      on: tutorial.on, step: tutorial.step, done: tutorial.done,
+      total: TUTORIAL_STEPS.length,
+      id: tutorial.done ? null : TUTORIAL_STEPS[tutorial.step].id,
+      ids: TUTORIAL_STEPS.map(function (s) { return s.id; }),
+      flags: JSON.parse(JSON.stringify(tutorial.flags)),
+      prod: { smelted: prodStats.smelted, crafted: prodStats.crafted,
+              byRecipe: JSON.parse(JSON.stringify(prodStats.byRecipe)) }
+    };
+  },
+  tutorialReset: function (on) { resetTutorial(on); renderTutorial(); return tutorial.step; },
+  tutorialSkip: function () { var s = skipTutorialStep(); renderTutorial(); return s; },
+  // 각 단계의 check() 를 지금 상태에서 직접 물어본다 (게이트가 단계별로 검정할 때)
+  tutorialCheck: function (idx) {
+    var s = TUTORIAL_STEPS[idx];
+    if (!s) return null;
+    try { return !!s.check(); } catch (e) { return 'ERROR:' + e; }
+  },
+
   setFilter: function (id, item) {
     var e = entities[id];
     if (!e || e.type !== 'inserter') return false;

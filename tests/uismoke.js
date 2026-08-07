@@ -241,6 +241,35 @@
       chk('ui.saveLoadHotkeys', afterKey === beforeKey && beforeKey > 0,
         'F2 저장 → 엔티티 ' + beforeKey + '개 · 리셋 후 F3 → ' + afterKey + '개');
 
+      // --- 12. 튜토리얼 패널 -----------------------------------------------
+      G.tutorialReset(true);
+      G.ui.refresh();
+      var tp = document.getElementById('tutor');
+      var tHead = G.ui.panelText('#tutorHead');
+      var tNow = G.ui.panelText('.tnow');
+      chk('ui.tutorialPanelShows',
+        !!tp && tp.style.display === 'block' && /1\s*\/\s*9/.test(tHead || '') && !!tNow,
+        '튜토리얼 패널 표시 · 머리글 "' + tHead + '" · 현재 목표 "' + (tNow || '').slice(0, 24) + '…"');
+
+      // 건너뛰기 버튼이 실제로 한 단계만 넘긴다
+      var stepBefore = G.tutorial().step;
+      document.getElementById('tutorSkip').click();
+      var stepAfter = G.tutorial().step;
+      chk('ui.tutorialSkipButton', stepAfter === stepBefore + 1,
+        '건너뛰기 버튼 클릭 → 단계 ' + stepBefore + ' → ' + stepAfter);
+
+      // 닫기 버튼은 패널만 접는다 (진행은 유지)
+      document.getElementById('tutorClose').click();
+      var closedHidden = document.getElementById('tutor').style.display === 'none';
+      var keptStep = G.tutorial().step;
+      chk('ui.tutorialCloseKeepsProgress', closedHidden && keptStep === stepAfter,
+        '닫기 → 숨김=' + closedHidden + ' · 진행 유지 ' + keptStep);
+
+      // 건설 패널의 [튜토리얼] 버튼으로 다시 열린다
+      document.getElementById('tutorBtn').click();
+      chk('ui.tutorialReopens', document.getElementById('tutor').style.display === 'block',
+        '[튜토리얼] 버튼 → 다시 표시=' + (document.getElementById('tutor').style.display === 'block'));
+
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', G.ui.nodeCount() < 0, '노드 수가 음수일 리 없다', true);

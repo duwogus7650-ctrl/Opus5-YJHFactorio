@@ -268,6 +268,11 @@ function stepCrafter(e, dt, speed) {
   if (e.progress >= 1) {
     e.progress = 0;
     for (var o in rec.out) invAdd(e.out, o, rec.out[o]);
+    // 누적 생산 통계 — 튜토리얼 판정이 쓴다. "지금 버퍼에 있는가"로 보면
+    // 인서터가 빼 가는 순간을 놓쳐 영원히 다음 단계로 못 넘어간다.
+    if (e.type === 'furnace') prodStats.smelted++;
+    else prodStats.crafted++;
+    prodStats.byRecipe[e.recipe] = (prodStats.byRecipe[e.recipe] || 0) + 1;
     emitPollution(e, 4);
   }
 }
