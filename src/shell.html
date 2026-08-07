@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LOGIC FOUNDRY — 프로그래머블 공정자동화</title>
+<style>
+  /* 산업용 다크 — blueprint steel(#2f5f8f) + amber(#f0a92b), 수치는 등폭 */
+  :root{
+    --bg:#12161b; --panel:#1a2027; --panel2:#212a33; --line:#2e3a45;
+    --ink:#d6dee6; --dim:#8b98a6; --steel:#2f5f8f; --steel-lt:#4a86c4;
+    --amber:#f0a92b; --green:#49c05a; --red:#d9544a; --purple:#8a5fc0;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI","Malgun Gothic",system-ui,sans-serif;font-size:13px;user-select:none}
+  canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  .panel{position:absolute;background:rgba(26,32,39,.94);border:1px solid var(--line);
+    border-radius:4px;backdrop-filter:blur(3px);box-shadow:0 4px 18px rgba(0,0,0,.45)}
+  .panel h3{margin:0;padding:7px 10px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--dim);border-bottom:1px solid var(--line);background:rgba(47,95,143,.13)}
+  .pad{padding:8px 10px}
+
+  /* 상단 상태바 */
+  #top{top:8px;left:50%;transform:translateX(-50%);display:flex;gap:0;align-items:stretch;z-index:5}
+  #top .stat{padding:6px 12px;border-right:1px solid var(--line);text-align:center;min-width:74px}
+  #top .stat:last-child{border-right:none}
+  #top .k{font-size:9.5px;color:var(--dim);letter-spacing:.07em;text-transform:uppercase}
+  #top .v{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums;line-height:1.25}
+  .warnv{color:var(--amber)} .badv{color:var(--red)} .okv{color:var(--green)}
+
+  /* 건설 팔레트 */
+  #build{left:8px;top:8px;width:212px;max-height:calc(100vh - 16px);overflow-y:auto;z-index:5}
+  .bitem{display:flex;gap:8px;align-items:center;padding:5px 8px;cursor:pointer;border-left:3px solid transparent}
+  .bitem:hover{background:rgba(47,95,143,.20)}
+  .bitem.sel{background:rgba(47,95,143,.34);border-left-color:var(--amber)}
+  .bitem.locked{opacity:.34;cursor:not-allowed}
+  .bitem.poor .bn{color:var(--red)}
+  .bkey{font-family:var(--mono);font-size:10px;color:var(--dim);width:14px;text-align:center;
+    border:1px solid var(--line);border-radius:3px;padding:1px 0;flex:none}
+  .bn{flex:1;font-size:12px;white-space:nowrap}
+  .bc{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-align:right;white-space:nowrap}
+
+  /* 우측 스택 */
+  #right{position:absolute;right:8px;top:8px;width:224px;display:flex;flex-direction:column;gap:8px;
+    max-height:calc(100vh - 16px);z-index:5}
+  #right .panel{position:relative;inset:auto}
+  #invList{max-height:190px;overflow-y:auto}
+  .irow{display:flex;justify-content:space-between;padding:2px 10px;font-size:11.5px}
+  .irow .n{color:var(--dim)} .irow .q{font-family:var(--mono)}
+  .craftbtn{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin:2px 0;
+    background:var(--panel2);border:1px solid var(--line);border-radius:3px;cursor:pointer;font-size:11.5px}
+  .craftbtn:hover{border-color:var(--steel-lt)}
+  .craftbtn.no{opacity:.4;cursor:not-allowed}
+  #craftList{max-height:172px;overflow-y:auto;padding:6px 8px}
+
+  /* 미니맵 */
+  #mini{position:relative;width:100%;height:180px;display:block;background:#0d1114;border-top:1px solid var(--line);cursor:pointer}
+
+  /* 인스펙터 */
+  #insp{left:206px;bottom:8px;width:288px;display:none;z-index:6;max-height:62vh;overflow-y:auto}
+  .frow{display:flex;gap:6px;align-items:center;margin:5px 0}
+  .frow label{flex:none;width:64px;color:var(--dim);font-size:11px}
+  select,input[type=text],input[type=number]{background:#0f1418;color:var(--ink);border:1px solid var(--line);
+    border-radius:3px;padding:3px 5px;font-family:var(--mono);font-size:11.5px;flex:1;min-width:0}
+  button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:3px;
+    padding:4px 9px;font-size:11.5px;cursor:pointer;font-family:inherit}
+  button:hover{border-color:var(--steel-lt);background:rgba(47,95,143,.26)}
+  button.pri{background:var(--steel);border-color:var(--steel-lt)}
+  button.danger:hover{border-color:var(--red);background:rgba(217,84,74,.22)}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+  .chip{font-family:var(--mono);font-size:10.5px;background:#0f1418;border:1px solid var(--line);
+    border-radius:3px;padding:2px 5px}
+
+  /* 연구 */
+  #tech{left:50%;top:50%;transform:translate(-50%,-50%);width:640px;max-height:78vh;overflow-y:auto;display:none;z-index:20}
+  .trow{display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .trow.done{opacity:.45} .trow.locked{opacity:.42}
+  .trow .tn{flex:1} .trow .td{font-size:11px;color:var(--dim);margin-top:2px}
+  .tcost{font-family:var(--mono);font-size:11px;color:var(--amber);white-space:nowrap}
+
+  /* 로직 에디터 */
+  #logic{position:absolute;inset:0;background:rgba(10,13,17,.965);display:none;z-index:30}
+  #logicBar{position:absolute;top:0;left:0;right:0;height:42px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel)}
+  #logicBar .ttl{font-size:13px;letter-spacing:.05em}
+  #logicBar .hint{color:var(--dim);font-size:11px;flex:1}
+  #pal{position:absolute;left:0;top:42px;bottom:0;width:190px;border-right:1px solid var(--line);
+    overflow-y:auto;background:var(--panel)}
+  .pcat{padding:6px 10px;font-size:10px;letter-spacing:.09em;color:var(--dim);text-transform:uppercase;
+    background:rgba(47,95,143,.13);border-bottom:1px solid var(--line);border-top:1px solid var(--line)}
+  .pitem{padding:5px 10px;cursor:pointer;font-size:11.5px;border-left:3px solid transparent}
+  .pitem:hover{background:rgba(47,95,143,.22);border-left-color:var(--amber)}
+  .pitem.locked{opacity:.3;cursor:not-allowed}
+  #graphWrap{position:absolute;left:190px;top:42px;right:0;bottom:0;overflow:hidden;
+    background:
+      linear-gradient(rgba(47,95,143,.10) 1px,transparent 1px) 0 0/22px 22px,
+      linear-gradient(90deg,rgba(47,95,143,.10) 1px,transparent 1px) 0 0/22px 22px,
+      #0e1319;cursor:grab}
+  #graphWrap.panning{cursor:grabbing}
+  #graphInner{position:absolute;left:0;top:0;width:6000px;height:4000px;transform-origin:0 0}
+  #links{position:absolute;left:0;top:0;width:6000px;height:4000px;pointer-events:none;overflow:visible}
+  .node{position:absolute;width:178px;background:var(--panel);border:1px solid var(--line);
+    border-radius:4px;box-shadow:0 3px 12px rgba(0,0,0,.5);font-size:11px}
+  .node.in{border-top:2px solid var(--green)}
+  .node.op{border-top:2px solid var(--steel-lt)}
+  .node.out{border-top:2px solid var(--amber)}
+  .node.sel{outline:1px solid var(--amber)}
+  .nhead{padding:4px 7px;cursor:move;font-size:11px;display:flex;justify-content:space-between;
+    align-items:center;background:rgba(47,95,143,.15);border-bottom:1px solid var(--line)}
+  .nhead .x{color:var(--dim);cursor:pointer;padding:0 3px}
+  .nhead .x:hover{color:var(--red)}
+  .nbody{padding:4px 6px}
+  .nrow{display:flex;align-items:center;gap:4px;margin:2px 0;min-height:17px}
+  .nrow label{color:var(--dim);font-size:10px;flex:none;width:52px}
+  .nrow select,.nrow input{font-size:10.5px;padding:1px 3px}
+  .ports{display:flex;justify-content:space-between;padding:2px 0 4px}
+  .pcol{display:flex;flex-direction:column;gap:3px}
+  .port{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--dim);cursor:crosshair}
+  .pcol.o .port{flex-direction:row-reverse}
+  .dot{width:9px;height:9px;border-radius:50%;background:#0f1418;border:1.5px solid var(--steel-lt);flex:none}
+  .port:hover .dot{background:var(--amber);border-color:var(--amber)}
+  .dot.on{background:var(--green);border-color:var(--green)}
+  .pv{font-family:var(--mono);font-size:10px;color:var(--amber);min-width:26px}
+  .entbtn{font-size:10px;padding:1px 5px;flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 알림 */
+  #toast{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);z-index:40;
+    display:flex;flex-direction:column;gap:5px;align-items:center;pointer-events:none}
+  .tmsg{background:rgba(26,32,39,.96);border:1px solid var(--line);border-left:3px solid var(--amber);
+    border-radius:3px;padding:6px 13px;font-size:12px;box-shadow:0 3px 12px rgba(0,0,0,.5)}
+  .tmsg.bad{border-left-color:var(--red)} .tmsg.good{border-left-color:var(--green)}
+
+  #alarms{position:absolute;left:50%;top:70px;transform:translateX(-50%);z-index:6;display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+  .alarm{background:rgba(217,84,74,.92);color:#fff;border-radius:3px;padding:3px 10px;font-size:11.5px;
+    font-family:var(--mono);animation:blink 1s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.45}}
+  #dispRow{position:absolute;left:50%;top:70px;transform:translateX(-50%);z-index:5;display:flex;gap:6px}
+  .disp{background:rgba(26,32,39,.9);border:1px solid var(--line);border-radius:3px;padding:3px 9px;
+    font-family:var(--mono);font-size:11.5px}
+  .disp b{color:var(--amber);font-weight:600}
+
+  /* 도움말 */
+  #help{left:50%;top:50%;transform:translate(-50%,-50%);width:660px;max-height:80vh;overflow-y:auto;display:none;z-index:25;line-height:1.62}
+  #help .pad{font-size:12.5px}
+  #help h4{margin:14px 0 5px;color:var(--amber);font-size:12px;letter-spacing:.05em}
+  #help code{font-family:var(--mono);background:#0f1418;border:1px solid var(--line);
+    border-radius:3px;padding:1px 5px;color:var(--steel-lt)}
+  #help ul{margin:4px 0;padding-left:18px} #help li{margin:3px 0}
+  .close{position:absolute;right:8px;top:6px;cursor:pointer;color:var(--dim);font-size:16px}
+  .close:hover{color:var(--red)}
+
+  #pickBanner{position:absolute;left:50%;top:52%;transform:translateX(-50%);z-index:35;display:none;
+    background:rgba(47,95,143,.95);padding:9px 18px;border-radius:4px;font-size:13px;
+    box-shadow:0 4px 20px rgba(0,0,0,.6)}
+  #testout{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div class="panel" id="top"></div>
+<div id="alarms"></div>
+<div id="dispRow"></div>
+
+<div class="panel" id="build">
+  <h3>건설 <span style="float:right;color:#4a86c4">R 회전 · 우클릭 철거</span></h3>
+  <div id="buildList"></div>
+</div>
+
+<div id="right">
+  <div class="panel">
+    <h3>창고
+      <span style="float:right;display:flex;gap:4px">
+        <button id="saveBtn" style="padding:1px 7px;font-size:10px" title="F2">저장</button>
+        <button id="loadBtn" style="padding:1px 7px;font-size:10px" title="F3">불러오기</button>
+      </span>
+    </h3>
+    <div id="invList"></div>
+  </div>
+  <div class="panel">
+    <h3>손 조립 <span style="float:right;color:#8b98a6">클릭 = 1개</span></h3>
+    <div id="craftList"></div>
+  </div>
+  <div class="panel" style="flex:1;display:flex;flex-direction:column;min-height:0">
+    <h3>지도 <span style="float:right;color:#8b98a6">클릭 = 이동</span></h3>
+    <canvas id="mini" width="212" height="180"></canvas>
+  </div>
+</div>
+
+<div class="panel" id="insp">
+  <h3 id="inspTitle">선택</h3>
+  <div class="pad" id="inspBody"></div>
+</div>
+
+<div class="panel" id="tech">
+  <span class="close" onclick="closeTech()">✕</span>
+  <h3>연구</h3>
+  <div class="pad" id="techBody"></div>
+</div>
+
+<div class="panel" id="help">
+  <span class="close" onclick="closeHelp()">✕</span>
+  <h3>LOGIC FOUNDRY — 조작과 개념</h3>
+  <div class="pad" id="helpBody"></div>
+</div>
+
+<div id="logic">
+  <div id="logicBar">
+    <span class="ttl">제어기 <span id="ctrlName" class="num"></span></span>
+    <span class="hint">출력 포트에서 입력 포트로 끌어 배선 · 입력 포트 클릭 = 연결 해제 · 배경 드래그 = 이동 · 휠 = 확대</span>
+    <span id="cycleInfo" class="num" style="color:var(--amber)"></span>
+    <button onclick="loadExample()">예제 불러오기</button>
+    <button class="pri" onclick="closeLogic()">닫기 (ESC)</button>
+  </div>
+  <div id="pal"></div>
+  <div id="graphWrap">
+    <div id="graphInner">
+      <svg id="links"></svg>
+    </div>
+  </div>
+</div>
+
+<div id="pickBanner">지도에서 대상을 클릭하세요 &nbsp;·&nbsp; ESC 취소</div>
+<div id="toast"></div>
+<div id="testout"></div>
+
+<!--GAME_INLINE-->
+</body>
+</html>
