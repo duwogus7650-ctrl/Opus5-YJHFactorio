@@ -193,3 +193,15 @@ function netSatOf(e) {
   if (!e || e.net < 0 || e.net >= nets.length) return 0;
   return nets[e.net].sat;
 }
+// 망별 전력 수지. **전역 합계를 쓰면 안 된다** — 발전소가 둘 이상이면 제어기가
+// 지도 반대편 공장의 숫자를 보고 판단한다(감사에서 오탐·미탐 둘 다 재현됐다).
+// 여유kW 는 클램프하지 않는다: 만족%는 min(1,·) 로 100 에서 잘려 "얼마나 남는가"를
+// 구별할 수 없고, 그래서 부하 차단 히스테리시스에 쓸 사공간이 없었다.
+function netPowerOf(e) {
+  if (!e || e.net < 0 || e.net >= nets.length) {
+    return { connected: 0, supply: 0, demand: 0, head: 0 };
+  }
+  var nt = nets[e.net];
+  return { connected: 1, supply: nt.supplyCap, demand: nt.demand,
+           head: nt.supplyCap - nt.demand };
+}

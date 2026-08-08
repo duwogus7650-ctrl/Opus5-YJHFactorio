@@ -393,6 +393,9 @@ window.__GAME = {
       inv: JSON.parse(JSON.stringify(e.inv)), out: JSON.parse(JSON.stringify(e.out)),
       recipe: e.recipe, progress: e.progress,
       fuel: e.fuel, load: e.load, ammo: e.ammo, filter: e.filter, held: e.held, depleted: !!e.depleted,
+      // 터렛의 사격 허가. 노출을 빼먹었더니 시험이 '없는 키' 를 읽고 값이 뒤집혔다고
+      // 오독했다 — 없는 것과 false 는 다르다.
+      fireOk: (e.fireOk === undefined) ? null : !!e.fireOk,
       beltItems: e.cells ? e.cells.map(function (c) { return cellItemCount(c); }) : null,
       gate: e.cells ? e.cells.map(function (c) { return c.gate; }) : null
     };
@@ -429,12 +432,45 @@ window.__GAME = {
     var n = graphNode(e.graph, nid); if (!n) return null;
     try { return readIn(e.graph, n, port || 0); } catch (err) { return 'THREW:' + err.message; }
   },
+  // 전수 스윕용 열거 훅 — "모든 X" 를 실제로 하나씩 돌려 보려면 목록이 필요하다
+  nodeKinds: function () { return NODE_KINDS.slice(); },
+  nodeAvailable: function (kind) { return nodeAvailable(kind); },
+  techIds: function () { return TECH_IDS.slice(); },
+  buildingTypes: function () { return Object.keys(BUILDINGS); },
+  recipeIds: function () { return Object.keys(RECIPES); },
+  recipeInfo: function (rid) {
+    var r = RECIPES[rid]; if (!r) return null;
+    return { cat: r.cat, time: r.time, inp: JSON.parse(JSON.stringify(r.inp)),
+             out: JSON.parse(JSON.stringify(r.out)), handOk: !!r.handOk, tech: r.tech || null };
+  },
+  // 벨트 센서를 시험하려면 벨트에 물건을 직접 얹어야 한다
+  // lanes 는 **엔티티가 아니라 셀** 에 있다 (20_belt.js:21). 엔티티에서 찾다가
+  // 조용히 false 를 돌려주고, 그 탓에 벨트 센서가 고장난 것처럼 보였다.
+  // 벨트 게이트가 실제로 닫혔는지 (셀의 gate 플래그)
+  gateState: function (id) {
+    var e = entities[id];
+    if (!e || !e.cells || !e.cells.length) return null;
+    for (var i = 0; i < e.cells.length; i++) if (!e.cells[i].gate) return false;
+    return true;
+  },
+  beltPut: function (id, item, pos) {
+    var e = entities[id];
+    if (!e || !e.cells || !e.cells.length) return false;
+    e.cells[0].lanes[0].push({ id: item, pos: (pos === undefined ? 0.5 : pos) });
+    return true;
+  },
   nodeTargets: function (kind) {
     var d = NODE_DEFS[kind]; if (!d) return null;
     for (var i = 0; i < d.cfg.length; i++) {
       if (d.cfg[i].t === 'ent') return d.cfg[i].filter || Object.keys(BUILDINGS);
     }
     return null;
+  },
+  // 노드를 옮긴다 (좌표가 평가 순서를 정하므로 그것을 검정하는 데 쓴다)
+  gMove: function (ctrlId, nid, x, y) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return false;
+    var n = graphNode(e.graph, nid); if (!n) return false;
+    n.x = x; n.y = y; e.graph.dirty = true; return true;
   },
   gPos: function (ctrlId, nid) {
     var e = entities[ctrlId]; if (!e || !e.graph) return null;
@@ -709,6 +745,16 @@ window.__GAME = {
   // 도달성 탐색이 쓴 걸음 수. 순환 방어가 깨지면 이 숫자가 상한까지 폭발한다 —
   // "멈추나 안 멈추나"는 게이트가 못 보지만 걸음 수는 볼 수 있다.
   reachSteps: function (reset) { if (reset) resetReachSteps(); return reachStepsTotal; },
+  // **id 로 찾는다.** 번호로 지목하면 단계를 하나 추가할 때마다 게이트가 통째로
+  // 밀려 깨진다 (실제로 5단계를 둘로 나누자 4건이 어긋났다).
+  tutorialCheckById: function (id) {
+    var steps = curSteps();
+    for (var i = 0; i < steps.length; i++) {
+      if (steps[i].id !== id) continue;
+      try { return !!steps[i].check(); } catch (e) { return 'ERROR:' + e; }
+    }
+    return null;
+  },
   tutorialCheck: function (idx) {
     var s = curSteps()[idx];
     if (!s) return null;

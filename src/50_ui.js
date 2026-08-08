@@ -17,6 +17,9 @@ function addResearchProgress(n) {
   if (researchProgress >= techCycles(currentResearch)) finishResearch();
 }
 function techAvailable(tid) {
+  // **모르는 id 를 그냥 터뜨리면 안 된다.** 저장본이 손상됐거나 예전 판의 연구
+  // id 가 남아 있으면 여기서 TypeError 가 나 게임이 통째로 멈춘다.
+  if (!tid || !TECHS[tid]) return false;
   if (techDone[tid]) return false;
   var need = TECHS[tid].needs;
   for (var i = 0; i < need.length; i++) if (!techDone[need[i]]) return false;

@@ -283,12 +283,12 @@ MUTATIONS = [
     ('망별 전력 만족도가 항상 100% (제어기가 부족을 못 본다)', '30_power.js',
      b'    nt.sat = nt.demand <= 0 ? 1 : Math.min(1, nt.supplyCap / nt.demand);',
      b'    nt.sat = 1;',
-     ['shed.naiveOscillates'], 'shedding.js'),
+     ['shed2.comparatorOscillates'], 'shedding.js'),
 
     ('꺼진 기계도 계속 전기를 먹는다 (부하 차단이 무의미해진다)', '30_power.js',
      b'  if (!e.enabled) return 0;',
      b'  if (false) return 0;',
-     ['shed.naiveOscillates', 'shed.actuallyRecoversPower'], 'shedding.js'),
+     ['shed2.comparatorOscillates'], 'shedding.js'),
 
     # 여기에 'SR 래치를 비교기로 바꾼다' 돌연변이를 넣었다가 MISS 가 났고, 빼는 것이
     # 옳다고 판단했다. 이유: 제대로 설계된 히스테리시스는 **차단 후 값이 밴드 안에
@@ -369,6 +369,49 @@ MUTATIONS = [
      b'  if (!g.inLinks) return 0;',
      b'  if (false) return 0;',
      ['ctrl.readBeforeCompileIsSafe']),
+
+    # ---- HIGH 2건: 감사가 찾고 실측으로 확정한 것 ----
+    # 평가 순서가 노드 생성 순서에 달려 있으면 화면상 같은 회로가 다르게 돈다.
+    # 좌표순 정렬을 걷어내면 다시 생성 순서로 돌아간다.
+    ('평가 순서를 다시 노드 생성 순서로 돌린다', '35_logic.js',
+     b'  var roots = g.nodes.slice().sort(cmpNode);',
+     b'  var roots = g.nodes.slice();',
+     ['ctrl.orderIndependentOfCreation']),
+
+    # 좌표를 아예 안 보면 '배치를 바꿔도 순서가 안 바뀐다' 쪽으로 깨진다
+    ('좌표를 무시하고 nid 로만 정렬한다', '35_logic.js',
+     b'    return (A[0] - B[0]) || (A[1] - B[1]) || (A[2] - B[2]);',
+     b'    return A[2] - B[2];',
+     ['ctrl.orderFollowsLayout']),
+
+    # 전력 노드의 출구가 전역 합계로 돌아가면 제어기가 남의 발전소를 본다
+    ('전력 노드 출구를 다시 전 세계 합계로', '35_logic.js',
+     b'      n.out[1] = Math.round(np.supply);',
+     b'      n.out[1] = Math.round(powerStats.supply);',
+     ['ctrl.powerOutputsAreNetLocal']),
+
+    ('망 밖인지를 알려주지 않는다', '35_logic.js',
+     b'      n.out[4] = np.connected;',
+     b'      n.out[4] = 1;',
+     ['ctrl.powerReportsDisconnection']),
+
+    # 여유kW 를 만족% 처럼 클램프하면 부하 차단에 쓸 사공간이 다시 사라진다
+    ('여유kW 를 0 에서 잘라 버린다', '30_power.js',
+     b'           head: nt.supplyCap - nt.demand };',
+     b'           head: Math.max(0, nt.supplyCap - nt.demand) };',
+     ['shed2.headroomIsUnclamped'], 'shedding.js'),
+
+    # 래치만으로는 못 막힌다는 것 자체가 측정치다 — 측정기가 살아 있는지 본다
+    ('전력 만족도를 항상 100 으로 (부족이 사라진다)', '30_power.js',
+     b'    nt.sat = nt.demand <= 0 ? 1 : Math.min(1, nt.supplyCap / nt.demand);',
+     b'    nt.sat = 1;',
+     ['shed2.comparatorOscillates'], 'shedding.js'),
+
+    # 튜토리얼이 가르치는 회로(여유kW+래치+타이머)가 실제로 멈추는지
+    ('타이머가 펄스를 안 낸다 (복귀 지연이 사라진다)', '35_logic.js',
+     b'      var per = Math.max(0.05, +n.cfg.period || 1);',
+     b'      var per = 0.05;',
+     ['shed2.tutorialCircuitSettles'], 'shedding.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
     ('캔버스가 터치를 아예 안 받는다', '50_ui.js',

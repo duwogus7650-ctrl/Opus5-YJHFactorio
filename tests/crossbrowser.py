@@ -29,7 +29,8 @@ ENV = dict(os.environ)
 ENV['PYTHONIOENCODING'] = 'utf-8'
 
 ENGINES = ['edge', 'chromium', 'firefox', 'webkit']
-DRIVERS = [('driver.js', '모델'), ('uismoke.js', '클릭'), ('shedding.js', '부하차단')]
+DRIVERS = [('driver.js', '모델'), ('uismoke.js', '클릭'), ('shedding.js', '부하차단'),
+           ('fullplay.js', '전수스윕')]
 
 # 터치 조합. **합성 터치가 되는 엔진에서만 의미가 있다** — WebKit(사파리 엔진)은
 # Touch/TouchEvent 를 스크립트로 만들 수 없어(Type error) 여기서 돌려도 검증이

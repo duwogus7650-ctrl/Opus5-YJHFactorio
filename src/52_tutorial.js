@@ -74,7 +74,7 @@ function reachableNodes(g, startNid, kinds, pred) {
   // 매달아 돌연변이 게이트 전체를 세웠고, 그래서 상한을 따로 두게 됐다.
   while (stack.length && guard++ < REACH_LIMIT) {
     var cur = stack.pop();
-    if (seen[cur]) continue;                 // 되먹임 배선이 있으므로 순환 방어는 필수
+    if (seen[cur]) continue;   // 되먹임 배선 순환 방어 (reachableNodes 전용)
     seen[cur] = 1;
     for (var i = 0; i < g.links.length; i++) {
       var l = g.links[i];
@@ -134,6 +134,29 @@ function inserterFeedsTurret() {
     return !!tgt && tgt.type === 'turret';
   });
 }
+// srcNid 에서 나온 신호가 nid 의 port 번 입력으로 흘러드는가.
+// 래치의 RESET(포트 1)에 타이머가 실제로 물렸는지 보려면 포트를 구별해야 한다.
+function feedsPort(g, nid, port, srcNid) {
+  if (!g.inLinks) return false;
+  var lk = g.inLinks[nid + ':' + port];
+  if (!lk) return false;
+  if (lk.fn === srcNid) return true;
+  // 사이에 AND 같은 노드가 끼어 있을 수 있으니 거슬러 올라간다
+  // 변수명을 reachableNodes 와 다르게 둔다 — 같은 줄이 두 곳에 있으면 돌연변이
+  // 앵커가 유일하지 않아 그 게이트를 검정할 수 없다(INVALID 로 걸렸다).
+  var walked = {}, stack = [lk.fn];
+  while (stack.length) {
+    var cur = stack.pop();
+    if (walked[cur]) continue;
+    walked[cur] = 1;
+    if (cur === srcNid) return true;
+    for (var i = 0; i < g.links.length; i++) {
+      if (g.links[i].tn === cur) stack.push(g.links[i].fn);
+    }
+  }
+  return false;
+}
+
 function countEntityWhere(type, fn) {
   var n = 0;
   forEachEntity(function (e) { if (e.type === type && fn(e)) n++; });
@@ -362,21 +385,57 @@ var ADVANCED_STEPS = [
   },
   {
     id: 'latch-shed',
-    title: 'SR 래치로 떨림을 없앤다 — 부하 차단 완성',
-    why: '에어컨은 26도에 켜고 26도에 끄지 않는다. <b>26도에 켜고 24도까지 내려가야 끈다.</b> 켜는 문턱과 끄는 문턱을 벌리고, 그 사이는 <b>기억</b>으로 버틴다. 그 기억이 SR 래치다.',
+    title: 'SR 래치로 문턱을 벌린다 — 그런데도 아직 떤다',
+    why: '에어컨은 26도에 켜고 26도에 끄지 않는다. <b>26도에 켜고 24도까지 내려가야 끈다.</b> ' +
+         '켜는 문턱과 끄는 문턱을 벌리고 그 사이는 <b>기억</b>으로 버틴다 — 그게 SR 래치다. ' +
+         '★ 그런데 이 게임에서는 <b>래치만으로는 안 멈춘다.</b> 왜 그런지는 다음 단계에서 본다.',
     how: [
-      '<b>SR 래치</b>를 놓는다 — 출력 Q는 "지금 돌려도 되는가"로 쓴다',
-      '비교 <b>만족% &gt; 98</b> → 래치의 <b>SET</b> (여유롭다 → 다시 돌려라)',
-      '비교 <b>만족% &lt; 90</b> → 래치의 <b>RESET</b> (모자란다 → 꺼라)',
-      '래치의 <b>Q</b> → <b>기계 가동/정지</b>',
-      '이제 90~98% 사이에서는 <b>직전 결정을 그대로 유지</b>한다 — 떨림이 사라진다',
-      '한 걸음 더: <b>타이머</b>를 SET 쪽에 끼면 복귀를 30초 늦출 수 있다'
+      '<b>SR 래치</b>를 놓는다 — 출력 Q를 "지금 끊어야 하나"로 쓴다',
+      '비교 <b>여유kW &lt; 0</b> → 래치의 <b>SET</b> (모자라다 → 끊어라)',
+      '비교 <b>여유kW &gt; 200</b> → 래치의 <b>RESET</b> (남는다 → 되돌려라)',
+      '<b>논리 NOT A</b>로 Q를 뒤집어 <b>기계 가동/정지</b>에 잇는다 (Q=끊음이므로)',
+      '<b>여유kW</b>를 쓴다 — 만족%는 100%에서 잘려서 "얼마나 남는가"를 알 수 없다',
+      '전기를 모자라게 만들고 그 기계를 본다 — <b>여전히 떨린다.</b> 그게 정상이다'
     ],
-    need: '두 문턱이 <b>겹치면 안 된다</b> — 90 &lt; 98 처럼 벌려야 한다',
+    need: '만족% 대신 <b>여유kW</b>를 쓰는 이유: 만족%는 min(100%) 이라 차단하면 늘 정확히 100이 된다',
     check: function () {
       return ctrlPathThrough('power', 'latch', 'enable', function (g, L) {
-        return portFed(g, L.nid, 1);     // RESET 이 안 물리면 한 번 켜지고 영영 안 꺼진다
+        return portFed(g, L.nid, 1);     // RESET 이 안 물리면 한 번 끊고 영영 안 돌아온다
       });
+    }
+  },
+  {
+    id: 'timer-shed',
+    title: '타이머로 복귀를 늦춘다 — 부하 차단 완성',
+    why: '★ 문턱을 벌려도 떠는 이유: 끊으면 전기가 남고, 남으면 되돌리고, 되돌리면 또 모자란다. ' +
+         '<b>두 상태가 어떤 문턱이든 양쪽으로 넘나든다.</b> 이건 문턱을 더 벌려서 못 고친다 — ' +
+         '<b>되돌리는 것을 늦춰야</b> 한다. 실제 배전 설비도 이렇게 한다(최소 차단 시간).',
+    how: [
+      '<b>타이머</b>를 놓고 주기를 <b>30</b>으로 한다',
+      '<b>논리 AND</b>를 놓는다',
+      '<b>여유kW &gt; 200</b>(남는다) → AND의 A · <b>타이머 펄스</b> → AND의 B',
+      'AND의 출력 → 래치의 <b>RESET</b> (앞 단계에서 직결했던 것을 이걸로 바꾼다)',
+      '이제 복귀는 <b>30초에 한 번만</b> 시도한다 — 떨림이 멈춘다',
+      '끊는 쪽(SET)은 늦추지 않는다 — 전기가 모자라면 즉시 끊어야 한다'
+    ],
+    need: '측정치: 비교기만 300틱에 299회 떨림 · 래치만 299회 · <b>래치+타이머 0회</b>',
+    check: function () {
+      // 래치의 RESET 이 타이머를 거친 신호로 물렸는가.
+      // 래치만으로는 못 멈춘다는 것이 실측됐으므로, 여기서는 타이머까지 요구한다.
+      var ok = false;
+      eachCtrlGraph(function (g) {
+        if (ok) return;
+        for (var i = 0; i < g.nodes.length; i++) {
+          if (g.nodes[i].kind !== 'timer') continue;
+          var lats = reachableNodes(g, g.nodes[i].nid, ['latch']);
+          for (var j = 0; j < lats.length; j++) {
+            // 타이머가 RESET(포트 1) 쪽으로 흘러야 한다
+            if (!feedsPort(g, lats[j].nid, 1, g.nodes[i].nid)) continue;
+            if (reachableNodes(g, lats[j].nid, ['enable'], hasTarget).length) ok = true;
+          }
+        }
+      });
+      return ok;
     }
   },
   {

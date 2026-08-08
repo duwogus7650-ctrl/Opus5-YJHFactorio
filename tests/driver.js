@@ -1025,7 +1025,7 @@
       var advT = G.tutorial();
       chk('adv.startsAtFirstStep',
         basicDone.done === true && advOk === true && advT.track === 'adv' &&
-        advT.step === 0 && advT.total === 8 && advT.id === 'green-sci' &&
+        advT.step === 0 && advT.total >= 9 && advT.id === 'green-sci' &&
         advT.done === false,
         '기초 완료(' + basicDone.step + '/' + basicDone.total + ') → 심화 ' +
         advT.step + '/' + advT.total + ' · 첫 단계 ' + advT.id +
@@ -1042,9 +1042,9 @@
       chk('adv.rigBuilt', !!ctrl, '심화 배선 시험용 제어기 id=' + ctrl);
       var nPow = G.gAdd(ctrl, 'power', 10, 10);
       var nDisp = G.gAdd(ctrl, 'display', 300, 10);
-      var seeBefore = G.tutorialCheck(2);          // 노드만 있고 배선은 없다
+      var seeBefore = G.tutorialCheckById('see-power');          // 노드만 있고 배선은 없다
       G.gLink(ctrl, nPow, 0, nDisp, 0);
-      var seeAfter = G.tutorialCheck(2);
+      var seeAfter = G.tutorialCheckById('see-power');
       chk('adv.seePowerNeedsWiring',
         seeBefore === false && seeAfter === true,
         '전력·표시 노드를 놓기만 했을 때 ' + seeBefore + ' → 선을 이은 뒤 ' + seeAfter +
@@ -1055,12 +1055,12 @@
       var nEn = G.gAdd(ctrl, 'enable', 600, 10);
       G.gCfg(ctrl, nEn, 'ent', asmT);
       G.gLink(ctrl, nPow, 0, nEn, 0);              // 비교 없이 바로 이었다
-      var shedDirect = G.tutorialCheck(3);
+      var shedDirect = G.tutorialCheckById('naive-shed');
       var nCmp = G.gAdd(ctrl, 'cmp', 300, 120);
       G.gCfg(ctrl, nCmp, 'op', '<');
       G.gLink(ctrl, nPow, 0, nCmp, 0);
       G.gLink(ctrl, nCmp, 0, nEn, 0);              // 비교를 거쳐 다시 잇는다
-      var shedViaCmp = G.tutorialCheck(3);
+      var shedViaCmp = G.tutorialCheckById('naive-shed');
       chk('adv.naiveShedNeedsComparator',
         shedDirect === false && shedViaCmp === true,
         '전력→가동 직결 ' + shedDirect + ' → 전력→비교→가동 ' + shedViaCmp +
@@ -1077,7 +1077,7 @@
       var noTargetOnly = (function () {
         // ctrl 쪽 배선을 잠시 끊어 ctrl2 만 남긴 상태로 물어본다
         G.remove(ctrl);
-        var r = G.tutorialCheck(3);
+        var r = G.tutorialCheckById('naive-shed');
         return r;
       })();
       chk('adv.outputNeedsTarget',
@@ -1097,10 +1097,10 @@
       G.gLink(ctrl3, p3, 0, cSet, 0);
       G.gLink(ctrl3, cSet, 0, nLat, 0);            // SET 만 물렸다
       G.gLink(ctrl3, nLat, 0, eLat, 0);
-      var latchNoReset = G.tutorialCheck(4);
+      var latchNoReset = G.tutorialCheckById('latch-shed');
       G.gLink(ctrl3, p3, 0, cRst, 0);
       G.gLink(ctrl3, cRst, 0, nLat, 1);            // RESET 을 마저 물린다
-      var latchFull = G.tutorialCheck(4);
+      var latchFull = G.tutorialCheckById('latch-shed');
       chk('adv.latchNeedsReset',
         latchNoReset === false && latchFull === true,
         'RESET 미연결 래치 ' + latchNoReset + ' → RESET 연결 후 ' + latchFull +
@@ -1123,7 +1123,7 @@
         '순환 배선 생성 ' + lk1 + '/' + lk2 + ' · 컴파일러가 센 되먹임 간선 ' +
         cycInfo.cycles + '개 (0이면 이 시험은 아무것도 안 보고 있는 것이다)');
       G.reachSteps(true);                          // 걸음 수 계수기 리셋
-      var cyclicOk = G.tutorialCheck(4);
+      var cyclicOk = G.tutorialCheckById('latch-shed');
       var cycSteps = G.reachSteps(false);
       // **boolean 으로는 무한 루프를 못 본다** — 안 끝나면 이 줄에 오지도 못한다.
       // 실제로 순환 방어를 지운 돌연변이가 여기서 브라우저를 영구히 매달았고,
@@ -1145,9 +1145,9 @@
       for (var wx = 0; wx < 11; wx++) { if (G.place('wall', 40 + wx, 70, 0)) wallN++; }
       var tur1 = G.place('turret', 40, 72, 0);
       var tur2 = G.place('turret', 43, 72, 0);
-      var wallShort = G.tutorialCheck(5);           // 벽 11개 — 하나 모자란다
+      var wallShort = G.tutorialCheckById('wall-turret');           // 벽 11개 — 하나 모자란다
       if (G.place('wall', 51, 70, 0)) wallN++;
-      var wallOk = G.tutorialCheck(5);
+      var wallOk = G.tutorialCheckById('wall-turret');
       chk('adv.wallTurretThreshold',
         wallShort === false && wallOk === true && !!tur1 && !!tur2,
         '벽 11개 ' + wallShort + ' → 12개 ' + wallOk + ' · 터렛 ' +
@@ -1156,11 +1156,11 @@
       // 탄약: 손으로 채운 것만으로는 통과하면 안 된다 — 자동 보급이 이 단계의 목적이다
       G.setInv('ammo', 40);
       G.putFromStock(tur1); G.putFromStock(tur2);
-      var ammoByHand = G.tutorialCheck(6);
+      var ammoByHand = G.tutorialCheckById('ammo-line');
       // 터렛은 2x2 다 — tur1 이 40~41, tur2 가 43~44 를 먹으므로 42 만 비어 있다.
       // 인서터를 서쪽(dir 3)으로 두면 앞칸이 41 = tur1 안이 된다.
       var insA = G.place('inserter', 42, 72, 3);
-      var ammoAuto = G.tutorialCheck(6);
+      var ammoAuto = G.tutorialCheckById('ammo-line');
       chk('adv.ammoNeedsInserter',
         ammoByHand === false && ammoAuto === true && !!insA,
         '손으로만 채웠을 때 ' + ammoByHand + ' → 터렛에 넣는 인서터를 놓은 뒤 ' + ammoAuto +
@@ -1170,9 +1170,9 @@
       var ctrl4 = G.place('controller', 60, 76, 0);
       var nEnemy = G.gAdd(ctrl4, 'enemy', 10, 10);
       var nLamp = G.gAdd(ctrl4, 'lamp', 300, 10);
-      var defBefore = G.tutorialCheck(7);
+      var defBefore = G.tutorialCheckById('defense-auto');
       G.gLink(ctrl4, nEnemy, 0, nLamp, 0);
-      var defAfter = G.tutorialCheck(7);
+      var defAfter = G.tutorialCheckById('defense-auto');
       chk('adv.defenseAutoNeedsWiring',
         defBefore === false && defAfter === true,
         '적 근접 노드만 놓았을 때 ' + defBefore + ' → 경보 램프에 이은 뒤 ' + defAfter);
@@ -1181,7 +1181,11 @@
       for (var ab3 = 0; ab3 < 20; ab3++) G.tutorialSkip();
       var advEnd = G.tutorial();
       chk('adv.terminates',
-        advEnd.done === true && advEnd.step === 8 && advEnd.total === 8,
+        // total 을 advIds.length 와 대조한다. 'total >= 9' 로만 두면 curSteps 가
+        // 기초 배열(10단계)을 돌려주는 돌연변이도 통과해 버렸다(MISS).
+        advEnd.done === true && advEnd.track === 'adv' &&
+        advEnd.total === advEnd.advIds.length && advEnd.step === advEnd.total &&
+        advEnd.advIds[0] === 'green-sci',
         '심화를 끝까지 건너뛰면 완료=' + advEnd.done + ' · 단계 ' + advEnd.step + '/' + advEnd.total);
 
       // 저장·복원이 트랙까지 기억해야 한다. 트랙을 잃으면 심화 3단계가
@@ -1296,6 +1300,87 @@
         readOk === 0,
         '컴파일 전 그래프에서 입력 읽기 → ' + readOk +
         ' (예외가 나면 편집기의 실시간 갱신이 통째로 멈춘다)');
+
+      // (6) **같은 좌표·같은 배선이면 만든 순서와 무관하게 같게 돌아야 한다.**
+      //     예전에는 DFS 진입점이 노드 생성 순서라, 위치가 똑같은 두 회로가 다른
+      //     배선을 되먹임으로 잡고 값까지 달라졌다. 화면에는 생성 순서가 안 나오므로
+      //     플레이어가 원인을 짚을 방법이 없었다.
+      labSetup();
+      function buildCycle(cx, cy, order) {
+        var c = G.place('controller', cx, cy, 0);
+        var pos = { A: [40, 40], B: [300, 40], C: [170, 240] };
+        var id = {};
+        for (var i = 0; i < order.length; i++) {
+          var nm = order[i];
+          id[nm] = G.gAdd(c, 'math', pos[nm][0], pos[nm][1]);
+        }
+        // 순환: A → B → C → A  (배선은 항상 같은 순서로 건다)
+        G.gLink(c, id.A, 0, id.B, 0);
+        G.gLink(c, id.B, 0, id.C, 0);
+        G.gLink(c, id.C, 0, id.A, 1);
+        return { ctrl: c, id: id, info: G.gInfo(c) };
+      }
+      var fwd = buildCycle(44, 62, ['A', 'B', 'C']);
+      var rev = buildCycle(48, 62, ['C', 'B', 'A']);   // **역순으로 만든다**
+      // 좌표는 같으므로 평가 순서를 좌표로 사상해 비교한다 (nid 는 당연히 다르다)
+      function orderAsPos(r) {
+        var inv = {};
+        for (var k in r.id) inv[r.id[k]] = k;
+        return r.info.order.map(function (nid) { return inv[nid] || '?'; }).join('>');
+      }
+      var oFwd = orderAsPos(fwd), oRev = orderAsPos(rev);
+      chk('ctrl.orderIndependentOfCreation',
+        oFwd === oRev && fwd.info.cycles === rev.info.cycles,
+        '같은 좌표·같은 배선을 정순/역순으로 만듦 → 평가순서 ' + oFwd + ' vs ' + oRev +
+        ' · 되먹임 ' + fwd.info.cycles + ' vs ' + rev.info.cycles +
+        ' (달라지면 화면상 같은 회로가 다르게 돈다)');
+
+      // 음성 대조군 — 좌표를 실제로 바꾸면 순서가 바뀌어야 한다.
+      // 늘 같은 답이면 이 검사는 아무것도 안 보고 있는 것이다.
+      var moved = buildCycle(52, 62, ['A', 'B', 'C']);
+      G.gMove(moved.ctrl, moved.id.C, 10, 10);        // C 를 맨 왼쪽 위로 옮긴다
+      var oMoved = orderAsPos({ ctrl: moved.ctrl, id: moved.id, info: G.gInfo(moved.ctrl) });
+      chk('ctrl.orderFollowsLayout', oMoved !== oFwd,
+        'C 노드를 좌상단으로 옮기자 평가순서 ' + oFwd + ' → ' + oMoved +
+        ' (안 바뀌면 좌표를 안 보고 있다는 뜻)');
+
+      // (7) **[전력 만족도] 의 다섯 출구가 전부 자기 전력망 기준이어야 한다.**
+      //     예전에는 만족%만 자기 망이고 공급kW/수요kW 는 전 세계 합계였다 —
+      //     발전소가 둘이면 제어기가 지도 반대편 숫자로 판단했다.
+      labSetup(undefined, true);                 // 전력을 진짜로 쓴다
+      // 망 A: 전주 + 발전기 + 조립기 1대(155kW).  망 B: 멀리 떨어진 전주 + 발전기.
+      G.place('pole', 40, 40, 0);
+      var pgA = G.place('generator', 41, 41, 0);
+      if (pgA) G.setFuel(pgA, 4000 * 100000);
+      var pAsm = G.place('assembler', 38, 38, 0);
+      if (pAsm) { G.setRecipe(pAsm, 'gear'); G.fillChest(pAsm, 'iron-plate', 50); }
+      G.place('pole', 100, 100, 0);
+      var pgB = G.place('generator', 101, 101, 0);
+      if (pgB) G.setFuel(pgB, 4000 * 100000);
+      var pCtl = G.place('controller', 42, 38, 0);
+      G.run(2);
+      var pN = G.gAdd(pCtl, 'power', 0, 0);
+      G.run(1);
+      var st2 = G.state();
+      var pSup = G.gOut(pCtl, pN, 1), pDem = G.gOut(pCtl, pN, 2);
+      var pHead = G.gOut(pCtl, pN, 3), pConn = G.gOut(pCtl, pN, 4);
+      chk('ctrl.powerOutputsAreNetLocal',
+        st2.power.supply >= 1800 && pSup === 900 && pConn === 1 &&
+        pHead === pSup - pDem,
+        '발전기 2대(전 세계 공급 ' + Math.round(st2.power.supply) + 'kW)인데 제어기 망의 ' +
+        '공급kW=' + pSup + ' 수요kW=' + pDem + ' 여유kW=' + pHead + ' 망연결=' + pConn +
+        ' (전역 합계면 1800 이 나온다)');
+
+      // 음성 대조군 — 망 밖 제어기는 '망연결 0' 으로 구별돼야 한다.
+      // 예전에는 만족% 0 만 나와서 '전기 없음' 과 '망 밖' 을 구별할 수 없었다.
+      var offCtl = G.place('controller', 20, 20, 0);
+      G.run(2);
+      var offN = G.gAdd(offCtl, 'power', 0, 0);
+      G.run(1);
+      chk('ctrl.powerReportsDisconnection',
+        G.gOut(offCtl, offN, 4) === 0 && G.ent(offCtl).net < 0,
+        '전주 없는 곳의 제어기 → 망연결=' + G.gOut(offCtl, offN, 4) + ' · net=' +
+        G.ent(offCtl).net + ' (0 이어야 "전기 없음" 과 구별된다)');
 
       // ================= 9. 결정론 =======================================
       function scenarioHash(seed) {

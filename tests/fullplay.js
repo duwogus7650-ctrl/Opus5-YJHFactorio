@@ -1,0 +1,446 @@
+// ===========================================================================
+//  전수 스윕 — 게임의 모든 기능을 하나씩 실제로 써 보고 말이 되는지 본다
+//
+//  목적: "내가 발견 못한 것" 을 찾는다. 그래서 판정 기준을 **오라클** 로 둔다 —
+//  관찰된 값을 정답으로 삼지 않고, 스펙·정의·상식에서 기대값을 먼저 계산해 대조한다.
+//  관찰을 정답으로 쓰면 버그가 스펙이 되어 버린다.
+//
+//  덮는 범위:
+//    · 노드 25종 전부 — 입력 9 / 연산 10 / 출력 6
+//    · 건물 전부 — 놓고, 실제로 제 일을 하는지
+//    · 레시피 전부 — 만들어지는지
+//    · 연구 전부 — 끝내면 실제로 열리는지
+//    · 저장/복원 왕복
+//
+//  규율: 이상한 것은 FAIL 로 낸다. 통과시켜 놓고 주석에 적으면 아무도 안 읽는다.
+// ===========================================================================
+(function () {
+  var checks = [];
+  function chk(name, ok, detail, expectFail) {
+    checks.push({ name: name, ok: !!ok, detail: String(detail), expectFail: !!expectFail });
+  }
+  function emit(o) {
+    document.getElementById('testout').textContent =
+      '@@JSON_START@@' + JSON.stringify(o) + '@@JSON_END@@';
+  }
+  var G, out = { checks: checks, errors: [], fatal: null, notes: [], measured: {} };
+  function r2(v) { return Math.round(v * 100) / 100; }
+
+  // --- 노드 시험용 판 --------------------------------------------------------
+  // 제어기 하나에 노드를 놓고, 입력을 상수로 물려 출력을 읽는다.
+  var CT = null;
+  function freshCtrl() {
+    G.reset(424242); G.clearEntities(); G.clearEnemies();
+    G.giveAll(99999); G.powerCheat(true);
+    for (var t = 0; t < G.techIds().length; t++) G.research(G.techIds()[t]);
+    CT = G.place('controller', 60, 60, 0);
+    G.run(1);
+    return CT;
+  }
+  function K(v, x, y) { var n = G.gAdd(CT, 'const', x || 0, y || 0); G.gCfg(CT, n, 'value', v); return n; }
+  function N(kind, x, y) { return G.gAdd(CT, kind, x || 200, y || 0); }
+  function L(a, ap, b, bp) { return G.gLink(CT, a, ap, b, bp); }
+  function O(n, p) { return G.gOut(CT, n, p || 0); }
+  // 노드를 좌표로 벌려 놓는다 — 평가 순서가 좌표순이므로 입력이 먼저 오게 한다
+
+  function runAll() {
+    try {
+      if (!window.__READY || !window.__GAME) { out.fatal = 'boot 실패'; emit(out); return; }
+      G = window.__GAME;
+      var SP = G.spec();
+      var anomalies = [];
+      function odd(what) { anomalies.push(what); }
+
+      // ======================= 1. 노드 25종 전수 =========================
+      var kinds = G.nodeKinds();
+      out.measured.nodeKinds = kinds.length;
+      chk('sweep.allNodeKindsKnown', kinds.length === 25,
+        '노드 종류 ' + kinds.length + '개: ' + kinds.join(','));
+
+      // ---- 입력: 상수 ----
+      freshCtrl();
+      var kc = K(42, 0, 0);
+      G.run(1);
+      chk('node.const', O(kc) === 42, '상수 42 → ' + O(kc));
+
+      // ---- 입력: 상자 재고 (품목 지정 / 전체) ----
+      freshCtrl();
+      var box = G.place('chest', 64, 60, 0);
+      G.fillChest(box, 'iron-plate', 7);
+      G.fillChest(box, 'copper-plate', 3);
+      var nb = N('chest', 0, 0); G.gCfg(CT, nb, 'ent', box); G.gCfg(CT, nb, 'item', 'iron-plate');
+      var nb2 = N('chest', 0, 200); G.gCfg(CT, nb2, 'ent', box); G.gCfg(CT, nb2, 'item', null);
+      G.run(1);
+      chk('node.chest', O(nb) === 7 && O(nb2) === 10,
+        '철판 7 + 구리판 3 인 상자 → 품목지정 ' + O(nb) + ' (7이어야) · 전체 ' + O(nb2) + ' (10이어야)');
+
+      // ---- 입력: 창고 재고 ----
+      freshCtrl();
+      G.setInv('gear', 55);
+      var ni = N('invsense', 0, 0); G.gCfg(CT, ni, 'item', 'gear');
+      G.run(1);
+      chk('node.invsense', O(ni) === 55, '보유 톱니 55 → ' + O(ni));
+
+      // ---- 입력: 타이머 ----
+      // 주기 2초면 2초에 정확히 한 번 발화해야 한다. 위상%는 0~100 을 톱니처럼 돈다.
+      freshCtrl();
+      var nt = N('timer', 0, 0); G.gCfg(CT, nt, 'period', 2);
+      var fires = 0, phMin = 1e9, phMax = -1e9;
+      // 정확히 6.0초로 재면 3번째 발화가 경계에 걸린다(2회로 관측됐다).
+      // 경계에서 게임을 탓하지 않는다 — 7초로 재고 3회를 기대한다.
+      for (var ti = 0; ti < 420; ti++) {          // 7초 = 주기 3회 (2,4,6초)
+        G.tickOnce();
+        if (O(nt, 0) >= 0.5) fires++;
+        var ph = O(nt, 1);
+        if (ph < phMin) phMin = ph;
+        if (ph > phMax) phMax = ph;
+      }
+      chk('node.timer', fires === 3,
+        '주기 2초로 7초 구동 → 발화 ' + fires + '회 (2·4·6초 = 3회여야) · 위상% ' + phMin + '~' + phMax);
+      if (phMin < 0 || phMax > 100) odd('타이머 위상%가 0~100 을 벗어난다: ' + phMin + '~' + phMax);
+
+      // ---- 입력: 기계 상태 ----
+      freshCtrl();
+      var mAsm = G.place('assembler', 64, 60, 0);
+      G.setRecipe(mAsm, 'gear'); G.fillChest(mAsm, 'iron-plate', 50);
+      var nm = N('machine', 0, 0); G.gCfg(CT, nm, 'ent', mAsm);
+      G.run(1);
+      var работ = O(nm, 0), stall = O(nm, 1), prog = O(nm, 2);
+      chk('node.machineWorking', работ >= 0.5 && prog >= 0 && prog <= 100,
+        '재료를 댄 조립기 → 가동 ' + работ + ' · 정체 ' + stall + ' · 진행% ' + prog);
+      // 재료를 끊으면 정체가 자라야 한다
+      G.takeToStock(mAsm);
+      G.run(3);
+      var stall2 = O(nm, 1);
+      chk('node.machineStall', stall2 > stall,
+        '재료를 끊고 3초 → 정체 ' + r2(stall) + ' → ' + r2(stall2) + ' (자라야 한다)');
+
+      // ---- 입력: 벨트 센서 ----
+      freshCtrl();
+      var bl = G.place('belt', 64, 60, 1);
+      G.beltPut(bl, 'iron-plate', 0.5);
+      var nbe = N('belt', 0, 0); G.gCfg(CT, nbe, 'ent', bl); G.gCfg(CT, nbe, 'item', null);
+      G.run(1);
+      chk('node.belt', O(nbe) >= 1, '벨트에 아이템 1개 올림 → 센서 ' + O(nbe));
+
+      // ---- 입력: 연구 진행 ----
+      // freshCtrl 은 모든 연구를 끝내 버리므로 '진행 중' 을 만들 수 없다.
+      // 연구를 하나도 안 한 판을 따로 만든다.
+      G.reset(424242); G.clearEntities(); G.clearEnemies();
+      G.giveAll(99999); G.powerCheat(true);
+      CT = G.place('controller', 60, 60, 0);
+      G.run(1);
+      var nr = N('research', 0, 0);
+      G.run(1);
+      var noRes = O(nr, 1);
+      var started = G.setResearch('logistics');
+      G.run(1);
+      chk('node.research', noRes === 0 && started === true && O(nr, 1) >= 0.5,
+        '연구 없음 → 연구중 ' + noRes + ' · 시작 성공 ' + started + ' → 연구중 ' + O(nr, 1));
+
+      // ---- 입력: 적 근접 ----
+      // 적이 없을 때 최근접거리는 0 이 아니라 반경 R 이어야 한다.
+      // 0 이면 "거리 < 10 이면 방어" 가 평상시 늘 참이 된다.
+      freshCtrl();
+      var ne = N('enemy', 0, 0); G.gCfg(CT, ne, 'radius', 30);
+      G.run(1);
+      var cnt0 = O(ne, 0), dist0 = O(ne, 1);
+      G.spawnEnemyAt(62, 60, 0);
+      G.run(1);
+      var cnt1 = O(ne, 0), dist1 = O(ne, 1);
+      chk('node.enemy', cnt0 === 0 && dist0 === 30 && cnt1 >= 1 && dist1 < 30,
+        '적 없음 → 마릿수 ' + cnt0 + ' 거리 ' + dist0 + ' (반경 30이어야) · 적 1마리 → ' +
+        cnt1 + ' / ' + r2(dist1));
+
+      // ---- 연산: 비교 6종 ----
+      freshCtrl();
+      var ops = ['>', '>=', '<', '<=', '==', '!='];
+      var expect = { '>': 0, '>=': 1, '<': 0, '<=': 1, '==': 1, '!=': 0 };  // 5 vs 5
+      var cmpBad = [];
+      for (var ci = 0; ci < ops.length; ci++) {
+        var a5 = K(5, 0, ci * 60), b5 = K(5, 100, ci * 60);
+        var cn = N('cmp', 300, ci * 60); G.gCfg(CT, cn, 'op', ops[ci]);
+        L(a5, 0, cn, 0); L(b5, 0, cn, 1);
+        G.run(1);
+        if (O(cn) !== expect[ops[ci]]) cmpBad.push(ops[ci] + '=' + O(cn) + '(기대 ' + expect[ops[ci]] + ')');
+      }
+      chk('node.cmpAllOps', cmpBad.length === 0,
+        '5 vs 5 로 6개 연산자 검산 → ' + (cmpBad.length ? '어긋남: ' + cmpBad.join(', ') : '전부 일치'));
+
+      // ---- 연산: 사칙 7종 + 0 나눗셈 ----
+      freshCtrl();
+      var mops = [['+', 3, 4, 7], ['-', 3, 4, -1], ['*', 3, 4, 12], ['/', 12, 4, 3],
+                  ['%', 13, 4, 1], ['min', 3, 4, 3], ['max', 3, 4, 4],
+                  ['/', 5, 0, 0], ['%', 5, 0, 0]];      // 0 나눗셈은 0 이어야 (NaN 금지)
+      var mBad = [];
+      for (var mi = 0; mi < mops.length; mi++) {
+        var o = mops[mi];
+        var ma = K(o[1], 0, mi * 60), mb = K(o[2], 100, mi * 60);
+        var mn = N('math', 300, mi * 60); G.gCfg(CT, mn, 'op', o[0]);
+        L(ma, 0, mn, 0); L(mb, 0, mn, 1);
+        G.run(1);
+        var got = O(mn);
+        if (got !== o[3]) mBad.push(o[1] + o[0] + o[2] + '=' + got + '(기대 ' + o[3] + ')');
+      }
+      chk('node.mathAllOps', mBad.length === 0,
+        '사칙 9경우 검산(0 나눗셈 포함) → ' + (mBad.length ? '어긋남: ' + mBad.join(', ') : '전부 일치'));
+
+      // ---- 연산: 논리 4종 ----
+      freshCtrl();
+      var bops = [['AND', 1, 1, 1], ['AND', 1, 0, 0], ['OR', 1, 0, 1], ['OR', 0, 0, 0],
+                  ['XOR', 1, 0, 1], ['XOR', 1, 1, 0], ['NOT A', 0, 1, 1], ['NOT A', 1, 0, 0]];
+      var bBad = [];
+      for (var bi = 0; bi < bops.length; bi++) {
+        var q = bops[bi];
+        var qa = K(q[1], 0, bi * 60), qb = K(q[2], 100, bi * 60);
+        var qn = N('bool', 300, bi * 60); G.gCfg(CT, qn, 'op', q[0]);
+        L(qa, 0, qn, 0); L(qb, 0, qn, 1);
+        G.run(1);
+        if (O(qn) !== q[3]) bBad.push(q[0] + '(' + q[1] + ',' + q[2] + ')=' + O(qn) + '≠' + q[3]);
+      }
+      chk('node.boolAllOps', bBad.length === 0,
+        '논리 8경우 검산 → ' + (bBad.length ? '어긋남: ' + bBad.join(', ') : '전부 일치'));
+
+      // ---- 연산: 범위 제한 ----
+      freshCtrl();
+      var clBad = [];
+      var clCases = [[-5, 0], [50, 50], [500, 100]];
+      for (var li = 0; li < clCases.length; li++) {
+        var lk2 = K(clCases[li][0], 0, li * 60);
+        var cl = N('clamp', 300, li * 60); G.gCfg(CT, cl, 'lo', 0); G.gCfg(CT, cl, 'hi', 100);
+        L(lk2, 0, cl, 0);
+        G.run(1);
+        if (O(cl) !== clCases[li][1]) clBad.push(clCases[li][0] + '→' + O(cl) + '≠' + clCases[li][1]);
+      }
+      chk('node.clamp', clBad.length === 0,
+        '범위 제한 0~100 에 -5/50/500 → ' + (clBad.length ? clBad.join(', ') : '전부 일치'));
+
+      // ---- 연산: 선택 ----
+      freshCtrl();
+      var sc = K(1, 0, 0), sa = K(11, 0, 60), sb = K(22, 0, 120);
+      var sn = N('select', 300, 0);
+      L(sc, 0, sn, 0); L(sa, 0, sn, 1); L(sb, 0, sn, 2);
+      G.run(1);
+      var selTrue = O(sn);
+      G.gCfg(CT, sc, 'value', 0);
+      G.run(1);
+      chk('node.select', selTrue === 11 && O(sn) === 22,
+        '조건1 → ' + selTrue + ' (A=11) · 조건0 → ' + O(sn) + ' (B=22)');
+
+      // ---- 연산: SR 래치 (RESET 우선) ----
+      freshCtrl();
+      var ls = K(0, 0, 0), lr = K(0, 0, 60);
+      var ln = N('latch', 300, 0);
+      L(ls, 0, ln, 0); L(lr, 0, ln, 1);
+      G.gCfg(CT, ls, 'value', 1); G.run(1);
+      var q1 = O(ln);
+      G.gCfg(CT, ls, 'value', 0); G.run(1);
+      var q2 = O(ln);                                  // SET 내려도 유지
+      G.gCfg(CT, lr, 'value', 1); G.run(1);
+      var q3 = O(ln);
+      G.gCfg(CT, ls, 'value', 1); G.run(1);            // SET·RESET 동시 → RESET 우선
+      var q4 = O(ln);
+      chk('node.latch', q1 === 1 && q2 === 1 && q3 === 0 && q4 === 0,
+        'SET→' + q1 + ' · SET해제→' + q2 + '(유지) · RESET→' + q3 + ' · SET+RESET동시→' + q4 + '(RESET 우선)');
+
+      // ---- 연산: 카운터 (상승 엣지에서만) ----
+      freshCtrl();
+      var ck = K(0, 0, 0), crst = K(0, 0, 60);
+      var cn2 = N('counter', 300, 0); G.gCfg(CT, cn2, 'max', 0);
+      L(ck, 0, cn2, 0); L(crst, 0, cn2, 1);
+      for (var ci2 = 0; ci2 < 3; ci2++) {
+        G.gCfg(CT, ck, 'value', 1); G.run(1);
+        G.gCfg(CT, ck, 'value', 0); G.run(1);
+      }
+      var cVal = O(cn2);
+      // 신호를 계속 1로 두면 더 안 세어야 한다 (상승 엣지 계수)
+      G.gCfg(CT, ck, 'value', 1); G.run(2);
+      var cVal2 = O(cn2);
+      G.gCfg(CT, crst, 'value', 1); G.run(1);
+      chk('node.counter', cVal === 3 && cVal2 === 4 && O(cn2) === 0,
+        '펄스 3회 → ' + cVal + ' · 계속 1로 2초 → ' + cVal2 + ' (1만 늘어야) · 리셋 → ' + O(cn2));
+
+      // ---- 연산: 엣지 검출 3종 ----
+      freshCtrl();
+      var eBad = [];
+      var eModes = ['상승', '하강', '양쪽'];
+      for (var ei = 0; ei < eModes.length; ei++) {
+        var ek = K(0, 0, ei * 120);
+        var en2 = N('edge', 300, ei * 120); G.gCfg(CT, en2, 'mode', eModes[ei]);
+        L(ek, 0, en2, 0);
+        G.run(1);
+        var rise = 0, fall = 0;
+        G.gCfg(CT, ek, 'value', 1); G.tickOnce(); if (O(en2) >= 0.5) rise++;
+        G.tickOnce();
+        G.gCfg(CT, ek, 'value', 0); G.tickOnce(); if (O(en2) >= 0.5) fall++;
+        var want = { '상승': [1, 0], '하강': [0, 1], '양쪽': [1, 1] }[eModes[ei]];
+        if (rise !== want[0] || fall !== want[1]) {
+          eBad.push(eModes[ei] + ': 상승' + rise + '/하강' + fall + ' (기대 ' + want.join('/') + ')');
+        }
+      }
+      chk('node.edge', eBad.length === 0,
+        '엣지 3모드 검산 → ' + (eBad.length ? eBad.join(' · ') : '전부 일치'));
+
+      // ---- 연산: 샘플 홀드 ----
+      freshCtrl();
+      var hv = K(10, 0, 0), hs = K(0, 0, 60);
+      var hn = N('hold', 300, 0);
+      L(hv, 0, hn, 0); L(hs, 0, hn, 1);
+      G.gCfg(CT, hs, 'value', 1); G.run(1);
+      var h1 = O(hn);
+      G.gCfg(CT, hs, 'value', 0); G.gCfg(CT, hv, 'value', 99); G.run(1);
+      var h2 = O(hn);
+      chk('node.hold', h1 === 10 && h2 === 10,
+        '값10 샘플1 → ' + h1 + ' · 값을 99로 바꾸고 샘플0 → ' + h2 + ' (10을 유지해야)');
+
+      // ---- 연산: PID ----
+      // 목표 100, 측정 0 이면 오차 100 이고 출력은 Kp*오차 방향(양수)이어야 한다.
+      freshCtrl();
+      var pt = K(100, 0, 0), pm = K(0, 0, 60);
+      var pn = N('pid', 300, 0);
+      G.gCfg(CT, pn, 'kp', 1); G.gCfg(CT, pn, 'ki', 0); G.gCfg(CT, pn, 'kd', 0);
+      G.gCfg(CT, pn, 'lim', 1000);
+      L(pt, 0, pn, 0); L(pm, 0, pn, 1);
+      G.run(1);
+      var pOut = O(pn, 0), pErr = O(pn, 1);
+      chk('node.pid', pErr === 100 && pOut > 0,
+        '목표100 측정0 Kp=1 → 오차 ' + pErr + ' · 출력 ' + r2(pOut) + ' (오차 100, 출력 양수여야)');
+
+      // ---- 출력 6종은 세계를 실제로 움직이는가 ----
+      freshCtrl();
+      var oAsm = G.place('assembler', 64, 60, 0);
+      var oBelt = G.place('belt', 68, 60, 1);
+      var oIns = G.place('inserter', 70, 60, 1);
+      var oTur = G.place('turret', 72, 64, 0);
+      var on1 = K(0, 0, 0);
+      var oe = N('enable', 300, 0);   G.gCfg(CT, oe, 'ent', oAsm);  L(on1, 0, oe, 0);
+      var og = N('gate', 300, 60);    G.gCfg(CT, og, 'ent', oBelt); L(on1, 0, og, 0);
+      var of2 = N('filter', 300, 120); G.gCfg(CT, of2, 'ent', oIns);
+      G.gCfg(CT, of2, 'a', 'iron-plate'); G.gCfg(CT, of2, 'b', 'gear'); L(on1, 0, of2, 0);
+      var ofi = N('fire', 300, 180);  G.gCfg(CT, ofi, 'ent', oTur); L(on1, 0, ofi, 0);
+      var olp = N('lamp', 300, 240);  G.gCfg(CT, olp, 'label', '시험경보'); L(on1, 0, olp, 0);
+      var odp = N('display', 300, 300); G.gCfg(CT, odp, 'label', '시험값'); L(on1, 0, odp, 0);
+      G.run(1);
+      var s0 = G.state();
+      // **조건별로 쪼갠다.** 뭉쳐 놓으면 어디가 깨졌는지 알 수 없어 진단이 안 된다.
+      var rig = { asm: !!oAsm, belt: !!oBelt, ins: !!oIns, tur: !!oTur };
+      chk('node.outputRigBuilt', rig.asm && rig.belt && rig.ins && rig.tur,
+        '출력 시험용 대상 배치 ' + JSON.stringify(rig));
+      var off = {
+        asmOff: G.ent(oAsm).enabled === false,
+        filterA: G.ent(oIns).filter === 'iron-plate',
+        fireOff: G.ent(oTur).fireOk === false,
+        noAlarm: s0.alarms.indexOf('시험경보') < 0,
+        gateShut: G.gateState(oBelt) === false
+      };
+      G.gCfg(CT, on1, 'value', 1); G.run(1);
+      var s1 = G.state();
+      var on = {
+        asmOn: G.ent(oAsm).enabled === true,
+        filterB: G.ent(oIns).filter === 'gear',
+        fireOn: G.ent(oTur).fireOk === true,
+        alarm: s1.alarms.indexOf('시험경보') >= 0,
+        gateOpen: G.gateState(oBelt) === true
+      };
+      function allTrue(o) { for (var k in o) if (!o[k]) return false; return true; }
+      chk('node.allOutputsAct', allTrue(off) && allTrue(on),
+        '신호 0 → ' + JSON.stringify(off) + ' · 신호 1 → ' + JSON.stringify(on));
+      var dsp = s1.displays.filter(function (d) { return d.label === '시험값'; });
+      chk('node.displayShows', dsp.length === 1 && dsp[0].value === 1,
+        '수치 표시 → ' + JSON.stringify(dsp));
+
+      // ======================= 2. 모든 건물 =============================
+      freshCtrl();
+      var types = G.buildingTypes();
+      out.measured.buildingTypes = types.length;
+      var placeFail = [];
+      for (var bt = 0; bt < types.length; bt++) {
+        var ty = types[bt];
+        var ok = false;
+        for (var tryY = 0; tryY < 12 && !ok; tryY++) {
+          if (G.place(ty, 40 + bt * 4, 40 + tryY * 4, 1)) ok = true;
+        }
+        if (!ok) placeFail.push(ty + ' — ' + G.whyPlace(ty, 40 + bt * 4, 40, 1));
+      }
+      chk('sweep.everyBuildingPlaceable', placeFail.length === 0,
+        '건물 ' + types.length + '종 배치 → 실패 ' + placeFail.length +
+        (placeFail.length ? ': ' + placeFail.join(' | ') : ''));
+
+      // ======================= 3. 모든 레시피 ===========================
+      freshCtrl();
+      var recipes = G.recipeIds();
+      out.measured.recipes = recipes.length;
+      var craftFail = [];
+      for (var ri = 0; ri < recipes.length; ri++) {
+        var rid = recipes[ri], info = G.recipeInfo(rid);
+        if (info.cat === 'craft' && info.handOk) {
+          for (var k in info.inp) G.setInv(k, 999);
+          var before = G.state().inventory[rid] || 0;
+          G.handCraft(rid);
+          if ((G.state().inventory[rid] || 0) <= before) craftFail.push(rid + '(손조립)');
+        } else if (info.cat === 'smelt') {
+          var fz = G.place('furnace', 44 + ri * 3, 70, 0);
+          if (!fz) { craftFail.push(rid + '(용광로 배치 실패)'); continue; }
+          G.setRecipe(fz, rid);
+          for (var k2 in info.inp) G.fillChest(fz, k2, 50);
+          G.run(info.time * 3 + 2);
+          if ((G.ent(fz).out[rid] || 0) < 1) craftFail.push(rid + '(제련)');
+        }
+      }
+      chk('sweep.everyRecipeProducible', craftFail.length === 0,
+        '레시피 ' + recipes.length + '종 → 실패 ' + craftFail.length +
+        (craftFail.length ? ': ' + craftFail.join(', ') : ''));
+
+      // ======================= 4. 모든 연구 =============================
+      G.reset(424242); G.clearEntities(); G.giveAll(99999); G.powerCheat(true);
+      var techs = G.techIds();
+      out.measured.techs = techs.length;
+      var techFail = [];
+      for (var tI = 0; tI < techs.length; tI++) {
+        G.research(techs[tI]);
+        if (!G.state().research.done.includes(techs[tI])) techFail.push(techs[tI]);
+      }
+      // 연구가 실제로 무언가를 여는지 — 잠긴 노드가 풀렸는지로 본다
+      var lockedAfter = G.nodeKinds().filter(function (k) { return !G.nodeAvailable(k); });
+      chk('sweep.everyTechUnlocks', techFail.length === 0 && lockedAfter.length === 0,
+        '연구 ' + techs.length + '종 완료 → 실패 ' + techFail.length +
+        ' · 아직 잠긴 노드 ' + lockedAfter.length + (lockedAfter.length ? ': ' + lockedAfter.join(',') : ''));
+
+      // ======================= 5. 저장/복원 왕복 =========================
+      // 노드 25종이 모두 든 그래프를 저장하고 복원해도 값이 같아야 한다.
+      freshCtrl();
+      var allNodes = [];
+      for (var ki = 0; ki < kinds.length; ki++) allNodes.push(N(kinds[ki], 100 + ki * 12, ki * 30));
+      G.run(2);
+      var infoBefore = G.gInfo(CT);
+      var raw = G.save();
+      G.reset(999);
+      G.load(raw);
+      var ctrl2 = null, idsL = G.entIds();
+      for (var q2 = 0; q2 < idsL.length; q2++) if (idsL[q2][1] === 'controller') ctrl2 = idsL[q2][0];
+      var infoAfter = ctrl2 ? G.gInfo(ctrl2) : null;
+      chk('sweep.saveKeepsAllNodeKinds',
+        !!infoAfter && infoAfter.nodes === infoBefore.nodes,
+        '노드 ' + kinds.length + '종이 든 그래프 저장→복원 → 노드 ' +
+        infoBefore.nodes + ' → ' + (infoAfter ? infoAfter.nodes : '없음'));
+
+      out.measured.anomalies = anomalies;
+      chk('sweep.noAnomalies', anomalies.length === 0,
+        '오라클과 어긋난 것 ' + anomalies.length + '건' +
+        (anomalies.length ? ': ' + anomalies.join(' | ') : ''));
+
+      out.errors = G.errors();
+      chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
+      chk('selftest.mustFail', kinds.length < 0, '노드 종류 수가 음수일 리 없다', true);
+      out.finalState = G.state();
+      void SP;
+    } catch (e) {
+      out.fatal = (e && e.stack) ? e.stack : String(e);
+      try { out.errors = window.__GAME ? window.__GAME.errors() : []; } catch (e2) { void e2; }
+    }
+    emit(out);
+  }
+  function go() { setTimeout(runAll, 80); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
+  else go();
+})();

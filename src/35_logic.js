@@ -25,7 +25,13 @@ var NODE_DEFS = {
   'machine': { label: '기계 상태', cat: 'in', ins: [], outs: ['가동', '정체', '진행%'],
                cfg: [{ k: 'ent', t: 'ent', label: '대상',
                        filter: ['miner', 'furnace', 'assembler', 'lab', 'generator', 'turret', 'inserter'] }] },
-  'power':   { label: '전력 만족도', cat: 'in', ins: [], outs: ['만족%', '공급kW', '수요kW'],
+  // 출구 다섯 개 **모두 자기 전력망 기준**이다. 예전에는 만족%만 자기 망이고
+  // 공급kW/수요kW 는 전 세계 합계였다 — 발전소가 둘이면 제어기가 지도 반대편
+  // 숫자로 판단했다. '여유kW' 는 공급-수요이고 **클램프하지 않는다**:
+  // 만족%는 100 에서 잘려 부하 차단의 히스테리시스에 쓸 사공간이 없다.
+  // '망연결' 은 0 이 '전기 없음' 인지 '망 밖'인지 구별하게 해준다.
+  'power':   { label: '전력 만족도', cat: 'in', ins: [],
+               outs: ['만족%', '공급kW', '수요kW', '여유kW', '망연결'],
                cfg: [] },
   'timer':   { label: '타이머', cat: 'in', ins: [], outs: ['펄스', '위상%'],
                cfg: [{ k: 'period', t: 'num', label: '주기', def: 5 }] },
@@ -144,6 +150,27 @@ function graphCompile(g) {
     if (byId[lk.fn] && byId[lk.tn]) adj[lk.fn].push({ to: lk.tn, link: lk });
     lk.back = false;
   }
+
+  // **평가 순서는 '화면에 보이는 배치'의 함수여야 한다.**
+  // 예전에는 DFS 진입점 순서 = g.nodes 배열 순서 = **노드를 만든 순서**였다.
+  // 그래서 위치와 배선이 글자 하나까지 같은 두 회로가 다르게 돌았다 — 어느 배선이
+  // 1틱 지연 되먹임이 되는지가 갈렸고, 값까지 달라졌다. 더 나쁜 것은 노드 하나를
+  // 지우고 같은 자리에 다시 만들면(splice 후 push) 그 노드가 순서 맨 뒤로 밀려
+  // 손도 안 댄 회로가 갑자기 다르게 도는 것이었다.
+  // 화면에는 좌표와 배선만 보이고 생성 순서는 어디에도 안 나오므로, 플레이어가
+  // 원인을 짚을 단서가 없었다. 좌표순으로 정렬하면 보이는 것이 곧 규칙이 된다.
+  function layoutKey(n) { return [Math.round(n.x), Math.round(n.y), n.nid]; }
+  function cmpNode(p, q) {
+    var A = layoutKey(p), B = layoutKey(q);
+    return (A[0] - B[0]) || (A[1] - B[1]) || (A[2] - B[2]);
+  }
+  var roots = g.nodes.slice().sort(cmpNode);
+  for (var r2 = 0; r2 < roots.length; r2++) {
+    var ls2 = adj[roots[r2].nid];
+    if (ls2 && ls2.length > 1) {
+      ls2.sort(function (u, v) { return cmpNode(byId[u.to], byId[v.to]); });
+    }
+  }
   var color = {};     // 0 미방문, 1 스택 위, 2 완료
   var order = [];
   function dfs(nid) {
@@ -157,7 +184,7 @@ function graphCompile(g) {
     color[nid] = 2;
     order.push(nid);
   }
-  for (var s = 0; s < g.nodes.length; s++) if (!color[g.nodes[s].nid]) dfs(g.nodes[s].nid);
+  for (var s = 0; s < roots.length; s++) if (!color[roots[s].nid]) dfs(roots[s].nid);
   order.reverse();
   g.order = order;
   g.byId = byId;
@@ -229,10 +256,15 @@ function evalNode(g, n, dt, ctrl) {
       break;
     }
     case 'power': {
+      var np = ctrl ? netPowerOf(ctrl)
+                    : { connected: 1, supply: powerStats.supply,
+                        demand: powerStats.demand, head: powerStats.supply - powerStats.demand };
       var sat = ctrl ? netSatOf(ctrl) : powerStats.sat;
       n.out[0] = Math.round(sat * 100);
-      n.out[1] = Math.round(powerStats.supply);
-      n.out[2] = Math.round(powerStats.demand);
+      n.out[1] = Math.round(np.supply);
+      n.out[2] = Math.round(np.demand);
+      n.out[3] = Math.round(np.head);      // 클램프 없음 — 남는 쪽도 보인다
+      n.out[4] = np.connected;
       break;
     }
     case 'timer': {

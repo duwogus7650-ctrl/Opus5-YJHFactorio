@@ -442,7 +442,9 @@
       var advNow = G.tutorial();
       chk('ui.advButtonEntersChapter',
         advNow.track === 'adv' && advNow.step === 0 && advNow.done === false &&
-        document.getElementById('tutorHead').textContent.indexOf('심화 1/8') >= 0 &&
+        // 총 단계 수를 박지 말 것 — 단계를 하나 추가하면 게이트가 깨진다
+        // (실제로 5단계를 둘로 나누자 여기서 걸렸다).
+        document.getElementById('tutorHead').textContent.indexOf('심화 1/' + advNow.total) >= 0 &&
         document.getElementById('tutorBody').textContent.indexOf('녹색 연구팩') >= 0,
         '버튼 클릭 → 트랙 ' + advNow.track + ' ' + advNow.step + '/' + advNow.total +
         ' · 머리말="' + document.getElementById('tutorHead').textContent + '"');

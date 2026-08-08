@@ -1,200 +1,245 @@
 // ===========================================================================
-//  부하 차단 발진 측정 — 심화 튜토리얼 4·5단계의 주장을 숫자로 확인한다.
+//  부하 차단 검증 — 다섯 구성을 같은 자리에서 잰다
 //
-//  4단계 본문에 이렇게 써 놨다:
-//      "그 기계가 1초에도 몇 번씩 켜졌다 꺼지는지 본다"
-//  그리고 5단계는 그 떨림을 SR 래치로 없애라고 한다. **둘 다 재 본 적이 없었다.**
-//  순진한 배선이 실제로는 안 떨린다면 4단계는 고장을 못 보여주고, 5단계의 래치도
-//  왜 필요한지 알 수 없게 된다 — 튜토리얼 두 단계가 통째로 헛돈다.
+//  이 파일은 예전 shedding.js 를 대체한다. 예전 것은 조립기 7대 중 **1대만**
+//  끊어 차단 후에도 적자가 남는 구성을 골랐고(만족도 96.8%), 그 하나에서만
+//  성립하는 안정을 근거로 "래치가 발진을 잡는다" 는 GREEN 을 받고 있었다.
+//  독립 감사가 그걸 교차 확인해 짚었다 — 통과하도록 만든 게이트는 통과한다.
 //
-//  그래서 여기서 판정하는 것은 "회로가 도는가"가 아니라 **몇 번 뒤집히는가**다.
-//  판정은 #testout JSON 으로만 하고 채점은 harness.py 가 한다 (드라이버만 갈아 낀다).
+//  이제 어려운 구성(차단이 적자를 완전히 지우는 경우)을 기본으로 재고,
+//  래치만으로는 못 막힌다는 것까지 게이트로 못박는다.
 // ===========================================================================
 (function () {
   var checks = [];
-  function chk(name, ok, detail, expectFail) {
-    checks.push({ name: name, ok: !!ok, detail: String(detail), expectFail: !!expectFail });
-  }
-  function emit(obj) {
+  function chk(n, ok, d, ef) { checks.push({ name: n, ok: !!ok, detail: String(d), expectFail: !!ef }); }
+  function emit(o) {
     document.getElementById('testout').textContent =
-      '@@JSON_START@@' + JSON.stringify(obj) + '@@JSON_END@@';
+      '@@JSON_START@@' + JSON.stringify(o) + '@@JSON_END@@';
   }
-  var G;
-  var P0 = 50, PN = 7;
+  var G, out = { checks: checks, errors: [], fatal: null, measured: {} };
+
+  var P0 = 50, PN = 6;
   function slot(i) {
     var k = i % (PN - 1), m = Math.floor(i / (PN - 1)) % (PN - 1);
     return [P0 + 1 + k * 5, P0 + 1 + m * 5];
   }
-
-  // 전력을 **진짜로** 쓴다. powerCheat 를 켜면 만족도가 늘 100% 라 이 측정 자체가
-  // 성립하지 않는다 (그러면 발진이 0 으로 나오고 "안 떨린다"는 거짓 결론이 된다).
-  function rig(nAsm, nGen) {
-    G.reset(424242);
-    G.clearEntities();
-    G.clearEnemies();
-    G.giveAll(99999);
-    G.powerCheat(false);
-    for (var y = 0; y < PN; y++) {
-      for (var x = 0; x < PN; x++) G.place('pole', P0 + x * 5, P0 + y * 5, 0);
-    }
-    var gens = [], asms = [], i, s;
-    for (i = 0; i < nGen; i++) {
-      s = slot(i);
-      var gid = G.place('generator', s[0], s[1], 0);
-      if (gid) { G.setFuel(gid, 4000 * 100000); gens.push(gid); }
-    }
+  // 전력을 진짜로 쓰는 판. nAsm 조립기(155kW) + nFur 용광로(180kW) + 발전기 1대(900kW)
+  function rig(nAsm, nFur) {
+    G.reset(424242); G.clearEntities(); G.clearEnemies();
+    G.giveAll(99999); G.powerCheat(false);
+    G.research('logic-mem'); G.research('logic-ctrl');
+    for (var y = 0; y < PN; y++) for (var x = 0; x < PN; x++) G.place('pole', P0 + x * 5, P0 + y * 5, 0);
+    var s0 = slot(0);
+    var gen = G.place('generator', s0[0], s0[1], 0);
+    if (gen) G.setFuel(gen, 4000 * 200000);
+    var loads = [], i, s, id;
     for (i = 0; i < nAsm; i++) {
-      s = slot(nGen + i);
-      var aid = G.place('assembler', s[0], s[1], 0);
-      if (aid) {
-        G.setRecipe(aid, 'gear');
-        G.fillChest(aid, 'iron-plate', 50);   // 재료가 없으면 전기를 안 먹는다
-        asms.push(aid);
-      }
+      s = slot(1 + i);
+      id = G.place('assembler', s[0], s[1], 0);
+      if (id) { G.setRecipe(id, 'gear'); G.fillChest(id, 'iron-plate', 50); loads.push(id); }
     }
-    return { gens: gens, asms: asms };
+    for (i = 0; i < nFur; i++) {
+      s = slot(1 + nAsm + i);
+      id = G.place('furnace', s[0], s[1], 0);
+      if (id) { G.setRecipe(id, 'iron-plate'); G.fillChest(id, 'iron-ore', 50); loads.push(id); }
+    }
+    var cs = slot(1 + nAsm + nFur);
+    var ctrl = G.place('controller', cs[0], cs[1], 0);
+    G.run(2);
+    return { gen: gen, loads: loads, ctrl: ctrl };
   }
-
-  // 한 틱씩 전진하며 대상 기계의 가동 상태가 몇 번 뒤집히는지 센다.
-  // G.run(초) 로 뭉뚱그리면 중간의 토글이 안 보인다 — 그게 바로 재려는 대상이다.
-  function countToggles(entId, seconds, asms) {
-    var n = Math.round(seconds * 60), prev = null, flips = 0, onT = 0, satMin = 1;
-    for (var i = 0; i < n; i++) {
-      // **재료를 계속 대준다.** 조립기는 재료가 없거나 출력이 꽉 차면 powerDraw 가
-      // 0 이 되어 수요에서 빠진다. 그러면 전력 부족이 저절로 풀려서, 재려던 발진이
-      // 아니라 "재료 떨어진 빈 공장"을 재게 된다 (첫 측정이 실제로 그랬다).
-      if (asms && i % 30 === 0) {
-        for (var a = 0; a < asms.length; a++) {
-          G.takeToStock(asms[a]);                  // 입력·출력 버퍼를 비우고
-          G.fillChest(asms[a], 'iron-plate', 20);  // 다시 채운다
+  // 대상들의 가동 상태가 몇 번 뒤집히는지. 재료를 계속 대 수요를 유지한다.
+  function flips(ids, ticks, feedIds) {
+    var prev = null, n = 0, satMin = 1, satMax = 0, demMin = 1e9, demMax = 0;
+    for (var i = 0; i < ticks; i++) {
+      if (feedIds && i % 30 === 0) {
+        for (var f = 0; f < feedIds.length; f++) {
+          G.takeOutputToStock(feedIds[f]);
+          G.putFromStock(feedIds[f]);
         }
       }
       G.tickOnce();
-      var e = G.ent(entId);
-      if (!e) break;
-      var on = !!e.enabled;
-      if (on) onT++;
-      if (prev !== null && on !== prev) flips++;
-      prev = on;
-      var sp = G.state().power;
-      if (sp.sat < satMin) satMin = sp.sat;
+      var v = !!G.ent(ids[0]).enabled;
+      if (prev !== null && v !== prev) n++;
+      prev = v;
+      var pw = G.state().power;
+      if (pw.sat < satMin) satMin = pw.sat;
+      if (pw.sat > satMax) satMax = pw.sat;
+      if (pw.demand < demMin) demMin = pw.demand;
+      if (pw.demand > demMax) demMax = pw.demand;
     }
-    return { flips: flips, onFrac: n ? onT / n : 0, ticks: n, satMin: satMin };
+    return { flips: n, satMin: +(satMin * 100).toFixed(1), satMax: +(satMax * 100).toFixed(1),
+             demMin: Math.round(demMin), demMax: Math.round(demMax), ticks: ticks };
   }
 
-  function runAll() {
-    var out = { version: null, checks: checks, errors: [], fatal: null, notes: [], measured: {} };
+  function go() {
     try {
-      if (!window.__READY || !window.__GAME) {
-        out.fatal = 'boot 실패'; emit(out); return;
-      }
       G = window.__GAME;
-      out.version = G.version;
-      var SP = G.spec();
 
-      // ---------- 1. 순진한 배선: 만족% < 95 면 끈다 ----------------------
-      var r = rig(7, 1);                      // 155kW x 7 = 1085kW > 900kW 공급
-      // 제어기를 전주 범위 **안**에 둔다. 밖에 두면 netSatOf 가 0 을 돌려주고
-      // (전기를 안 쓰는 건물이라 net 이 -1 이다) 만족%가 영원히 0 으로 읽혀
-      // 부하 차단 회로가 통째로 죽는다 — 첫 측정이 실제로 그 상태였다.
-      var cs = slot(8);
-      var ctrl = G.place('controller', cs[0], cs[1], 0);
-      var target = r.asms[r.asms.length - 1];  // 저우선 기계 = 마지막 조립기
-      chk('shed.rigBuilt',
-        r.gens.length === 1 && r.asms.length === 7 && !!ctrl && !!target,
-        '발전기 ' + r.gens.length + ' · 조립기 ' + r.asms.length + ' · 제어기 ' + ctrl);
+      // ---------- A. 감사 리그 — 비교기 하나 (차단하면 공급 >= 수요) ----------
+      // 조립기 4(620) + 용광로 2(360) = 980kW > 900kW. 용광로 2대를 끊으면 620kW
+      // 로 떨어져 **공급이 남는다** → 만족도가 정확히 100% 에 걸린다.
+      var r = rig(4, 2);
+      var shed = r.loads.slice(-2);
+      var p1 = G.gAdd(r.ctrl, 'power', 0, 0);
+      var k1 = G.gAdd(r.ctrl, 'const', 0, 200); G.gCfg(r.ctrl, k1, 'value', 98);
+      var c1 = G.gAdd(r.ctrl, 'cmp', 200, 100); G.gCfg(r.ctrl, c1, 'op', '>=');
+      G.gLink(r.ctrl, p1, 0, c1, 0); G.gLink(r.ctrl, k1, 0, c1, 1);
+      for (var a = 0; a < shed.length; a++) {
+        var e1 = G.gAdd(r.ctrl, 'enable', 400, a * 200);
+        G.gCfg(r.ctrl, e1, 'ent', shed[a]);
+        G.gLink(r.ctrl, c1, 0, e1, 0);
+      }
+      G.run(1);
+      var A = flips(shed, 300, r.loads);
+      out.measured.A_comparatorOnly = A;
+      chk('shed2.rigHasDeficit', A.demMax > 900,
+        '리그 수요 최대 ' + A.demMax + 'kW vs 공급 900kW · 만족도 ' + A.satMin + '~' + A.satMax +
+        '% (부족이 없으면 이 시험은 아무것도 안 잰다)');
+      chk('shed2.comparatorOscillates', A.flips >= 100,
+        '비교기 하나 300틱 → 뒤집힘 ' + A.flips + '회 · 수요 ' + A.demMin + '~' + A.demMax +
+        'kW · 만족도 ' + A.satMin + '~' + A.satMax + '%');
 
+      // ---------- B. 같은 리그에 SR 래치 히스테리시스 ----------
+      // 감사 주장의 핵심: 차단 직후 만족도가 정확히 100 이므로 RESET(>99)이
+      // 즉시 걸려 래치가 발진을 못 막는다.
+      var r2 = rig(4, 2);
+      var shed2 = r2.loads.slice(-2);
+      var p2 = G.gAdd(r2.ctrl, 'power', 0, 0);
+      var kSet = G.gAdd(r2.ctrl, 'const', 0, 200);  G.gCfg(r2.ctrl, kSet, 'value', 95);
+      var kRst = G.gAdd(r2.ctrl, 'const', 0, 340);  G.gCfg(r2.ctrl, kRst, 'value', 99);
+      var cSet = G.gAdd(r2.ctrl, 'cmp', 200, 60);   G.gCfg(r2.ctrl, cSet, 'op', '<');
+      var cRst = G.gAdd(r2.ctrl, 'cmp', 200, 260);  G.gCfg(r2.ctrl, cRst, 'op', '>');
+      G.gLink(r2.ctrl, p2, 0, cSet, 0); G.gLink(r2.ctrl, kSet, 0, cSet, 1);
+      G.gLink(r2.ctrl, p2, 0, cRst, 0); G.gLink(r2.ctrl, kRst, 0, cRst, 1);
+      var lat = G.gAdd(r2.ctrl, 'latch', 420, 150);
+      G.gLink(r2.ctrl, cSet, 0, lat, 0);      // 모자라다 → SET (= 끊어라)
+      G.gLink(r2.ctrl, cRst, 0, lat, 1);      // 여유롭다 → RESET (= 되돌려라)
+      var nots = G.gAdd(r2.ctrl, 'bool', 600, 150); G.gCfg(r2.ctrl, nots, 'op', 'NOT A');
+      G.gLink(r2.ctrl, lat, 0, nots, 0);      // Q=1(끊음) → 가동 0
+      for (var b = 0; b < shed2.length; b++) {
+        var e2 = G.gAdd(r2.ctrl, 'enable', 800, b * 200);
+        G.gCfg(r2.ctrl, e2, 'ent', shed2[b]);
+        G.gLink(r2.ctrl, nots, 0, e2, 0);
+      }
+      G.run(1);
+      var B = flips(shed2, 300, r2.loads);
+      out.measured.B_latchOnly = B;
+      chk('shed2.latchAloneCannotStop', B.flips >= 100,
+        'SR 래치만 300틱 → 뒤집힘 ' + B.flips + '회 · 만족도 ' + B.satMin + '~' + B.satMax +
+        '% (감사 주장: 차단하면 만족도가 정확히 100 이 되어 RESET 이 즉시 걸린다)');
 
-      // 전력이 실제로 모자라야 이 측정이 성립한다. 남아돌면 회로가 아예 안 움직여
-      // "발진 0" 이 나오는데, 그건 고쳐서가 아니라 시험이 조건을 못 만든 것이다.
-      G.run(2);
-      var st0 = G.state();
-      // 배치 직후에는 전력망이 아직 재구성 전이라 net 이 -1 이다. 반드시 틱을 돌린
-      // **뒤에** 물어봐야 한다 (처음에 배치 직후 물어봤다가 거짓 실패를 냈다).
-      chk('shed.controllerOnGrid', !!ctrl && G.ent(ctrl).net >= 0,
-        '제어기의 전력망 번호 ' + (ctrl ? G.ent(ctrl).net : '?') +
-        ' (-1 이면 만족%가 0 으로 읽혀 부하 차단 회로가 통째로 죽는다)');
-      chk('shed.deficitExists',
-        st0.power.demand > st0.power.supply && st0.power.sat < 0.95,
-        '수요 ' + Math.round(st0.power.demand) + 'kW > 공급 ' + Math.round(st0.power.supply) +
-        'kW · 만족도 ' + Math.round(st0.power.sat * 100) + '% (95% 미만이어야 회로가 작동한다)');
+      // ---------- C. 래치 + 타이머 (복귀를 늦춘다) ----------
+      // RESET 을 '여유롭다 AND 타이머 펄스' 로 만들면 복귀 시도가 주기당 1회로 줄어든다.
+      var r3 = rig(4, 2);
+      var shed3 = r3.loads.slice(-2);
+      var p3 = G.gAdd(r3.ctrl, 'power', 0, 0);
+      var k3s = G.gAdd(r3.ctrl, 'const', 0, 200); G.gCfg(r3.ctrl, k3s, 'value', 95);
+      var k3r = G.gAdd(r3.ctrl, 'const', 0, 340); G.gCfg(r3.ctrl, k3r, 'value', 99);
+      var c3s = G.gAdd(r3.ctrl, 'cmp', 200, 60);  G.gCfg(r3.ctrl, c3s, 'op', '<');
+      var c3r = G.gAdd(r3.ctrl, 'cmp', 200, 260); G.gCfg(r3.ctrl, c3r, 'op', '>');
+      G.gLink(r3.ctrl, p3, 0, c3s, 0); G.gLink(r3.ctrl, k3s, 0, c3s, 1);
+      G.gLink(r3.ctrl, p3, 0, c3r, 0); G.gLink(r3.ctrl, k3r, 0, c3r, 1);
+      var tmr = G.gAdd(r3.ctrl, 'timer', 200, 420); G.gCfg(r3.ctrl, tmr, 'period', 30);
+      var andN = G.gAdd(r3.ctrl, 'bool', 400, 320); G.gCfg(r3.ctrl, andN, 'op', 'AND');
+      G.gLink(r3.ctrl, c3r, 0, andN, 0); G.gLink(r3.ctrl, tmr, 0, andN, 1);
+      var lat3 = G.gAdd(r3.ctrl, 'latch', 600, 150);
+      G.gLink(r3.ctrl, c3s, 0, lat3, 0);      // SET: 모자라면 즉시 끊는다
+      G.gLink(r3.ctrl, andN, 0, lat3, 1);     // RESET: 여유로울 때 **30초마다 한 번만** 시도
+      var not3 = G.gAdd(r3.ctrl, 'bool', 780, 150); G.gCfg(r3.ctrl, not3, 'op', 'NOT A');
+      G.gLink(r3.ctrl, lat3, 0, not3, 0);
+      for (var d = 0; d < shed3.length; d++) {
+        var e3 = G.gAdd(r3.ctrl, 'enable', 960, d * 200);
+        G.gCfg(r3.ctrl, e3, 'ent', shed3[d]);
+        G.gLink(r3.ctrl, not3, 0, e3, 0);
+      }
+      G.run(1);
+      var C = flips(shed3, 300, r3.loads);
+      out.measured.C_latchPlusTimer = C;
+      chk('shed2.latchPlusTimerSettles', C.flips <= 4,
+        '래치 + 타이머(30초) 300틱 → 뒤집힘 ' + C.flips + '회 · 만족도 ' +
+        C.satMin + '~' + C.satMax + '% (5초 구간이므로 30초 주기면 0~2회여야 한다)');
+      chk('shed2.timerBeatsLatchAlone', B.flips > C.flips * 10,
+        '래치만 ' + B.flips + '회 vs 래치+타이머 ' + C.flips + '회');
 
-      var nPow = G.gAdd(ctrl, 'power', 10, 10);
-      // '>=' 다. '<' 로 짜면 "전기가 모자라면 켠다" 가 되어 아무 일도 안 일어난다.
-      var nC = G.gAdd(ctrl, 'cmp', 200, 10); G.gCfg(ctrl, nC, 'op', '>=');
-      var nK = G.gAdd(ctrl, 'const', 10, 150); G.gCfg(ctrl, nK, 'value', 95);
-      var nEn = G.gAdd(ctrl, 'enable', 400, 10); G.gCfg(ctrl, nEn, 'ent', target);
-      G.gLink(ctrl, nPow, 0, nC, 0);
-      G.gLink(ctrl, nK, 0, nC, 1);
-      G.gLink(ctrl, nC, 0, nEn, 0);
+      // ---------- D. 내 원래 리그 (차단해도 여전히 부족) ----------
+      // 조립기 7대(1085kW). 1대를 끊어도 930kW > 900 이라 만족도가 100 에 안 걸린다.
+      // 그래서 래치만으로도 안착했다 — 내 측정이 틀린 게 아니라 **특수한 경우**였다.
+      var r4 = rig(7, 0);
+      var shed4 = [r4.loads[r4.loads.length - 1]];
+      var p4 = G.gAdd(r4.ctrl, 'power', 0, 0);
+      var k4s = G.gAdd(r4.ctrl, 'const', 0, 200); G.gCfg(r4.ctrl, k4s, 'value', 98);
+      var k4r = G.gAdd(r4.ctrl, 'const', 0, 340); G.gCfg(r4.ctrl, k4r, 'value', 90);
+      var c4s = G.gAdd(r4.ctrl, 'cmp', 200, 60);  G.gCfg(r4.ctrl, c4s, 'op', '>');
+      var c4r = G.gAdd(r4.ctrl, 'cmp', 200, 260); G.gCfg(r4.ctrl, c4r, 'op', '<');
+      G.gLink(r4.ctrl, p4, 0, c4s, 0); G.gLink(r4.ctrl, k4s, 0, c4s, 1);
+      G.gLink(r4.ctrl, p4, 0, c4r, 0); G.gLink(r4.ctrl, k4r, 0, c4r, 1);
+      var lat4 = G.gAdd(r4.ctrl, 'latch', 420, 150);
+      G.gLink(r4.ctrl, c4s, 0, lat4, 0); G.gLink(r4.ctrl, c4r, 0, lat4, 1);
+      var e4 = G.gAdd(r4.ctrl, 'enable', 620, 150);
+      G.gCfg(r4.ctrl, e4, 'ent', shed4[0]);
+      G.gLink(r4.ctrl, lat4, 0, e4, 0);
+      G.run(1);
+      var D = flips(shed4, 300, r4.loads);
+      out.measured.D_myOriginalRig = D;
+      chk('shed2.myRigStillSettles', D.flips <= 2 && D.satMax < 100,
+        '내 원래 리그(조립기 7, 1대만 끊음) 300틱 → 뒤집힘 ' + D.flips + '회 · 만족도 ' +
+        D.satMin + '~' + D.satMax + '% (최대가 100 미만이면 클램프에 안 걸린 것이다)');
 
-      var naive = countToggles(target, 30, r.asms);
-      out.measured.naive = naive;
-      // "1초에도 몇 번씩" 이라고 본문에 썼다. 최소한 초당 1회는 넘어야 그 문장이 참이다.
-      chk('shed.naiveOscillates',
-        naive.flips >= 30,
-        '순진한 배선 30초 → 가동 상태가 ' + naive.flips + '회 뒤집혔다 (초당 ' +
-        (naive.flips / 30).toFixed(1) + '회) · 켜져 있던 시간 비율 ' +
-        Math.round(naive.onFrac * 100) + '%');
+      // 갈리는 지점을 숫자로 못박는다
+      chk('shed2.clampIsTheDivider',
+        A.satMax >= 100 && D.satMax < 100,
+        '감사 리그 만족도 최대 ' + A.satMax + '% (100 에 걸림) vs 내 리그 ' + D.satMax +
+        '% (안 걸림) — 이것이 두 결론이 갈린 이유다');
 
-      // ---------- 2. SR 래치 배선: 문턱을 벌리고 기억으로 버틴다 -----------
-      var r2 = rig(7, 1);
-      var cs2 = slot(8);
-      var ctrl2 = G.place('controller', cs2[0], cs2[1], 0);
-      var tgt2 = r2.asms[r2.asms.length - 1];
-      chk('shed.latchRigBuilt', r2.asms.length === 7 && !!ctrl2 && !!tgt2,
-        '조립기 ' + r2.asms.length + ' · 제어기 ' + ctrl2 + ' · 대상 ' + tgt2);
-      G.run(2);
+      // ---------- E. 튜토리얼이 지금 가르치는 회로 (여유kW + 래치 + 타이머) ----------
+      // 5단계는 여유kW 로 문턱을 벌리고, 5b 단계가 타이머로 복귀를 늦춘다.
+      // 그 조합이 실제로 멈추는지 — 가르치는 절차가 작동하는지 — 를 잰다.
+      var r5 = rig(4, 2);
+      var shed5 = r5.loads.slice(-2);
+      var p5 = G.gAdd(r5.ctrl, 'power', 0, 0);
+      var z0 = G.gAdd(r5.ctrl, 'const', 0, 200);  G.gCfg(r5.ctrl, z0, 'value', 0);
+      var z2 = G.gAdd(r5.ctrl, 'const', 0, 340);  G.gCfg(r5.ctrl, z2, 'value', 200);
+      var cLo5 = G.gAdd(r5.ctrl, 'cmp', 200, 60);  G.gCfg(r5.ctrl, cLo5, 'op', '<');
+      var cHi5 = G.gAdd(r5.ctrl, 'cmp', 200, 260); G.gCfg(r5.ctrl, cHi5, 'op', '>');
+      // 포트 3 = 여유kW (클램프 없음)
+      G.gLink(r5.ctrl, p5, 3, cLo5, 0); G.gLink(r5.ctrl, z0, 0, cLo5, 1);
+      G.gLink(r5.ctrl, p5, 3, cHi5, 0); G.gLink(r5.ctrl, z2, 0, cHi5, 1);
+      var tm5 = G.gAdd(r5.ctrl, 'timer', 200, 420); G.gCfg(r5.ctrl, tm5, 'period', 30);
+      var and5 = G.gAdd(r5.ctrl, 'bool', 400, 320); G.gCfg(r5.ctrl, and5, 'op', 'AND');
+      G.gLink(r5.ctrl, cHi5, 0, and5, 0); G.gLink(r5.ctrl, tm5, 0, and5, 1);
+      var lat5 = G.gAdd(r5.ctrl, 'latch', 600, 150);
+      G.gLink(r5.ctrl, cLo5, 0, lat5, 0);    // SET: 여유 < 0 → 즉시 끊는다
+      G.gLink(r5.ctrl, and5, 0, lat5, 1);    // RESET: 여유 > 200 이고 타이머가 울릴 때만
+      var not5 = G.gAdd(r5.ctrl, 'bool', 780, 150); G.gCfg(r5.ctrl, not5, 'op', 'NOT A');
+      G.gLink(r5.ctrl, lat5, 0, not5, 0);
+      for (var q5 = 0; q5 < shed5.length; q5++) {
+        var e5 = G.gAdd(r5.ctrl, 'enable', 960, q5 * 200);
+        G.gCfg(r5.ctrl, e5, 'ent', shed5[q5]);
+        G.gLink(r5.ctrl, not5, 0, e5, 0);
+      }
+      G.run(1);
+      var E = flips(shed5, 300, r5.loads);
+      out.measured.E_tutorialCircuit = E;
+      chk('shed2.tutorialCircuitSettles', E.flips <= 4,
+        '튜토리얼이 가르치는 회로(여유kW + 래치 + 타이머) 300틱 → 뒤집힘 ' + E.flips +
+        '회 · 만족도 ' + E.satMin + '~' + E.satMax + '% (가르치는 절차가 작동해야 한다)');
 
-      var p2 = G.gAdd(ctrl2, 'power', 10, 10);
-      var cSet = G.gAdd(ctrl2, 'cmp', 200, 10);  G.gCfg(ctrl2, cSet, 'op', '>');
-      var kSet = G.gAdd(ctrl2, 'const', 10, 120); G.gCfg(ctrl2, kSet, 'value', 98);
-      var cRst = G.gAdd(ctrl2, 'cmp', 200, 220); G.gCfg(ctrl2, cRst, 'op', '<');
-      var kRst = G.gAdd(ctrl2, 'const', 10, 330); G.gCfg(ctrl2, kRst, 'value', 90);
-      var lat = G.gAdd(ctrl2, 'latch', 400, 110);
-      var en2 = G.gAdd(ctrl2, 'enable', 600, 110); G.gCfg(ctrl2, en2, 'ent', tgt2);
-      G.gLink(ctrl2, p2, 0, cSet, 0); G.gLink(ctrl2, kSet, 0, cSet, 1);
-      G.gLink(ctrl2, p2, 0, cRst, 0); G.gLink(ctrl2, kRst, 0, cRst, 1);
-      G.gLink(ctrl2, cSet, 0, lat, 0);      // 여유롭다 → SET (다시 돌려라)
-      G.gLink(ctrl2, cRst, 0, lat, 1);      // 모자란다 → RESET (꺼라)
-      G.gLink(ctrl2, lat, 0, en2, 0);
-
-      var latched = countToggles(tgt2, 30, r2.asms);
-      out.measured.latch = latched;
-      // 래치판은 한 번 정착하면 안 떨려야 한다. 초반 1~2회 전환은 정착 과정이다.
-      chk('shed.latchSettles',
-        latched.flips <= 2,
-        'SR 래치 배선 30초 → 뒤집힘 ' + latched.flips + '회 (2회 이하여야 정착이다) · ' +
-        '켜져 있던 시간 비율 ' + Math.round(latched.onFrac * 100) + '%');
-
-      // 두 값의 대비가 교육 효과의 전부다. 배수를 명시해 둔다.
-      chk('shed.latchBeatsNaive',
-        naive.flips > latched.flips * 10,
-        '순진 ' + naive.flips + '회 vs 래치 ' + latched.flips + '회 — ' +
-        (latched.flips ? Math.round(naive.flips / latched.flips) + '배' : '비교 불가(래치 0회)') +
-        ' 차이 (10배 미만이면 4→5단계의 교훈이 눈에 안 보인다)');
-
-      // ---------- 3. 부하 차단이 실제로 전력을 회복시키는가 ----------------
-      var stEnd = G.state();
-      out.measured.finalSat = stEnd.power.sat;
-      chk('shed.actuallyRecoversPower',
-        stEnd.power.sat > st0.power.sat,
-        '차단 전 만족도 ' + Math.round(st0.power.sat * 100) + '% → 래치 정착 후 ' +
-        Math.round(stEnd.power.sat * 100) + '% (안 오르면 부하 차단이 아무것도 안 한 것이다)');
+      // 여유kW 가 실제로 클램프 없이 남는 쪽을 보여주는가 — 만족%로는 못 하던 일
+      var headOut = G.gOut(r5.ctrl, p5, 3);
+      var satOut = G.gOut(r5.ctrl, p5, 0);
+      out.measured.headroom = { 여유kW: headOut, 만족: satOut };
+      chk('shed2.headroomIsUnclamped', headOut > 0 && satOut === 100,
+        '차단 후 여유kW=' + headOut + ' · 만족%=' + satOut +
+        ' (만족%는 100 에서 잘려 "얼마나 남는가"를 못 알려준다 — 여유kW 가 그걸 대신한다)');
 
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
-      chk('selftest.mustFail', naive.flips < 0, '뒤집힘 횟수가 음수일 리 없다', true);
-      out.finalState = stEnd;
-      void SP;
-    } catch (e) {
-      out.fatal = (e && e.stack) ? e.stack : String(e);
-      try { out.errors = window.__GAME ? window.__GAME.errors() : []; } catch (e2) { void e2; }
-    }
+      chk('selftest.mustFail', A.flips < 0, '뒤집힘이 음수일 리 없다', true);
+      out.finalState = G.state();
+    } catch (e) { out.fatal = (e && e.stack) ? e.stack : String(e); }
     emit(out);
   }
-
-  function go() { setTimeout(runAll, 60); }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
-  else go();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(go, 80); });
+  else setTimeout(go, 80);
 })();

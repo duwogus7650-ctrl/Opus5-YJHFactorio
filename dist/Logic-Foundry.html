@@ -2018,6 +2018,18 @@ function netSatOf(e) {
   if (!e || e.net < 0 || e.net >= nets.length) return 0;
   return nets[e.net].sat;
 }
+// 망별 전력 수지. **전역 합계를 쓰면 안 된다** — 발전소가 둘 이상이면 제어기가
+// 지도 반대편 공장의 숫자를 보고 판단한다(감사에서 오탐·미탐 둘 다 재현됐다).
+// 여유kW 는 클램프하지 않는다: 만족%는 min(1,·) 로 100 에서 잘려 "얼마나 남는가"를
+// 구별할 수 없고, 그래서 부하 차단 히스테리시스에 쓸 사공간이 없었다.
+function netPowerOf(e) {
+  if (!e || e.net < 0 || e.net >= nets.length) {
+    return { connected: 0, supply: 0, demand: 0, head: 0 };
+  }
+  var nt = nets[e.net];
+  return { connected: 1, supply: nt.supplyCap, demand: nt.demand,
+           head: nt.supplyCap - nt.demand };
+}
 
 /* ===================== 35_logic.js ===================== */
 // ===========================================================================
@@ -2047,7 +2059,13 @@ var NODE_DEFS = {
   'machine': { label: '기계 상태', cat: 'in', ins: [], outs: ['가동', '정체', '진행%'],
                cfg: [{ k: 'ent', t: 'ent', label: '대상',
                        filter: ['miner', 'furnace', 'assembler', 'lab', 'generator', 'turret', 'inserter'] }] },
-  'power':   { label: '전력 만족도', cat: 'in', ins: [], outs: ['만족%', '공급kW', '수요kW'],
+  // 출구 다섯 개 **모두 자기 전력망 기준**이다. 예전에는 만족%만 자기 망이고
+  // 공급kW/수요kW 는 전 세계 합계였다 — 발전소가 둘이면 제어기가 지도 반대편
+  // 숫자로 판단했다. '여유kW' 는 공급-수요이고 **클램프하지 않는다**:
+  // 만족%는 100 에서 잘려 부하 차단의 히스테리시스에 쓸 사공간이 없다.
+  // '망연결' 은 0 이 '전기 없음' 인지 '망 밖'인지 구별하게 해준다.
+  'power':   { label: '전력 만족도', cat: 'in', ins: [],
+               outs: ['만족%', '공급kW', '수요kW', '여유kW', '망연결'],
                cfg: [] },
   'timer':   { label: '타이머', cat: 'in', ins: [], outs: ['펄스', '위상%'],
                cfg: [{ k: 'period', t: 'num', label: '주기', def: 5 }] },
@@ -2166,6 +2184,27 @@ function graphCompile(g) {
     if (byId[lk.fn] && byId[lk.tn]) adj[lk.fn].push({ to: lk.tn, link: lk });
     lk.back = false;
   }
+
+  // **평가 순서는 '화면에 보이는 배치'의 함수여야 한다.**
+  // 예전에는 DFS 진입점 순서 = g.nodes 배열 순서 = **노드를 만든 순서**였다.
+  // 그래서 위치와 배선이 글자 하나까지 같은 두 회로가 다르게 돌았다 — 어느 배선이
+  // 1틱 지연 되먹임이 되는지가 갈렸고, 값까지 달라졌다. 더 나쁜 것은 노드 하나를
+  // 지우고 같은 자리에 다시 만들면(splice 후 push) 그 노드가 순서 맨 뒤로 밀려
+  // 손도 안 댄 회로가 갑자기 다르게 도는 것이었다.
+  // 화면에는 좌표와 배선만 보이고 생성 순서는 어디에도 안 나오므로, 플레이어가
+  // 원인을 짚을 단서가 없었다. 좌표순으로 정렬하면 보이는 것이 곧 규칙이 된다.
+  function layoutKey(n) { return [Math.round(n.x), Math.round(n.y), n.nid]; }
+  function cmpNode(p, q) {
+    var A = layoutKey(p), B = layoutKey(q);
+    return (A[0] - B[0]) || (A[1] - B[1]) || (A[2] - B[2]);
+  }
+  var roots = g.nodes.slice().sort(cmpNode);
+  for (var r2 = 0; r2 < roots.length; r2++) {
+    var ls2 = adj[roots[r2].nid];
+    if (ls2 && ls2.length > 1) {
+      ls2.sort(function (u, v) { return cmpNode(byId[u.to], byId[v.to]); });
+    }
+  }
   var color = {};     // 0 미방문, 1 스택 위, 2 완료
   var order = [];
   function dfs(nid) {
@@ -2179,7 +2218,7 @@ function graphCompile(g) {
     color[nid] = 2;
     order.push(nid);
   }
-  for (var s = 0; s < g.nodes.length; s++) if (!color[g.nodes[s].nid]) dfs(g.nodes[s].nid);
+  for (var s = 0; s < roots.length; s++) if (!color[roots[s].nid]) dfs(roots[s].nid);
   order.reverse();
   g.order = order;
   g.byId = byId;
@@ -2251,10 +2290,15 @@ function evalNode(g, n, dt, ctrl) {
       break;
     }
     case 'power': {
+      var np = ctrl ? netPowerOf(ctrl)
+                    : { connected: 1, supply: powerStats.supply,
+                        demand: powerStats.demand, head: powerStats.supply - powerStats.demand };
       var sat = ctrl ? netSatOf(ctrl) : powerStats.sat;
       n.out[0] = Math.round(sat * 100);
-      n.out[1] = Math.round(powerStats.supply);
-      n.out[2] = Math.round(powerStats.demand);
+      n.out[1] = Math.round(np.supply);
+      n.out[2] = Math.round(np.demand);
+      n.out[3] = Math.round(np.head);      // 클램프 없음 — 남는 쪽도 보인다
+      n.out[4] = np.connected;
       break;
     }
     case 'timer': {
@@ -3522,6 +3566,9 @@ function addResearchProgress(n) {
   if (researchProgress >= techCycles(currentResearch)) finishResearch();
 }
 function techAvailable(tid) {
+  // **모르는 id 를 그냥 터뜨리면 안 된다.** 저장본이 손상됐거나 예전 판의 연구
+  // id 가 남아 있으면 여기서 TypeError 가 나 게임이 통째로 멈춘다.
+  if (!tid || !TECHS[tid]) return false;
   if (techDone[tid]) return false;
   var need = TECHS[tid].needs;
   for (var i = 0; i < need.length; i++) if (!techDone[need[i]]) return false;
@@ -4534,7 +4581,7 @@ function reachableNodes(g, startNid, kinds, pred) {
   // 매달아 돌연변이 게이트 전체를 세웠고, 그래서 상한을 따로 두게 됐다.
   while (stack.length && guard++ < REACH_LIMIT) {
     var cur = stack.pop();
-    if (seen[cur]) continue;                 // 되먹임 배선이 있으므로 순환 방어는 필수
+    if (seen[cur]) continue;   // 되먹임 배선 순환 방어 (reachableNodes 전용)
     seen[cur] = 1;
     for (var i = 0; i < g.links.length; i++) {
       var l = g.links[i];
@@ -4594,6 +4641,29 @@ function inserterFeedsTurret() {
     return !!tgt && tgt.type === 'turret';
   });
 }
+// srcNid 에서 나온 신호가 nid 의 port 번 입력으로 흘러드는가.
+// 래치의 RESET(포트 1)에 타이머가 실제로 물렸는지 보려면 포트를 구별해야 한다.
+function feedsPort(g, nid, port, srcNid) {
+  if (!g.inLinks) return false;
+  var lk = g.inLinks[nid + ':' + port];
+  if (!lk) return false;
+  if (lk.fn === srcNid) return true;
+  // 사이에 AND 같은 노드가 끼어 있을 수 있으니 거슬러 올라간다
+  // 변수명을 reachableNodes 와 다르게 둔다 — 같은 줄이 두 곳에 있으면 돌연변이
+  // 앵커가 유일하지 않아 그 게이트를 검정할 수 없다(INVALID 로 걸렸다).
+  var walked = {}, stack = [lk.fn];
+  while (stack.length) {
+    var cur = stack.pop();
+    if (walked[cur]) continue;
+    walked[cur] = 1;
+    if (cur === srcNid) return true;
+    for (var i = 0; i < g.links.length; i++) {
+      if (g.links[i].tn === cur) stack.push(g.links[i].fn);
+    }
+  }
+  return false;
+}
+
 function countEntityWhere(type, fn) {
   var n = 0;
   forEachEntity(function (e) { if (e.type === type && fn(e)) n++; });
@@ -4822,21 +4892,57 @@ var ADVANCED_STEPS = [
   },
   {
     id: 'latch-shed',
-    title: 'SR 래치로 떨림을 없앤다 — 부하 차단 완성',
-    why: '에어컨은 26도에 켜고 26도에 끄지 않는다. <b>26도에 켜고 24도까지 내려가야 끈다.</b> 켜는 문턱과 끄는 문턱을 벌리고, 그 사이는 <b>기억</b>으로 버틴다. 그 기억이 SR 래치다.',
+    title: 'SR 래치로 문턱을 벌린다 — 그런데도 아직 떤다',
+    why: '에어컨은 26도에 켜고 26도에 끄지 않는다. <b>26도에 켜고 24도까지 내려가야 끈다.</b> ' +
+         '켜는 문턱과 끄는 문턱을 벌리고 그 사이는 <b>기억</b>으로 버틴다 — 그게 SR 래치다. ' +
+         '★ 그런데 이 게임에서는 <b>래치만으로는 안 멈춘다.</b> 왜 그런지는 다음 단계에서 본다.',
     how: [
-      '<b>SR 래치</b>를 놓는다 — 출력 Q는 "지금 돌려도 되는가"로 쓴다',
-      '비교 <b>만족% &gt; 98</b> → 래치의 <b>SET</b> (여유롭다 → 다시 돌려라)',
-      '비교 <b>만족% &lt; 90</b> → 래치의 <b>RESET</b> (모자란다 → 꺼라)',
-      '래치의 <b>Q</b> → <b>기계 가동/정지</b>',
-      '이제 90~98% 사이에서는 <b>직전 결정을 그대로 유지</b>한다 — 떨림이 사라진다',
-      '한 걸음 더: <b>타이머</b>를 SET 쪽에 끼면 복귀를 30초 늦출 수 있다'
+      '<b>SR 래치</b>를 놓는다 — 출력 Q를 "지금 끊어야 하나"로 쓴다',
+      '비교 <b>여유kW &lt; 0</b> → 래치의 <b>SET</b> (모자라다 → 끊어라)',
+      '비교 <b>여유kW &gt; 200</b> → 래치의 <b>RESET</b> (남는다 → 되돌려라)',
+      '<b>논리 NOT A</b>로 Q를 뒤집어 <b>기계 가동/정지</b>에 잇는다 (Q=끊음이므로)',
+      '<b>여유kW</b>를 쓴다 — 만족%는 100%에서 잘려서 "얼마나 남는가"를 알 수 없다',
+      '전기를 모자라게 만들고 그 기계를 본다 — <b>여전히 떨린다.</b> 그게 정상이다'
     ],
-    need: '두 문턱이 <b>겹치면 안 된다</b> — 90 &lt; 98 처럼 벌려야 한다',
+    need: '만족% 대신 <b>여유kW</b>를 쓰는 이유: 만족%는 min(100%) 이라 차단하면 늘 정확히 100이 된다',
     check: function () {
       return ctrlPathThrough('power', 'latch', 'enable', function (g, L) {
-        return portFed(g, L.nid, 1);     // RESET 이 안 물리면 한 번 켜지고 영영 안 꺼진다
+        return portFed(g, L.nid, 1);     // RESET 이 안 물리면 한 번 끊고 영영 안 돌아온다
       });
+    }
+  },
+  {
+    id: 'timer-shed',
+    title: '타이머로 복귀를 늦춘다 — 부하 차단 완성',
+    why: '★ 문턱을 벌려도 떠는 이유: 끊으면 전기가 남고, 남으면 되돌리고, 되돌리면 또 모자란다. ' +
+         '<b>두 상태가 어떤 문턱이든 양쪽으로 넘나든다.</b> 이건 문턱을 더 벌려서 못 고친다 — ' +
+         '<b>되돌리는 것을 늦춰야</b> 한다. 실제 배전 설비도 이렇게 한다(최소 차단 시간).',
+    how: [
+      '<b>타이머</b>를 놓고 주기를 <b>30</b>으로 한다',
+      '<b>논리 AND</b>를 놓는다',
+      '<b>여유kW &gt; 200</b>(남는다) → AND의 A · <b>타이머 펄스</b> → AND의 B',
+      'AND의 출력 → 래치의 <b>RESET</b> (앞 단계에서 직결했던 것을 이걸로 바꾼다)',
+      '이제 복귀는 <b>30초에 한 번만</b> 시도한다 — 떨림이 멈춘다',
+      '끊는 쪽(SET)은 늦추지 않는다 — 전기가 모자라면 즉시 끊어야 한다'
+    ],
+    need: '측정치: 비교기만 300틱에 299회 떨림 · 래치만 299회 · <b>래치+타이머 0회</b>',
+    check: function () {
+      // 래치의 RESET 이 타이머를 거친 신호로 물렸는가.
+      // 래치만으로는 못 멈춘다는 것이 실측됐으므로, 여기서는 타이머까지 요구한다.
+      var ok = false;
+      eachCtrlGraph(function (g) {
+        if (ok) return;
+        for (var i = 0; i < g.nodes.length; i++) {
+          if (g.nodes[i].kind !== 'timer') continue;
+          var lats = reachableNodes(g, g.nodes[i].nid, ['latch']);
+          for (var j = 0; j < lats.length; j++) {
+            // 타이머가 RESET(포트 1) 쪽으로 흘러야 한다
+            if (!feedsPort(g, lats[j].nid, 1, g.nodes[i].nid)) continue;
+            if (reachableNodes(g, lats[j].nid, ['enable'], hasTarget).length) ok = true;
+          }
+        }
+      });
+      return ok;
     }
   },
   {
@@ -6015,6 +6121,9 @@ window.__GAME = {
       inv: JSON.parse(JSON.stringify(e.inv)), out: JSON.parse(JSON.stringify(e.out)),
       recipe: e.recipe, progress: e.progress,
       fuel: e.fuel, load: e.load, ammo: e.ammo, filter: e.filter, held: e.held, depleted: !!e.depleted,
+      // 터렛의 사격 허가. 노출을 빼먹었더니 시험이 '없는 키' 를 읽고 값이 뒤집혔다고
+      // 오독했다 — 없는 것과 false 는 다르다.
+      fireOk: (e.fireOk === undefined) ? null : !!e.fireOk,
       beltItems: e.cells ? e.cells.map(function (c) { return cellItemCount(c); }) : null,
       gate: e.cells ? e.cells.map(function (c) { return c.gate; }) : null
     };
@@ -6051,12 +6160,45 @@ window.__GAME = {
     var n = graphNode(e.graph, nid); if (!n) return null;
     try { return readIn(e.graph, n, port || 0); } catch (err) { return 'THREW:' + err.message; }
   },
+  // 전수 스윕용 열거 훅 — "모든 X" 를 실제로 하나씩 돌려 보려면 목록이 필요하다
+  nodeKinds: function () { return NODE_KINDS.slice(); },
+  nodeAvailable: function (kind) { return nodeAvailable(kind); },
+  techIds: function () { return TECH_IDS.slice(); },
+  buildingTypes: function () { return Object.keys(BUILDINGS); },
+  recipeIds: function () { return Object.keys(RECIPES); },
+  recipeInfo: function (rid) {
+    var r = RECIPES[rid]; if (!r) return null;
+    return { cat: r.cat, time: r.time, inp: JSON.parse(JSON.stringify(r.inp)),
+             out: JSON.parse(JSON.stringify(r.out)), handOk: !!r.handOk, tech: r.tech || null };
+  },
+  // 벨트 센서를 시험하려면 벨트에 물건을 직접 얹어야 한다
+  // lanes 는 **엔티티가 아니라 셀** 에 있다 (20_belt.js:21). 엔티티에서 찾다가
+  // 조용히 false 를 돌려주고, 그 탓에 벨트 센서가 고장난 것처럼 보였다.
+  // 벨트 게이트가 실제로 닫혔는지 (셀의 gate 플래그)
+  gateState: function (id) {
+    var e = entities[id];
+    if (!e || !e.cells || !e.cells.length) return null;
+    for (var i = 0; i < e.cells.length; i++) if (!e.cells[i].gate) return false;
+    return true;
+  },
+  beltPut: function (id, item, pos) {
+    var e = entities[id];
+    if (!e || !e.cells || !e.cells.length) return false;
+    e.cells[0].lanes[0].push({ id: item, pos: (pos === undefined ? 0.5 : pos) });
+    return true;
+  },
   nodeTargets: function (kind) {
     var d = NODE_DEFS[kind]; if (!d) return null;
     for (var i = 0; i < d.cfg.length; i++) {
       if (d.cfg[i].t === 'ent') return d.cfg[i].filter || Object.keys(BUILDINGS);
     }
     return null;
+  },
+  // 노드를 옮긴다 (좌표가 평가 순서를 정하므로 그것을 검정하는 데 쓴다)
+  gMove: function (ctrlId, nid, x, y) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return false;
+    var n = graphNode(e.graph, nid); if (!n) return false;
+    n.x = x; n.y = y; e.graph.dirty = true; return true;
   },
   gPos: function (ctrlId, nid) {
     var e = entities[ctrlId]; if (!e || !e.graph) return null;
@@ -6331,6 +6473,16 @@ window.__GAME = {
   // 도달성 탐색이 쓴 걸음 수. 순환 방어가 깨지면 이 숫자가 상한까지 폭발한다 —
   // "멈추나 안 멈추나"는 게이트가 못 보지만 걸음 수는 볼 수 있다.
   reachSteps: function (reset) { if (reset) resetReachSteps(); return reachStepsTotal; },
+  // **id 로 찾는다.** 번호로 지목하면 단계를 하나 추가할 때마다 게이트가 통째로
+  // 밀려 깨진다 (실제로 5단계를 둘로 나누자 4건이 어긋났다).
+  tutorialCheckById: function (id) {
+    var steps = curSteps();
+    for (var i = 0; i < steps.length; i++) {
+      if (steps[i].id !== id) continue;
+      try { return !!steps[i].check(); } catch (e) { return 'ERROR:' + e; }
+    }
+    return null;
+  },
   tutorialCheck: function (idx) {
     var s = curSteps()[idx];
     if (!s) return null;
