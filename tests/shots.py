@@ -69,7 +69,20 @@ G.run(1); G.ui.refresh();
 G.ui.openHelp();
 """
 
+# 손 조립 대기열 — 새로 넣은 UI 다. 게이트는 "값이 맞는가"만 보고 **어떻게 보이는가**는
+# 안 본다. 진행 막대와 남은 시간이 실제로 그려지는지 사람이 확인할 그림을 남긴다.
+HANDQ = r"""
+var G = window.__GAME;
+G.reset(424242); G.giveAll(400);
+G.ui.closeHelp(); G.ui.closeTutor();
+G.handCraft('sci-red'); G.handCraft('sci-red'); G.handCraft('gear');
+G.handCraft('wire'); G.handCraft('circuit');
+G.run(1.6);                      // 첫 항목이 절반쯤 진행된 순간
+G.ui.refresh();
+"""
+
 SCENES = [
+    ('05-handcraft-queue.png', '1400,900', HANDQ),
     ('01-factory.png', '1600,1000', FACTORY),
     ('02-logic-editor.png', '1600,1000', LOGIC),
     ('03-tech.png', '1400,900', TECH),

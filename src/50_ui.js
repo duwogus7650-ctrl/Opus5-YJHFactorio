@@ -564,7 +564,9 @@ function renderCraftQueue() {
     return;
   }
   craftQueueSig = sig;
-  var html = [];
+  // 대기열 줄과 아래 제작 목록이 같은 모양이라 경계가 안 보였다 — 무엇이 '만드는 중'
+  // 이고 무엇이 '누르면 만들 것' 인지 그림만 보고 갈릴 수 있어야 한다.
+  var html = ['<div class="qcap">만드는 중 · 클릭하면 취소</div>'];
   for (var i = 0; i < handQueue.length && i < 12; i++) {
     var job = handQueue[i], r = RECIPES[job.rid];
     var name = ITEMS[Object.keys(r.out)[0]].name;
