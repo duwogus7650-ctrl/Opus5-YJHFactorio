@@ -606,6 +606,8 @@ window.__GAME = {
   howToGet: function (itemId) { return howToGet(itemId); },
   takeToStock: function (id) { return takeAllToStock(entities[id]); },
   takeableCount: function (id) { return stockTakeCount(entities[id]); },
+  putFromStock: function (id) { return putFromStock(entities[id]); },
+  puttableItems: function (id) { return stockPuttableItems(entities[id]); },
   tutorialReset: function (on) { resetTutorial(on); renderTutorial(); return tutorial.step; },
   tutorialSkip: function () { var s = skipTutorialStep(); renderTutorial(); return s; },
   // 각 단계의 check() 를 지금 상태에서 직접 물어본다 (게이트가 단계별로 검정할 때)

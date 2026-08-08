@@ -19,6 +19,16 @@ import subprocess
 import sys
 import tempfile
 
+# 한국어 detail 문자열에는 em-dash(—) 같은 cp949 밖의 글자가 섞인다. 콘솔 인코딩이
+# cp949 면 print 가 UnicodeEncodeError 로 죽는데, 그러면 **검사는 다 통과했는데도**
+# 하네스가 터져 RED 처럼 보인다. 표시 경로 때문에 판정을 잃지 않도록 여기서 못박는다.
+# (판정 자체는 여전히 #testout JSON 으로만 한다 — 이 줄은 출력에만 관여한다.)
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, 'dist', 'Logic-Foundry.html')
 # 드라이버는 인자로 바꿔 끼울 수 있다 (모델 게이트 = driver.js, 클릭 경로 = uismoke.js)

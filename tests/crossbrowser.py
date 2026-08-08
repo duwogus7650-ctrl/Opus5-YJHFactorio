@@ -17,6 +17,13 @@ import re
 import subprocess
 import sys
 
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV = dict(os.environ)
 ENV['PYTHONIOENCODING'] = 'utf-8'

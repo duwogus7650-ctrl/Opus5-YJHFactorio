@@ -21,6 +21,14 @@ import re
 import subprocess
 import sys
 
+# harness.py 와 같은 이유 — cp949 콘솔에서 em-dash 하나 때문에 print 가 죽으면
+# 소스를 되돌리기 전에 터져서 작업 트리가 돌연변이된 채로 남는다. 표시 경로다.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'src')
 
@@ -157,7 +165,54 @@ MUTATIONS = [
      b'  drain(e.inv);',
      ['stock.takeDoesNotDuplicate']),
 
+    ('넣기가 보유 자재를 안 깎는다 (복제)', '25_entity.js',
+     b'      if (!giveTo(e, k)) break;\n      invTake(inventory, k, 1);',
+     b'      if (!giveTo(e, k)) break;',
+     ['stock.putDoesNotDuplicate']),
+
+    # 실제로 걱정되는 버그는 "넣기 경로가 제 나름의 규칙을 따로 쓰는 것"이다.
+    # giveTo 를 건너뛰고 e.inv 에 직접 밀어 넣으면 버퍼 한도도, 레시피 입력 판정도
+    # 통째로 사라져서 버튼 한 번에 보유 자재 전부가 기계 하나로 빨려 들어간다.
+    #
+    # 한쪽만 지우면 MISS 가 난다 — while 조건과 giveTo 가 **둘 다** canAccept 를 보는
+    # 이중 방어라서, canAccept 를 하나 지워도 나머지 하나가 그대로 막는다. 그 둘을
+    # 각각 지운 돌연변이 2종을 실제로 돌려 보고 확인했다. 그래서 여기서는 "순진한
+    # 구현" 통째로 — 재고를 훑어 기계 버퍼에 그냥 밀어 넣는 형태로 바꾼다.
+    ('넣기를 순진한 구현으로 되돌린다 (한도·품목 판정 없이 전부 밀어 넣기)', '25_entity.js',
+     b'    while ((inventory[k] || 0) > 0 && canAccept(e, k) && guard++ < 20000) {\n'
+     b'      if (!giveTo(e, k)) break;',
+     b'    while ((inventory[k] || 0) > 0 && guard++ < 20000) {\n'
+     b'      invAdd(e.inv, k, 1);',
+     ['stock.putRespectsBufferCap', 'stock.putRejectsWrongItem']),
+
+    ('넣기 대상에 상자를 넣는다 (전 재고가 상자로 빨려간다)', '25_entity.js',
+     b"var PUT_TYPES = { generator: 1, turret: 1, lab: 1, furnace: 1, assembler: 1 };",
+     b"var PUT_TYPES = { generator: 1, turret: 1, lab: 1, furnace: 1, assembler: 1, chest: 1 };",
+     ['stock.chestIsNotAPutTarget']),
+
     # ---- UI 경로 (uismoke.js 로 판정) ----
+    ('기계에 넣는 버튼을 없앤다', '50_ui.js',
+     b'    if (PUT_TYPES[e.type]) {',
+     b'    if (false) {',
+     ['ui.putButtonExists'], 'uismoke.js'),
+
+    # b"" 리터럴은 ASCII 만 담을 수 있어 한국어가 없는 조각으로 앵커를 잡는다
+    ('넣기 버튼이 넣을 게 없어도 활성이다', '50_ui.js',
+     b"(puttable.length ? '' : ' disabled')",
+     b"('')",
+     ['ui.putButtonDisabledWhenNothingFits'], 'uismoke.js'),
+
+    ('멈춘 기계가 왜 멈췄는지 말하지 않는다', '50_ui.js',
+     b"  if ((e.type === 'assembler' || e.type === 'furnace') && e.recipe) {",
+     b'  if (false) {',
+     ['ui.idleMachineSaysWhy'], 'uismoke.js'),
+
+    # 항상 뜨는 경고는 경고가 아니라 배경이다 — 진짜로 멈춘 기계를 오히려 가린다
+    ('정지 이유를 재료가 차 있어도 항상 띄운다', '50_ui.js',
+     b'      if ((e.inv[mk] || 0) < rec.inp[mk])',
+     b'      if (true)',
+     ['ui.runningMachineSaysNothing'], 'uismoke.js'),
+
     ('상자에서 꺼내는 버튼을 없앤다', '50_ui.js',
      b"    if (e.type !== 'generator' && e.type !== 'turret' && (e.inv || e.out)) {",
      b'    if (false) {',
@@ -231,6 +286,14 @@ def main():
     caught, missed, invalid = 0, 0, 0
     rows = []
     revert_failed = []
+
+    # 판정 행은 **덧붙이는 즉시 찍는다.** 예전에는 루프 끝에서 rows[-1] 을 찍었는데,
+    # INVALID 경로 3개(앵커 불일치·빌드 실패·문법 오류)가 전부 continue 로 빠져
+    # 그 print 를 건너뛰었다. 집계에는 "무효 1"이 뜨는데 **어느 돌연변이인지는 화면에
+    # 안 나오는** 상태였다 — 검사 장치가 자기 실패를 감추고 있었던 것이다.
+    def emit(row):
+        rows.append(row)
+        print('  [%-7s] %-38s %s' % row)
     for mut in MUTATIONS:
         name, fname, find, repl, expect = mut[0], mut[1], mut[2], mut[3], mut[4]
         drv = mut[5] if len(mut) > 5 else 'driver.js'
@@ -238,20 +301,20 @@ def main():
         orig = read_bytes(path)
         n = orig.count(find)
         if n != 1:
-            rows.append(('INVALID', name, '찾을 패턴이 %d번 나온다 (1번이어야)' % n))
+            emit(('INVALID', name, '찾을 패턴이 %d번 나온다 (1번이어야)' % n))
             invalid += 1
             continue
         write_bytes(path, orig.replace(find, repl))
         try:
             brc, bout, berr = run([sys.executable, 'build.py'])
             if brc != 0:
-                rows.append(('INVALID', name, '빌드 실패'))
+                emit(('INVALID', name, '빌드 실패'))
                 invalid += 1
                 continue
             src, sout, serr = run(['node', os.path.join('tests', 'syntax_check.js')])
             if src != 0:
                 # 문법 오류는 모든 게이트를 무너뜨려 "잡았다"로 오독된다
-                rows.append(('INVALID', name, '돌연변이가 문법 오류를 냈다'))
+                emit(('INVALID', name, '돌연변이가 문법 오류를 냈다'))
                 invalid += 1
                 continue
             hrc, hout, herr = run([sys.executable, os.path.join('tests', 'harness.py'), drv])
@@ -260,13 +323,13 @@ def main():
             still = [g for g in expect if got.get(g) == 'PASS']
             missing = [g for g in expect if g not in got]
             if missing:
-                rows.append(('INVALID', name, '게이트가 실행조차 안 됐다: ' + ','.join(missing)))
+                emit(('INVALID', name, '게이트가 실행조차 안 됐다: ' + ','.join(missing)))
                 invalid += 1
             elif still:
-                rows.append(('MISS', name, '여전히 PASS: ' + ','.join(still)))
+                emit(('MISS', name, '여전히 PASS: ' + ','.join(still)))
                 missed += 1
             else:
-                rows.append(('CAUGHT', name, '뒤집힘: ' + ','.join(flipped)))
+                emit(('CAUGHT', name, '뒤집힘: ' + ','.join(flipped)))
                 caught += 1
         finally:
             write_bytes(path, orig)
@@ -275,7 +338,6 @@ def main():
         if revert_failed:
             print('FATAL: 되돌리기가 바이트 단위로 실패했다: %s' % revert_failed[0])
             return 2
-        print('  [%-7s] %-38s %s' % (rows[-1][0], rows[-1][1], rows[-1][2]))
 
     # 원본 상태로 다시 빌드해 둔다
     run([sys.executable, 'build.py'])

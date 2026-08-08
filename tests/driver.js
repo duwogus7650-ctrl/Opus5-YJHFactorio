@@ -829,6 +829,87 @@
         '용광로 출력 ' + furOut + '개 → 보유 철판 ' + beforeFur + ' → ' +
         (G.state().inventory['iron-plate'] || 0));
 
+      // ================= 8b-3. 보유 자재 → 기계 (라인 초기 급유) ===========
+      // 반대 방향이 없으면 라인을 손으로 채울 수 없다. 실제로 사용자가 여기서 막혔다:
+      // 보유 구리판 126·톱니 37을 들고도 적색 연구팩 조립기가 비어서 안 돌았는데,
+      // 그때 보유 자재가 세계로 나가는 경로는 건물 비용·손 조립·발전기 석탄 버튼
+      // 셋뿐이라 그 조립기에 넣을 방법 자체가 없었다.
+      labSetup();
+      var puA = G.place('assembler', 44, 48, 0);
+      chk('stock.putRigBuilt', !!puA, '급유 시험용 조립기 id=' + puA);
+      G.setRecipe(puA, 'sci-red');
+      for (var pi = 0; pi < ITEM_IDS_TEST.length; pi++) G.setInv(ITEM_IDS_TEST[pi], 0);
+      G.setInv('copper-plate', 7);
+      G.setInv('gear', 4);
+      G.setInv('iron-plate', 9);          // 음성 대조군용 — 이 레시피가 안 쓰는 품목
+      var puItems = G.puttableItems(puA);
+      var puCensusA = G.materialCensus(['copper-plate', 'gear', 'iron-plate']);
+      var puMoved = G.putFromStock(puA);
+      var puEnt = G.ent(puA);
+      var puSt = G.state();
+      chk('stock.putIntoAssembler',
+        puMoved === 11 &&
+        puEnt.inv['copper-plate'] === 7 && puEnt.inv['gear'] === 4 &&
+        (puSt.inventory['copper-plate'] || 0) === 0 && (puSt.inventory['gear'] || 0) === 0,
+        '보유 구리판 7 + 톱니 4 → 넣은 개수 ' + puMoved + ' · 조립기 안 구리판 ' +
+        (puEnt.inv['copper-plate'] || 0) + ' 톱니 ' + (puEnt.inv['gear'] || 0) +
+        ' · 보유 잔량 구리판 ' + (puSt.inventory['copper-plate'] || 0) +
+        ' 톱니 ' + (puSt.inventory['gear'] || 0));
+
+      // 음성 대조군 — 레시피가 안 쓰는 철판은 들어가면 안 된다. 판정을 canAccept 로
+      // 통일했으니 인서터가 거부하는 것은 손으로도 거부돼야 한다.
+      // (조건이 실제로 발생했음: 보유 철판 9개를 들고 넣기를 눌렀다)
+      chk('stock.putRejectsWrongItem',
+        puItems.indexOf('iron-plate') < 0 &&
+        puEnt.inv['iron-plate'] === undefined &&
+        (puSt.inventory['iron-plate'] || 0) === 9,
+        '적색 연구팩 = 구리판+톱니 이므로 철판은 대상이 아니다 → 넣을 수 있는 품목 [' +
+        puItems.join(',') + '] · 조립기 안 철판 ' + (puEnt.inv['iron-plate'] || 0) +
+        ' · 보유 철판 ' + (puSt.inventory['iron-plate'] || 0) + ' 그대로');
+
+      // 복제 금지 — 넣기도 옮기기지 만들기가 아니다
+      var puCensusB = G.materialCensus(['copper-plate', 'gear', 'iron-plate']);
+      chk('stock.putDoesNotDuplicate', puCensusA.present === puCensusB.present,
+        '넣기 전후 세계 총량 ' + puCensusA.present + ' → ' + puCensusB.present);
+
+      // 넣은 뒤 실제로 돌아야 한다 — 사용자가 원한 결과는 버튼이 아니라 이것이다
+      G.run(12);
+      var puOut = G.ent(puA).out['sci-red'] || 0;
+      chk('stock.putThenMachineRuns', puOut >= 1,
+        '급유 후 12초 → 적색 연구팩 ' + puOut + '개 (5.0s ÷ 조립기 속도 0.75 = 6.67s/개)');
+
+      // 버퍼 한도 — 999개를 들고 있어도 품목당 50까지만 들어가야 한다.
+      // 한도가 없으면 버튼 한 번에 보유 자재가 기계 하나로 통째로 빨려 들어간다.
+      G.setInv('copper-plate', 999); G.setInv('gear', 999);
+      G.putFromStock(puA);
+      var capEnt = G.ent(puA), capSt = G.state();
+      chk('stock.putRespectsBufferCap',
+        (capEnt.inv['copper-plate'] || 0) === 50 && (capEnt.inv['gear'] || 0) === 50 &&
+        (capSt.inventory['copper-plate'] || 0) >= 949,
+        '보유 999개로 넣기 → 조립기 안 구리판 ' + (capEnt.inv['copper-plate'] || 0) +
+        ' 톱니 ' + (capEnt.inv['gear'] || 0) + ' (입력 버퍼 한도 50) · 보유 잔량 구리판 ' +
+        (capSt.inventory['copper-plate'] || 0));
+
+      // 음성 대조군 — 보유 자재가 비면 아무 일도 없어야 한다
+      for (var pj = 0; pj < ITEM_IDS_TEST.length; pj++) G.setInv(ITEM_IDS_TEST[pj], 0);
+      var emptyPut = G.putFromStock(puA);
+      chk('stock.emptyStockPutsNothing',
+        emptyPut === 0 && G.puttableItems(puA).length === 0,
+        '보유 자재 0 → 넣은 개수 ' + emptyPut + ' · 넣을 수 있는 품목 ' +
+        G.puttableItems(puA).length + '종');
+
+      // 음성 대조군 — 상자는 넣기 대상이 아니다. 상자는 무엇이든 받으므로 대상에
+      // 넣으면 버튼 한 번에 벨트·인서터까지 전 재고가 상자로 빨려 들어간다.
+      G.giveAll(999);
+      var puChest = G.place('chest', 48, 48, 0);
+      G.setInv('iron-plate', 40);
+      var chestPut = G.putFromStock(puChest);
+      chk('stock.chestIsNotAPutTarget',
+        !!puChest && chestPut === 0 && G.puttableItems(puChest).length === 0 &&
+        (G.state().inventory['iron-plate'] || 0) === 40,
+        '상자 id=' + puChest + ' 에 넣기 → 옮긴 개수 ' + chestPut +
+        ' · 보유 철판 ' + (G.state().inventory['iron-plate'] || 0) + ' 그대로 (상자는 인서터로 채운다)');
+
       // ================= 8c. 튜토리얼 ====================================
       // 판정은 "세계가 실제로 그렇게 됐는가"로만 한다. '다음' 버튼으로 넘기는
       // 튜토리얼은 아무것도 가르치지 않으므로, 게이트도 그 원칙을 지키는지를 본다.

@@ -337,6 +337,86 @@
       chk('ui.takeButtonDisabledWhenEmpty', !!takeBtn2 && takeBtn2.disabled === true,
         '빈 상자에서 버튼 비활성=' + (takeBtn2 ? takeBtn2.disabled : '버튼 없음'));
 
+      // --- 15. 보유 자재를 기계에 넣는 버튼 ---------------------------------
+      // 사용자가 "적색연구팩 제작이 안되는데?"로 막힌 지점이다. 레시피는 걸려
+      // 있었지만 조립기 입력 버퍼가 비어 있었고, 보유 구리판 126개를 넣을 방법이
+      // 없었다 (그때 세계로 나가는 길은 건물 비용·손 조립·발전기 석탄뿐).
+      G.reset(424242); G.clearEntities(); G.ui.closeHelp(); G.powerCheat(true);
+      G.giveAll(999);
+      var asmItem = document.querySelector('#buildList .bitem[data-b="assembler"]');
+      if (asmItem) asmItem.click();
+      click(76, 74, 0);
+      key('Escape');
+      var uAsm = G.entAtTile(76, 74);
+      chk('ui.putRigBuilt', !!asmItem && !!uAsm,
+        '조립기 버튼 존재=' + !!asmItem + ' · 배치된 조립기 id=' + uAsm);
+      G.setRecipe(uAsm, 'sci-red');
+      for (var zp = 0; zp < G.itemIds().length; zp++) G.setInv(G.itemIds()[zp], 0);
+      G.setInv('copper-plate', 6); G.setInv('gear', 3); G.setInv('iron-plate', 12);
+      click(76, 74, 0);
+      G.ui.refresh();
+      var putBtn = document.getElementById('putBtn');
+      chk('ui.putButtonExists', !!putBtn && !putBtn.disabled,
+        '조립기 인스펙터에 [보유 자재 넣기] 버튼 존재=' + !!putBtn +
+        ' · 활성=' + (putBtn ? !putBtn.disabled : '?') + ' · 보유 구리판 6 톱니 3');
+      if (putBtn) putBtn.click();
+      var pEnt = uAsm ? G.ent(uAsm) : null, pSt = G.state();
+      chk('ui.putButtonMovesToMachine',
+        !!pEnt && pEnt.inv['copper-plate'] === 6 && pEnt.inv['gear'] === 3 &&
+        (pSt.inventory['copper-plate'] || 0) === 0 && (pSt.inventory['gear'] || 0) === 0,
+        '버튼 클릭 → 조립기 안 구리판 ' + (pEnt ? (pEnt.inv['copper-plate'] || 0) : '?') +
+        ' 톱니 ' + (pEnt ? (pEnt.inv['gear'] || 0) : '?') + ' · 보유 잔량 구리판 ' +
+        (pSt.inventory['copper-plate'] || 0) + ' 톱니 ' + (pSt.inventory['gear'] || 0));
+
+      // 음성 대조군 — 남은 보유 자재가 철판 12개뿐이고 이 레시피는 철판을 안 쓴다.
+      // 조건이 실제로 발생했다: 방금 구리판·톱니를 다 넣어서 철판만 남았다.
+      G.ui.refresh();
+      var putBtn2 = document.getElementById('putBtn');
+      chk('ui.putButtonDisabledWhenNothingFits',
+        !!putBtn2 && putBtn2.disabled === true &&
+        (G.state().inventory['iron-plate'] || 0) === 12,
+        '보유가 철판 12개뿐일 때 버튼 비활성=' + (putBtn2 ? putBtn2.disabled : '버튼 없음') +
+        ' · 철판은 그대로 ' + (G.state().inventory['iron-plate'] || 0));
+
+      // 인스펙터가 "왜 안 도는지"를 말해야 한다. 사용자가 막힌 자리에서 화면에는
+      // 전력 100%·체력 만땅만 있었고, 입력이 비었다는 사실은 [내용물] 행이 **없는
+      // 것**으로만 드러났다. 없는 것은 아무도 읽지 못한다.
+      // G.ent() 는 사본을 돌려주므로 거기다 inv={} 를 써도 세계는 안 바뀐다
+      // (처음에 그렇게 짰다가 게이트가 헛돌았다). 실제 회수 경로로 비운다.
+      G.takeToStock(uAsm);
+      for (var zq = 0; zq < G.itemIds().length; zq++) G.setInv(G.itemIds()[zq], 0);
+      G.ui.refresh();
+      var idleTxt = document.getElementById('inspStat').textContent;
+      chk('ui.idleMachineSaysWhy',
+        idleTxt.indexOf('정지 이유') >= 0 && idleTxt.indexOf('재료 부족') >= 0 &&
+        idleTxt.indexOf('구리판 0/1') >= 0 && idleTxt.indexOf('톱니 0/1') >= 0,
+        '재료 0인 조립기 인스펙터에 정지 이유 표시 · 발췌="' +
+        idleTxt.replace(/\s+/g, ' ').slice(0, 120) + '"');
+
+      // 음성 대조군 — 재료가 차 있으면 이 줄이 뜨면 안 된다. 항상 뜨는 경고는
+      // 경고가 아니라 배경이라, 진짜로 멈춘 기계를 오히려 가린다.
+      G.setInv('copper-plate', 5); G.setInv('gear', 5);
+      G.putFromStock(uAsm);
+      G.ui.refresh();
+      var busyTxt = document.getElementById('inspStat').textContent;
+      chk('ui.runningMachineSaysNothing',
+        busyTxt.indexOf('정지 이유') < 0 && busyTxt.indexOf('구리판 5') >= 0,
+        '재료를 채운 뒤 정지 이유 사라짐=' + (busyTxt.indexOf('정지 이유') < 0) +
+        ' · 내용물 표시됨=' + (busyTxt.indexOf('구리판 5') >= 0));
+
+      // 음성 대조군 — 상자 인스펙터에는 넣기 버튼이 아예 없어야 한다
+      G.setInv('iron-plate', 99);
+      document.querySelector('#buildList .bitem[data-b="chest"]').click();
+      click(80, 80, 0);
+      key('Escape');
+      click(80, 80, 0);
+      G.ui.refresh();
+      chk('ui.putButtonAbsentOnChest',
+        document.getElementById('putBtn') === null &&
+        document.getElementById('takeBtn') !== null,
+        '상자 인스펙터: 넣기 버튼 없음=' + (document.getElementById('putBtn') === null) +
+        ' · 가져오기 버튼 있음=' + (document.getElementById('takeBtn') !== null));
+
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', G.ui.nodeCount() < 0, '노드 수가 음수일 리 없다', true);

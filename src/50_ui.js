@@ -499,7 +499,7 @@ function showInsp(e) {
 function inspSignature(e) {
   return [e.id, e.type, e.recipe, e.playerFilter, e.outPrio,
           e.playerEnabled === false ? 0 : 1, e.logicForced ? 1 : 0,
-          (inventory['coal'] || 0) > 0 ? 1 : 0,
+          stockPuttableItems(e).length > 0 ? 1 : 0,   // [넣기] 버튼의 활성 여부
           stockTakeCount(e) > 0 ? 1 : 0,     // [가져오기] 버튼의 활성 여부
           Object.keys(techDone).length].join('|');
 }
@@ -542,8 +542,17 @@ function refreshInsp() {
         '<option value="">균등 분배</option><option value="0"' + (e.outPrio === 0 ? ' selected' : '') + '>왼쪽</option>' +
         '<option value="1"' + (e.outPrio === 1 ? ' selected' : '') + '>오른쪽</option></select></div>');
     }
-    if (e.type === 'generator') {
-      c.push('<button id="fuelBtn"' + ((inventory['coal'] || 0) < 1 ? ' disabled' : '') + '>보유 석탄 10개 넣기</button>');
+    // 보유 자재 → 기계. 손으로 라인을 초기 급유할 수 있어야 "레시피는 걸었는데
+    // 왜 안 도나"를 스스로 확인할 수 있다. 무엇이 들어갈지는 canAccept 가 정한다.
+    if (PUT_TYPES[e.type]) {
+      var puttable = stockPuttableItems(e);
+      var putTitle = puttable.length
+        ? '넣을 수 있는 것: ' + puttable.map(function (i) { return ITEMS[i].name; }).join(' · ')
+        : (e.recipe || e.type !== 'assembler'
+            ? '지금 이 기계가 받을 수 있는 자재가 보유 자재에 없다'
+            : '레시피를 먼저 골라야 무엇을 받을지 정해진다');
+      c.push('<button id="putBtn" style="width:100%;margin-top:4px" title="' + putTitle + '"' +
+        (puttable.length ? '' : ' disabled') + '>보유 자재 넣기</button>');
     }
     // 상자·기계에 든 것을 보유 자재로 꺼낸다. 이 버튼이 없으면 공장이 만든 것을
     // 쓸 방법이 철거밖에 없어서, 시작 지급분을 다 쓰는 순간 게임이 막힌다.
@@ -593,6 +602,21 @@ function refreshInsp() {
       Object.keys(inv).map(function (i) { return '<span class="chip">' + ITEMS[i].name + ' ' + inv[i] + '</span>'; }).join('') +
       '</div></div>');
   }
+  // 레시피는 걸렸는데 왜 안 도는지 말해준다. 사용자가 "적색연구팩 제작이 안되는데?"
+  // 로 막힌 자리다 — 화면에는 전력 100%·체력 만땅만 있고 정작 입력 버퍼가 비었다는
+  // 사실은 [내용물] 행이 **없는 것**으로만 드러났다. 없는 것은 아무도 못 읽는다.
+  if ((e.type === 'assembler' || e.type === 'furnace') && e.recipe) {
+    var rec = RECIPES[e.recipe], missing = [];
+    for (var mk in rec.inp) {
+      if ((e.inv[mk] || 0) < rec.inp[mk]) missing.push(ITEMS[mk].name + ' ' + (e.inv[mk] || 0) + '/' + rec.inp[mk]);
+    }
+    if (missing.length) {
+      s.push('<div class="frow" style="align-items:flex-start"><label>정지 이유</label>' +
+        '<span class="bad">재료 부족 — ' + missing.join(', ') + '<br>' +
+        '<span class="hint">기계는 <b>제 안에 든 것</b>으로만 만든다. 인서터로 넣거나 ' +
+        '아래 [보유 자재 넣기]로 손수 채운다.</span></span></div>');
+    }
+  }
   var statEl = document.getElementById('inspStat');
   if (statEl) statEl.innerHTML = s.join('');
 }
@@ -610,13 +634,12 @@ function bindInspControls(e) {
   if (fs) fs.onchange = function () { e.playerFilter = fs.value || null; e.filter = e.playerFilter; };
   var ps = document.getElementById('prioSel');
   if (ps) ps.onchange = function () { e.outPrio = ps.value === '' ? null : parseInt(ps.value, 10); };
-  var fb = document.getElementById('fuelBtn');
-  if (fb) fb.onclick = function () {
-    var n = Math.min(10, inventory['coal'] || 0);
-    if (n <= 0) return;
-    inventory['coal'] -= n;
-    e.fuel += SPEC.coalEnergy * n;
-    renderInv(); refreshInsp();
+  var pb = document.getElementById('putBtn');
+  if (pb) pb.onclick = function () {
+    var n = putFromStock(e);
+    if (n > 0) toast(n + '개를 넣었다', 'good');
+    else toast('넣을 수 있는 자재가 없다', 'bad');
+    renderInv(); renderCraftList(); renderBuildList(); refreshInsp();
   };
   var tk = document.getElementById('takeBtn');
   if (tk) tk.onclick = function () {

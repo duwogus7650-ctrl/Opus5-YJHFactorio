@@ -76,7 +76,8 @@ var BUILDINGS = {
   'furnace':   { hotkey: '4', name: '용광로', w: 2, h: 2, cost: { 'brick': 5, 'iron-plate': 5 }, power: 180,
                  desc: '광석을 판으로. 3.2초에 1개.' },
   'assembler': { hotkey: '5', name: '조립기', w: 3, h: 3, cost: { 'gear': 9, 'circuit': 3, 'iron-plate': 9 }, power: 155,
-                 desc: '레시피를 지정해 조립. 제작속도 0.75.' },
+                 desc: '레시피를 지정해 조립. 제작속도 0.75. 재료는 조립기 안에 들어 있어야 한다 — ' +
+                       '인서터로 넣거나 [보유 자재 넣기]로 손수 채운다.' },
   'generator': { hotkey: '6', name: '발전기', w: 3, h: 3, cost: { 'gear': 8, 'iron-plate': 12, 'brick': 10 },
                  desc: '석탄을 태워 900 kW. 0.225 석탄/s 를 먹는다.' },
   'pole':      { hotkey: '7', name: '전주', w: 1, h: 1, cost: { 'wire': 2, 'iron-plate': 1 },

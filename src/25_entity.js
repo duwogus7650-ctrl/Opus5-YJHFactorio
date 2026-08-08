@@ -206,6 +206,43 @@ function stockTakeCount(e) {
   return invTotal(e.inv || {}) + invTotal(e.out || {});
 }
 
+// 보유 자재 → 세계. takeAllToStock 의 반대편이다.
+//
+// 이 방향이 없으면 라인을 손으로 초기 급유(priming)할 수 없다. 보유 자재에 구리판이
+// 126개 있어도 조립기에 못 넣어서, 레시피를 걸어 놓고도 왜 안 도는지 알 수 없다.
+// 예전에는 발전기 석탄 버튼 하나만 이 방향이었다.
+//
+// **무엇을 받을지는 canAccept 가 정한다** — 인서터가 쓰는 것과 같은 판정이다.
+// 따로 규칙을 쓰면 "인서터로는 들어가는데 손으로는 안 들어간다"가 반드시 생긴다.
+var PUT_TYPES = { generator: 1, turret: 1, lab: 1, furnace: 1, assembler: 1 };
+
+function stockPuttableItems(e) {
+  var out = [];
+  if (!e || !PUT_TYPES[e.type]) return out;
+  for (var i = 0; i < ITEM_IDS.length; i++) {
+    var k = ITEM_IDS[i];
+    if ((inventory[k] || 0) > 0 && canAccept(e, k)) out.push(k);
+  }
+  return out;
+}
+
+function putFromStock(e) {
+  if (!e || !PUT_TYPES[e.type]) return 0;
+  var moved = 0, guard = 0;
+  for (var i = 0; i < ITEM_IDS.length; i++) {
+    var k = ITEM_IDS[i];
+    // canAccept 가 기계의 버퍼 한도를 이미 알고 있으므로 여기서 다시 세지 않는다.
+    // guard 는 무한루프 방어일 뿐이고 정상 경로에서는 한도가 먼저 걸린다.
+    while ((inventory[k] || 0) > 0 && canAccept(e, k) && guard++ < 20000) {
+      if (!giveTo(e, k)) break;
+      invTake(inventory, k, 1);
+      moved++;
+    }
+  }
+  if (moved) { markPowerDirty(); markLogicDirty(); }
+  return moved;
+}
+
 // --- 인벤토리 헬퍼 ----------------------------------------------------------
 function invCount(obj, k) { return obj[k] || 0; }
 function invAdd(obj, k, n) { obj[k] = (obj[k] || 0) + n; }
