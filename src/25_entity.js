@@ -180,6 +180,32 @@ function removeEntity(id, refund) {
   return true;
 }
 
+// 세계에 있는 물건을 플레이어 보유 자재로 옮긴다.
+//
+// 이게 없으면 게임이 막다른 길이 된다: 공장이 만든 것은 전부 상자·기계 버퍼에 쌓이는데
+// 건물 비용과 손 조립은 보유 자재에서만 나가므로, 시작 지급분을 다 쓰면 상자가 가득
+// 차 있어도 아무것도 못 짓는다. 예전엔 유일한 회수 경로가 "상자를 철거하는 것"이었다.
+//
+// 발전기 연료(이미 태울 에너지로 바뀐 것)와 터렛 탄약은 대상이 아니다 — 철거로만 회수한다.
+function takeAllToStock(e) {
+  if (!e) return 0;
+  var moved = 0;
+  function drain(bag) {
+    for (var k in bag) {
+      var n = bag[k];
+      if (n > 0) { inventory[k] = (inventory[k] || 0) + n; moved += n; }
+    }
+  }
+  drain(e.inv); e.inv = {};
+  if (e.out) { drain(e.out); e.out = {}; }
+  if (moved) { markPowerDirty(); markLogicDirty(); }
+  return moved;
+}
+function stockTakeCount(e) {
+  if (!e) return 0;
+  return invTotal(e.inv || {}) + invTotal(e.out || {});
+}
+
 // --- 인벤토리 헬퍼 ----------------------------------------------------------
 function invCount(obj, k) { return obj[k] || 0; }
 function invAdd(obj, k, n) { obj[k] = (obj[k] || 0) + n; }

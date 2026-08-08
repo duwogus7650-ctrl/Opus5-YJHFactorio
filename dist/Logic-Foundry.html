@@ -297,7 +297,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
 
 <div id="right">
   <div class="panel">
-    <h3>Stores 창고
+    <h3>Stock 보유 자재
       <span style="float:right;display:flex;gap:4px">
         <button id="saveBtn" style="padding:1px 7px;font-size:10px" title="F2">저장</button>
         <button id="loadBtn" style="padding:1px 7px;font-size:10px" title="F3">불러오기</button>
@@ -588,7 +588,8 @@ var BUILDINGS = {
   'pole':      { hotkey: '7', name: '전주', w: 1, h: 1, cost: { 'wire': 2, 'iron-plate': 1 },
                  desc: '5x5 공급, 7.5타일 연결. 전력망은 여기로만 이어진다.' },
   'chest':     { hotkey: '8', name: '상자', w: 1, h: 1, cost: { 'iron-plate': 8 },
-                 desc: '600개 보관. 제어기의 재고 센서가 읽는 대상.' },
+                 desc: '600개 보관. 제어기의 재고 센서가 읽는 대상. 여기 든 것은 세계에 있는 물건이라 ' +
+                       '우측 [보유 자재]와 다르다 — 쓰려면 [보유 자재로 가져오기]를 눌러 꺼낸다.' },
   'lab':       { hotkey: '9', name: '연구소', w: 3, h: 3, cost: { 'gear': 10, 'circuit': 10, 'belt-item': 4 }, power: 60,
                  desc: '연구팩을 소비해 기술을 연다.' },
   // 제어기는 전기를 쓰지 않는다 (Factorio 의 회로망과 같다).
@@ -1391,6 +1392,32 @@ function removeEntity(id, refund) {
   markPowerDirty();
   markLogicDirty();
   return true;
+}
+
+// 세계에 있는 물건을 플레이어 보유 자재로 옮긴다.
+//
+// 이게 없으면 게임이 막다른 길이 된다: 공장이 만든 것은 전부 상자·기계 버퍼에 쌓이는데
+// 건물 비용과 손 조립은 보유 자재에서만 나가므로, 시작 지급분을 다 쓰면 상자가 가득
+// 차 있어도 아무것도 못 짓는다. 예전엔 유일한 회수 경로가 "상자를 철거하는 것"이었다.
+//
+// 발전기 연료(이미 태울 에너지로 바뀐 것)와 터렛 탄약은 대상이 아니다 — 철거로만 회수한다.
+function takeAllToStock(e) {
+  if (!e) return 0;
+  var moved = 0;
+  function drain(bag) {
+    for (var k in bag) {
+      var n = bag[k];
+      if (n > 0) { inventory[k] = (inventory[k] || 0) + n; moved += n; }
+    }
+  }
+  drain(e.inv); e.inv = {};
+  if (e.out) { drain(e.out); e.out = {}; }
+  if (moved) { markPowerDirty(); markLogicDirty(); }
+  return moved;
+}
+function stockTakeCount(e) {
+  if (!e) return 0;
+  return invTotal(e.inv || {}) + invTotal(e.out || {});
 }
 
 // --- 인벤토리 헬퍼 ----------------------------------------------------------
@@ -3784,6 +3811,7 @@ function inspSignature(e) {
   return [e.id, e.type, e.recipe, e.playerFilter, e.outPrio,
           e.playerEnabled === false ? 0 : 1, e.logicForced ? 1 : 0,
           (inventory['coal'] || 0) > 0 ? 1 : 0,
+          stockTakeCount(e) > 0 ? 1 : 0,     // [가져오기] 버튼의 활성 여부
           Object.keys(techDone).length].join('|');
 }
 
@@ -3826,7 +3854,13 @@ function refreshInsp() {
         '<option value="1"' + (e.outPrio === 1 ? ' selected' : '') + '>오른쪽</option></select></div>');
     }
     if (e.type === 'generator') {
-      c.push('<button id="fuelBtn"' + ((inventory['coal'] || 0) < 1 ? ' disabled' : '') + '>석탄 10개 넣기</button>');
+      c.push('<button id="fuelBtn"' + ((inventory['coal'] || 0) < 1 ? ' disabled' : '') + '>보유 석탄 10개 넣기</button>');
+    }
+    // 상자·기계에 든 것을 보유 자재로 꺼낸다. 이 버튼이 없으면 공장이 만든 것을
+    // 쓸 방법이 철거밖에 없어서, 시작 지급분을 다 쓰는 순간 게임이 막힌다.
+    if (e.type !== 'generator' && e.type !== 'turret' && (e.inv || e.out)) {
+      c.push('<button id="takeBtn" style="width:100%;margin-top:4px"' +
+        (stockTakeCount(e) < 1 ? ' disabled' : '') + '>보유 자재로 가져오기</button>');
     }
     c.push('<div style="display:flex;gap:6px;margin-top:9px">' +
       '<button id="tglBtn">' + (e.playerEnabled === false ? '가동' : '정지') + '</button>' +
@@ -3849,7 +3883,7 @@ function refreshInsp() {
   s.push('<div class="frow"><label>체력</label><span class="num">' + Math.round(e.hp) + ' / ' + e.maxHp + '</span></div>');
   if (e.type === 'generator') {
     s.push('<div class="frow"><label>연료</label><span class="num">' + fmt(e.fuel / 1000, 1) + ' MJ · 부하 ' +
-      Math.round((e.load || 0) * 100) + '% · 창고 석탄 ' + (inventory['coal'] || 0) +
+      Math.round((e.load || 0) * 100) + '% · 보유 석탄 ' + (inventory['coal'] || 0) +
       (e.net < 0 ? ' · <b class="bad">망 미연결</b>' : '') + '</span></div>');
   }
   if (e.type === 'turret') {
@@ -3894,6 +3928,12 @@ function bindInspControls(e) {
     inventory['coal'] -= n;
     e.fuel += SPEC.coalEnergy * n;
     renderInv(); refreshInsp();
+  };
+  var tk = document.getElementById('takeBtn');
+  if (tk) tk.onclick = function () {
+    var n = takeAllToStock(e);
+    if (n > 0) toast(n + '개를 보유 자재로 가져왔다', 'good');
+    renderInv(); renderCraftList(); renderBuildList(); refreshInsp();
   };
   document.getElementById('tglBtn').onclick = function () {
     e.playerEnabled = (e.playerEnabled === false);
@@ -4120,7 +4160,7 @@ var TUTORIAL_STEPS = [
       '전기가 안 오면 <b>7 전주</b>를 발전기와 채광기 사이에 놓아 잇는다',
       '시작 발전기에는 연료가 이미 들어 있다'
     ],
-    need: '톱니 5 · 철판 10 (창고에 있다)',
+    need: '톱니 5 · 철판 10 (보유 자재에 있다)',
     check: function () {
       return !!anyEntity(function (e) {
         return e.type === 'miner' && e.net >= 0 && !e.depleted;
@@ -4150,7 +4190,7 @@ var TUTORIAL_STEPS = [
       '인서터는 <b>뒤에서 집어 앞에 놓는다</b> — R로 방향을 맞춘다',
       '용광로는 처음 들어온 광석에 맞춰 레시피를 스스로 잡는다'
     ],
-    need: '용광로 = 벽돌 5 + 철판 5 · 인서터 = 창고에 12개 있다',
+    need: '용광로 = 벽돌 5 + 철판 5 · 인서터 = 보유 자재에 12개 있다',
     check: function () { return prodStats.smelted >= 1; }
   },
   {
@@ -4160,7 +4200,9 @@ var TUTORIAL_STEPS = [
     how: [
       '<b>8 상자</b>를 놓는다',
       '용광로 → <b>인서터</b> → 상자 로 잇는다',
-      '거리가 멀면 사이에 벨트를 깐다 (인서터는 한 칸만 건넨다)'
+      '거리가 멀면 사이에 벨트를 깐다 (인서터는 한 칸만 건넨다)',
+      '상자에 든 것은 <b>세계에 있는 물건</b>이라 우측 [보유 자재]와 다르다',
+      '쓰려면 상자를 좌클릭해 <b>[보유 자재로 가져오기]</b>를 누른다'
     ],
     check: function () {
       return !!anyEntity(function (e) {
@@ -5352,6 +5394,8 @@ window.__GAME = {
     };
   },
   howToGet: function (itemId) { return howToGet(itemId); },
+  takeToStock: function (id) { return takeAllToStock(entities[id]); },
+  takeableCount: function (id) { return stockTakeCount(entities[id]); },
   tutorialReset: function (on) { resetTutorial(on); renderTutorial(); return tutorial.step; },
   tutorialSkip: function () { var s = skipTutorialStep(); renderTutorial(); return s; },
   // 각 단계의 check() 를 지금 상태에서 직접 물어본다 (게이트가 단계별로 검정할 때)

@@ -500,6 +500,7 @@ function inspSignature(e) {
   return [e.id, e.type, e.recipe, e.playerFilter, e.outPrio,
           e.playerEnabled === false ? 0 : 1, e.logicForced ? 1 : 0,
           (inventory['coal'] || 0) > 0 ? 1 : 0,
+          stockTakeCount(e) > 0 ? 1 : 0,     // [가져오기] 버튼의 활성 여부
           Object.keys(techDone).length].join('|');
 }
 
@@ -542,7 +543,13 @@ function refreshInsp() {
         '<option value="1"' + (e.outPrio === 1 ? ' selected' : '') + '>오른쪽</option></select></div>');
     }
     if (e.type === 'generator') {
-      c.push('<button id="fuelBtn"' + ((inventory['coal'] || 0) < 1 ? ' disabled' : '') + '>석탄 10개 넣기</button>');
+      c.push('<button id="fuelBtn"' + ((inventory['coal'] || 0) < 1 ? ' disabled' : '') + '>보유 석탄 10개 넣기</button>');
+    }
+    // 상자·기계에 든 것을 보유 자재로 꺼낸다. 이 버튼이 없으면 공장이 만든 것을
+    // 쓸 방법이 철거밖에 없어서, 시작 지급분을 다 쓰는 순간 게임이 막힌다.
+    if (e.type !== 'generator' && e.type !== 'turret' && (e.inv || e.out)) {
+      c.push('<button id="takeBtn" style="width:100%;margin-top:4px"' +
+        (stockTakeCount(e) < 1 ? ' disabled' : '') + '>보유 자재로 가져오기</button>');
     }
     c.push('<div style="display:flex;gap:6px;margin-top:9px">' +
       '<button id="tglBtn">' + (e.playerEnabled === false ? '가동' : '정지') + '</button>' +
@@ -565,7 +572,7 @@ function refreshInsp() {
   s.push('<div class="frow"><label>체력</label><span class="num">' + Math.round(e.hp) + ' / ' + e.maxHp + '</span></div>');
   if (e.type === 'generator') {
     s.push('<div class="frow"><label>연료</label><span class="num">' + fmt(e.fuel / 1000, 1) + ' MJ · 부하 ' +
-      Math.round((e.load || 0) * 100) + '% · 창고 석탄 ' + (inventory['coal'] || 0) +
+      Math.round((e.load || 0) * 100) + '% · 보유 석탄 ' + (inventory['coal'] || 0) +
       (e.net < 0 ? ' · <b class="bad">망 미연결</b>' : '') + '</span></div>');
   }
   if (e.type === 'turret') {
@@ -610,6 +617,12 @@ function bindInspControls(e) {
     inventory['coal'] -= n;
     e.fuel += SPEC.coalEnergy * n;
     renderInv(); refreshInsp();
+  };
+  var tk = document.getElementById('takeBtn');
+  if (tk) tk.onclick = function () {
+    var n = takeAllToStock(e);
+    if (n > 0) toast(n + '개를 보유 자재로 가져왔다', 'good');
+    renderInv(); renderCraftList(); renderBuildList(); refreshInsp();
   };
   document.getElementById('tglBtn').onclick = function () {
     e.playerEnabled = (e.playerEnabled === false);

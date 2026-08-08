@@ -82,7 +82,8 @@ var BUILDINGS = {
   'pole':      { hotkey: '7', name: '전주', w: 1, h: 1, cost: { 'wire': 2, 'iron-plate': 1 },
                  desc: '5x5 공급, 7.5타일 연결. 전력망은 여기로만 이어진다.' },
   'chest':     { hotkey: '8', name: '상자', w: 1, h: 1, cost: { 'iron-plate': 8 },
-                 desc: '600개 보관. 제어기의 재고 센서가 읽는 대상.' },
+                 desc: '600개 보관. 제어기의 재고 센서가 읽는 대상. 여기 든 것은 세계에 있는 물건이라 ' +
+                       '우측 [보유 자재]와 다르다 — 쓰려면 [보유 자재로 가져오기]를 눌러 꺼낸다.' },
   'lab':       { hotkey: '9', name: '연구소', w: 3, h: 3, cost: { 'gear': 10, 'circuit': 10, 'belt-item': 4 }, power: 60,
                  desc: '연구팩을 소비해 기술을 연다.' },
   // 제어기는 전기를 쓰지 않는다 (Factorio 의 회로망과 같다).

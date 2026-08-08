@@ -306,6 +306,37 @@
       chk('ui.hotkeyMatchesLabel', mismatched.length === 0,
         '표시된 번호 10개를 모두 눌러 확인' + (mismatched.length ? ' · 어긋남: ' + mismatched.join(', ') : ' · 전부 일치'));
 
+      // --- 14. 상자에서 보유 자재로 꺼내는 버튼 -----------------------------
+      // 사용자가 "철판이 10개인데 STORES엔 1개만 뜬다"고 물어서 드러난 구멍이다.
+      // 둘은 다른 저장소인데, 상자에서 꺼내는 길이 철거밖에 없었다.
+      G.reset(424242); G.clearEntities(); G.ui.closeHelp();
+      for (var zz = 0; zz < G.itemIds().length; zz++) G.setInv(G.itemIds()[zz], 0);
+      document.querySelector('#buildList .bitem[data-b="chest"]').click();
+      G.setInv('iron-plate', 8);          // 상자 값만 딱 맞게
+      click(70, 70, 0);
+      var uChest = G.entAtTile(70, 70);
+      G.fillChest(uChest, 'iron-plate', 25);
+      key('Escape');
+      click(70, 70, 0);
+      G.ui.refresh();
+      var takeBtn = document.getElementById('takeBtn');
+      var stockPre = G.state().inventory['iron-plate'] || 0;
+      chk('ui.takeButtonExists', !!takeBtn && !takeBtn.disabled,
+        '상자 인스펙터에 [보유 자재로 가져오기] 버튼 존재=' + !!takeBtn +
+        ' · 활성=' + (takeBtn ? !takeBtn.disabled : '?') + ' · 상자 내용 25개');
+      if (takeBtn) takeBtn.click();
+      var stockPost = G.state().inventory['iron-plate'] || 0;
+      chk('ui.takeButtonMovesToStock',
+        stockPost === stockPre + 25 && G.takeableCount(uChest) === 0,
+        '버튼 클릭 → 보유 철판 ' + stockPre + ' → ' + stockPost + ' · 상자 잔량 ' +
+        G.takeableCount(uChest));
+
+      // 비면 버튼이 비활성이어야 한다 (음성 대조군: 방금 비운 것이 조건)
+      G.ui.refresh();
+      var takeBtn2 = document.getElementById('takeBtn');
+      chk('ui.takeButtonDisabledWhenEmpty', !!takeBtn2 && takeBtn2.disabled === true,
+        '빈 상자에서 버튼 비활성=' + (takeBtn2 ? takeBtn2.disabled : '버튼 없음'));
+
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', G.ui.nodeCount() < 0, '노드 수가 음수일 리 없다', true);

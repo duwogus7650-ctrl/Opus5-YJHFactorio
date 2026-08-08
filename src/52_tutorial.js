@@ -67,7 +67,7 @@ var TUTORIAL_STEPS = [
       '전기가 안 오면 <b>7 전주</b>를 발전기와 채광기 사이에 놓아 잇는다',
       '시작 발전기에는 연료가 이미 들어 있다'
     ],
-    need: '톱니 5 · 철판 10 (창고에 있다)',
+    need: '톱니 5 · 철판 10 (보유 자재에 있다)',
     check: function () {
       return !!anyEntity(function (e) {
         return e.type === 'miner' && e.net >= 0 && !e.depleted;
@@ -97,7 +97,7 @@ var TUTORIAL_STEPS = [
       '인서터는 <b>뒤에서 집어 앞에 놓는다</b> — R로 방향을 맞춘다',
       '용광로는 처음 들어온 광석에 맞춰 레시피를 스스로 잡는다'
     ],
-    need: '용광로 = 벽돌 5 + 철판 5 · 인서터 = 창고에 12개 있다',
+    need: '용광로 = 벽돌 5 + 철판 5 · 인서터 = 보유 자재에 12개 있다',
     check: function () { return prodStats.smelted >= 1; }
   },
   {
@@ -107,7 +107,9 @@ var TUTORIAL_STEPS = [
     how: [
       '<b>8 상자</b>를 놓는다',
       '용광로 → <b>인서터</b> → 상자 로 잇는다',
-      '거리가 멀면 사이에 벨트를 깐다 (인서터는 한 칸만 건넨다)'
+      '거리가 멀면 사이에 벨트를 깐다 (인서터는 한 칸만 건넨다)',
+      '상자에 든 것은 <b>세계에 있는 물건</b>이라 우측 [보유 자재]와 다르다',
+      '쓰려면 상자를 좌클릭해 <b>[보유 자재로 가져오기]</b>를 누른다'
     ],
     check: function () {
       return !!anyEntity(function (e) {

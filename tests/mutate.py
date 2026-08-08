@@ -152,7 +152,17 @@ MUTATIONS = [
      b'function howToGet(itemId) {\n  if (true) return null;\n  var r = RECIPES[itemId];',
      ['help.tellsHowToGetMaterials']),
 
+    ('가져오기가 원본을 안 비운다 (복제)', '25_entity.js',
+     b'  drain(e.inv); e.inv = {};',
+     b'  drain(e.inv);',
+     ['stock.takeDoesNotDuplicate']),
+
     # ---- UI 경로 (uismoke.js 로 판정) ----
+    ('상자에서 꺼내는 버튼을 없앤다', '50_ui.js',
+     b"    if (e.type !== 'generator' && e.type !== 'turret' && (e.inv || e.out)) {",
+     b'    if (false) {',
+     ['ui.takeButtonExists'], 'uismoke.js'),
+
     ('단축키를 다시 목록 순서로 매긴다', '50_ui.js',
      b'      var hit = buildIdForKey(k);',
      b"      var hit = visibleBuildIds()[k === '0' ? 9 : (parseInt(k, 10) - 1)];",

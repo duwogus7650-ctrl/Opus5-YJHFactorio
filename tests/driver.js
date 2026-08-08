@@ -767,6 +767,68 @@
         '적 0마리일 때 최근접거리 ' + distNone + ' (반경 30 이상이어야) · 2타일 옆에 적이 생기면 ' +
         distNear + ' (0을 내면 평상시에 방어 배선이 항상 켜진다)');
 
+      // ================= 8b-2. 상자 → 보유 자재 회수 =======================
+      // 이게 없으면 게임이 막다른 길이 된다: 공장이 만든 것은 전부 상자·기계 버퍼에
+      // 쌓이는데 건물 비용과 손 조립은 보유 자재에서만 나간다. 예전엔 회수 경로가
+      // "상자를 철거하는 것"뿐이라 시작 지급분을 다 쓰면 아무것도 못 지었다.
+      labSetup();
+      // 상자를 **먼저** 놓고 그 다음에 보유 자재를 비운다.
+      // 반대로 하면 배치 비용 관련 돌연변이가 걸렸을 때 상자가 안 생기고,
+      // 뒤이은 G.ent(null).inv 에서 드라이버가 죽어 이후 게이트가 통째로 안 돈다
+      // (실제로 그래서 돌연변이 하나가 CAUGHT 대신 INVALID 로 분류됐다).
+      var tkChest = G.place('chest', 44, 44, 0);
+      chk('stock.rigBuilt', !!tkChest, '회수 시험용 상자 id=' + tkChest);
+      for (var zi = 0; zi < ITEM_IDS_TEST.length; zi++) G.setInv(ITEM_IDS_TEST[zi], 0);
+      G.fillChest(tkChest, 'iron-plate', 37);
+      G.fillChest(tkChest, 'copper-plate', 5);
+      var stockBefore = G.state().inventory['iron-plate'] || 0;
+      var takeable = G.takeableCount(tkChest);
+      var movedN = G.takeToStock(tkChest);
+      var st = G.state();
+      var tkEnt = G.ent(tkChest);
+      chk('stock.takeFromChest',
+        !!tkEnt && stockBefore === 0 && takeable === 42 && movedN === 42 &&
+        (st.inventory['iron-plate'] || 0) === 37 && (st.inventory['copper-plate'] || 0) === 5 &&
+        tkEnt.inv['iron-plate'] === undefined,
+        '상자에 철판 37 + 구리판 5 · 가져올 수 있는 개수 ' + takeable + ' · 옮긴 개수 ' + movedN +
+        ' → 보유 철판 ' + (st.inventory['iron-plate'] || 0) + ' 구리판 ' +
+        (st.inventory['copper-plate'] || 0) + ' · 상자는 비었는가=' +
+        (G.takeableCount(tkChest) === 0));
+
+      // 복제 금지 — 세계 전체 개수는 그대로여야 한다 (옮기기지 만들기가 아니다)
+      G.fillChest(tkChest, 'iron-plate', 11);
+      var censusA = G.materialCensus(['iron-plate', 'copper-plate']);
+      G.takeToStock(tkChest);
+      var censusB = G.materialCensus(['iron-plate', 'copper-plate']);
+      chk('stock.takeDoesNotDuplicate', censusA.present === censusB.present,
+        '가져오기 전후 세계 총량 ' + censusA.present + ' → ' + censusB.present +
+        ' (materialCensus 는 상자·기계·벨트·보유 자재를 모두 센다)');
+
+      // 음성 대조군 — 빈 상자에서는 아무 일도 없어야 한다.
+      // (조건이 실제로 발생했음: 위에서 이미 다 꺼내 0개다)
+      var emptyBefore = G.state().inventory['iron-plate'] || 0;
+      var emptyTakeable = G.takeableCount(tkChest);
+      var emptyMoved = G.takeToStock(tkChest);
+      chk('stock.emptyChestTakesNothing',
+        emptyTakeable === 0 && emptyMoved === 0 &&
+        (G.state().inventory['iron-plate'] || 0) === emptyBefore,
+        '빈 상자(가져올 수 있는 개수 ' + emptyTakeable + ') → 옮긴 개수 ' + emptyMoved +
+        ' · 보유 철판 ' + emptyBefore + ' 그대로');
+
+      // 기계의 출력 버퍼도 회수 대상이다 (제련한 철판이 용광로에 갇히면 안 된다)
+      G.giveAll(999);                     // 용광로를 놓을 자재는 다시 준다
+      var tkFur = G.place('furnace', 46, 44, 1);
+      chk('stock.furnaceRigBuilt', !!tkFur, '회수 시험용 용광로 id=' + tkFur);
+      G.setRecipe(tkFur, 'iron-plate'); G.fillChest(tkFur, 'iron-ore', 6);
+      G.run(12);
+      var furOut = tkFur ? (G.ent(tkFur).out['iron-plate'] || 0) : 0;
+      var beforeFur = G.state().inventory['iron-plate'] || 0;
+      G.takeToStock(tkFur);
+      chk('stock.takeFromMachineOutput',
+        furOut >= 1 && (G.state().inventory['iron-plate'] || 0) === beforeFur + furOut,
+        '용광로 출력 ' + furOut + '개 → 보유 철판 ' + beforeFur + ' → ' +
+        (G.state().inventory['iron-plate'] || 0));
+
       // ================= 8c. 튜토리얼 ====================================
       // 판정은 "세계가 실제로 그렇게 됐는가"로만 한다. '다음' 버튼으로 넘기는
       // 튜토리얼은 아무것도 가르치지 않으므로, 게이트도 그 원칙을 지키는지를 본다.

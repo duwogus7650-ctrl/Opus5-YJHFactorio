@@ -68,6 +68,21 @@ Factorio의 회로망은 곁가지이고, 대부분의 플레이는 배치 최�
 **재료가 모자라 배치가 막히면 그 자리에서 얻는 법을 알려준다** — "회로기판 5개 필요 (지금 0개)
 — 1×철판 + 3×구리선 → 우측 [손 조립]에서 클릭". 부족하다고만 말하면 플레이어가 막힌다.
 
+## 두 개의 저장소 — 보유 자재 ≠ 상자
+
+- **보유 자재(STOCK)** = 플레이어가 들고 있는 것. **건물 비용과 손 조립은 여기서만 나간다.**
+- **상자·기계 버퍼** = 세계에 놓인 물건. 인서터·벨트가 옮기는 것은 전부 이쪽이다.
+
+둘은 자동으로 섞이지 않는다. 공장이 만든 것을 쓰려면 상자(또는 기계)를 좌클릭해
+**[보유 자재로 가져오기]** 를 누른다. 아바타가 없는 게임이라 이 버튼이 "가서 꺼내오기"다.
+
+> 이건 플레이 중 발견된 구멍이었다. 원래 회수 경로가 **철거밖에** 없어서, 시작 지급분을 다
+> 쓰면 상자가 가득 차 있어도 아무것도 못 지었다. `inventory` 에 물건이 들어오는 경로를 전부
+> 뽑아 보니 시작 지급·철거 환급·손 조립 결과·조립기 레시피 변경 반환 넷뿐이었다 —
+> **생산물이 보유 자재로 오는 길이 없었다.**
+> 회수는 옮기기지 만들기가 아니므로, 세계 총량이 변하지 않는지를 게이트로 못박았다
+> (`stock.takeDoesNotDuplicate`).
+
 **단축키는 건물에 고정돼 있다.** `1 벨트 · 2 인서터 · 3 채광기 · 4 용광로 · 5 조립기 ·
 6 발전기 · 7 전주 · 8 상자 · 9 연구소 · 0 제어기`. 연구로 새 건물이 열려도 번호가 밀리지
 않는다(예전엔 잠긴 것을 뺀 목록 순서로 매겨서, 물류학을 연구하는 순간 3=채광기가
@@ -137,8 +152,8 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 ```bash
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
-python tests/harness.py              # 모델 게이트 66건 (헤드리스 Edge)
-python tests/harness.py uismoke.js   # 클릭 경로 게이트 33건 (합성 마우스/키 이벤트)
+python tests/harness.py              # 모델 게이트 72건 (헤드리스 Edge)
+python tests/harness.py uismoke.js   # 클릭 경로 게이트 36건 (합성 마우스/키 이벤트)
 python tests/mutate.py               # 게이트가 실패를 잡는지 역검정 (소스를 고의로 깬다, 단독 실행)
 python tests/crossbrowser.py         # 엔진 4개 × 드라이버 2개 = 8조합
 python tests/balance.py              # 30분 시뮬 3시나리오 페이싱 측정 (게이트 아님)
@@ -160,14 +175,14 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 
 ```
 syntax_check.js       GREEN — 인라인 스크립트 파싱 통과
-harness.py            GREEN — 실검사 66건 전부 통과 (고의 실패 1건 정상 검출)
-harness.py uismoke.js GREEN — 실검사 33건 전부 통과 (고의 실패 1건 정상 검출)
-mutate.py             GREEN — 돌연변이 26건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+harness.py            GREEN — 실검사 72건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py uismoke.js GREEN — 실검사 36건 전부 통과 (고의 실패 1건 정상 검출)
+mutate.py             GREEN — 돌연변이 28건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py       GREEN — 엔진 4개 × 드라이버 2개 = 8조합 전부 통과
 balance.py            런타임 오류 0건 · 페이싱 표는 아래
 ```
 
-| 엔진 | 모델 66건 | 클릭 33건 | 장면 렌더 |
+| 엔진 | 모델 72건 | 클릭 36건 | 장면 렌더 |
 |---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | 기준 |
 | Chromium 151 (Playwright) | GREEN | GREEN | 색 238종 · 엔티티 80 |
