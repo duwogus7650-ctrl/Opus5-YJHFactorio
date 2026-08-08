@@ -31,12 +31,19 @@ ENV['PYTHONIOENCODING'] = 'utf-8'
 ENGINES = ['edge', 'chromium', 'firefox', 'webkit']
 DRIVERS = [('driver.js', '모델'), ('uismoke.js', '클릭'), ('shedding.js', '부하차단')]
 
+# 터치 조합. **합성 터치가 되는 엔진에서만 의미가 있다** — WebKit(사파리 엔진)은
+# Touch/TouchEvent 를 스크립트로 만들 수 없어(Type error) 여기서 돌려도 검증이
+# 아니라 도구 한계를 재게 된다. 빼되 **조용히 빼지 않고** 표에 미검증으로 남긴다.
+TOUCH_RUNS = [('chromium', 'mobile'), ('chromium', 'tablet')]
+TOUCH_UNVERIFIED = [('webkit', 'mobile', '합성 터치 불가 (Touch/TouchEvent 생성 Type error)'),
+                    ('firefox', 'mobile', 'Playwright 가 firefox 에 hasTouch 를 못 준다')]
+
 RESULT_RE = re.compile(r'^\s*(GREEN|RED)\s+—\s+(.*)$', re.M)
 COUNT_RE = re.compile(r'실검사 (\d+)건')
 
 
-def run(engine, driver):
-    cmd = [sys.executable, os.path.join('tests', 'harness.py'), driver, engine]
+def run(engine, driver, device='desktop'):
+    cmd = [sys.executable, os.path.join('tests', 'harness.py'), driver, engine, device]
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, env=ENV, timeout=1800)
     out = p.stdout.decode('utf-8', 'replace') + p.stderr.decode('utf-8', 'replace')
     m = RESULT_RE.search(out)
@@ -80,12 +87,32 @@ def main():
                 # 원인을 바로 볼 수 있게 마지막 부분을 남긴다
                 print('     ' + out.strip().splitlines()[-1][:120] if out.strip() else '')
 
+    # --- 터치 기기 -----------------------------------------------------------
+    print('-' * 78)
+    print(' 터치 기기 (진짜 TouchEvent)')
+    print('-' * 78)
+    for eng, dev in TOUCH_RUNS:
+        rc, verdict, n, fails, broken, out = run(eng, 'mobile.js', dev)
+        note = ''
+        if broken:
+            note = '자기시험 BROKEN: ' + ','.join(broken); bad += 1
+        elif fails:
+            note = '실패: ' + ','.join(fails[:4]); bad += 1
+        elif verdict != 'GREEN':
+            note = verdict + ' (rc=%d)' % rc; bad += 1
+        print(' %-10s %-6s %-8s %s %s' % (eng, dev, n, verdict, note))
+        rows.append((eng, dev, verdict, n))
+
+    # **미검증을 조용히 숨기지 않는다.** 표에서 빠지면 "다 됐다" 로 읽힌다.
+    for eng, dev, why in TOUCH_UNVERIFIED:
+        print(' %-10s %-6s %-8s %s' % (eng, dev, '-', '미검증 — ' + why))
+
     print('-' * 78)
     if bad:
         print(' RED — 엔진 %d 조합에서 문제가 있다.' % bad)
         return 1
-    print(' GREEN — 엔진 %d개 × 드라이버 %d개 = %d 조합 전부 통과.'
-          % (len(ENGINES), len(DRIVERS), len(rows)))
+    print(' GREEN — %d 조합 통과 (데스크톱 %d + 터치 %d). 터치 미검증 %d 조합은 위에 명시.'
+          % (len(rows), len(ENGINES) * len(DRIVERS), len(TOUCH_RUNS), len(TOUCH_UNVERIFIED)))
     return 0
 
 

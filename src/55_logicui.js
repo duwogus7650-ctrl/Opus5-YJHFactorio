@@ -225,6 +225,29 @@ function buildNodeDom(inner, g, n) {
     function up() { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); }
     window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
   };
+  // 터치로도 노드를 끌 수 있어야 한다. 마우스 경로와 **같은 계산**을 쓰되 좌표만
+  // 손가락에서 가져온다 — 따로 계산하면 배율(gpan.z)이 걸린 상태에서 어긋난다.
+  head.addEventListener('touchstart', function (ev) {
+    ev.preventDefault(); ev.stopPropagation();
+    var t0 = ev.touches[0]; if (!t0) return;
+    var sx = t0.clientX, sy = t0.clientY, ox = n.x, oy = n.y;
+    function tmv(e2) {
+      var t = e2.touches[0]; if (!t) return;
+      e2.preventDefault();
+      n.x = Math.max(0, ox + (t.clientX - sx) / gpan.z);
+      n.y = Math.max(0, oy + (t.clientY - sy) / gpan.z);
+      el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+      updateLinks();
+    }
+    function tup() {
+      window.removeEventListener('touchmove', tmv);
+      window.removeEventListener('touchend', tup);
+      window.removeEventListener('touchcancel', tup);
+    }
+    window.addEventListener('touchmove', tmv, { passive: false });
+    window.addEventListener('touchend', tup);
+    window.addEventListener('touchcancel', tup);
+  }, { passive: false });
   var outs = el.querySelectorAll('[data-out]');
   for (var k = 0; k < outs.length; k++) {
     outs[k].onmousedown = (function (nid, port) {
@@ -233,6 +256,45 @@ function buildNodeDom(inner, g, n) {
         linking = { nid: nid, port: port };
       };
     })(n.nid, parseInt(outs[k].getAttribute('data-out'), 10));
+    // 터치: touchend 는 **손가락을 올린 요소가 아니라 시작한 요소**로 간다.
+    // 그래서 입력 포트의 mouseup 을 기다리면 영원히 안 온다 — 뗀 좌표에서
+    // elementFromPoint 로 직접 찾는다. 이 게임의 본체가 배선이라 여기가 막히면
+    // 폰에서는 게임이 성립하지 않는다.
+    outs[k].addEventListener('touchstart', (function (nid, port) {
+      return function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        linking = { nid: nid, port: port };
+        function tmv(e2) {
+          var t = e2.touches[0]; if (!t || !linking) return;
+          e2.preventDefault();
+          var r = document.getElementById('graphWrap').getBoundingClientRect();
+          updateLinks({ x: (t.clientX - r.left - gpan.x) / gpan.z,
+                        y: (t.clientY - r.top - gpan.y) / gpan.z });
+        }
+        function tup(e2) {
+          window.removeEventListener('touchmove', tmv);
+          window.removeEventListener('touchend', tup);
+          window.removeEventListener('touchcancel', tup);
+          var t = (e2.changedTouches && e2.changedTouches[0]) || null;
+          if (t && linking) {
+            var el2 = document.elementFromPoint(t.clientX, t.clientY);
+            var dot = el2 && el2.closest ? el2.closest('[data-in]') : null;
+            var host = dot && dot.closest ? dot.closest('.node') : null;
+            if (dot && host) {
+              var toNid = parseInt(host.getAttribute('data-nid'), 10);
+              var toPort = parseInt(dot.getAttribute('data-in'), 10);
+              if (!graphLink(curCtrl.graph, linking.nid, linking.port, toNid, toPort)) {
+                toast('자기 자신에는 연결할 수 없다', 'bad');
+              }
+            }
+          }
+          linking = null; renderGraph();
+        }
+        window.addEventListener('touchmove', tmv, { passive: false });
+        window.addEventListener('touchend', tup);
+        window.addEventListener('touchcancel', tup);
+      };
+    })(n.nid, parseInt(outs[k].getAttribute('data-out'), 10)), { passive: false });
   }
   var ins = el.querySelectorAll('[data-in]');
   for (var m = 0; m < ins.length; m++) {
@@ -339,6 +401,46 @@ function bindLogicPane() {
   window.addEventListener('mouseup', function () {
     if (linking) { linking = null; updateLinks(); }
   });
+  // 편집기 화면도 손가락으로 움직이고 확대해야 한다 (휠은 폰에 없다)
+  var gt = { mode: null, lx: 0, ly: 0, d: 0, cx: 0, cy: 0 };
+  wrap.addEventListener('touchstart', function (ev) {
+    if (ev.target !== wrap && ev.target.id !== 'links' && ev.target.id !== 'graphInner') return;
+    if (ev.touches.length >= 2) {
+      var r0 = wrap.getBoundingClientRect();
+      gt.mode = 'pinch';
+      gt.d = Math.hypot(ev.touches[0].clientX - ev.touches[1].clientX,
+                        ev.touches[0].clientY - ev.touches[1].clientY);
+      gt.cx = (ev.touches[0].clientX + ev.touches[1].clientX) / 2 - r0.left;
+      gt.cy = (ev.touches[0].clientY + ev.touches[1].clientY) / 2 - r0.top;
+    } else {
+      gt.mode = 'pan'; gt.lx = ev.touches[0].clientX; gt.ly = ev.touches[0].clientY;
+      wrap.classList.add('panning');
+    }
+    ev.preventDefault();
+  }, { passive: false });
+  wrap.addEventListener('touchmove', function (ev) {
+    if (!gt.mode) return;
+    ev.preventDefault();
+    if (gt.mode === 'pinch' && ev.touches.length >= 2) {
+      var d = Math.hypot(ev.touches[0].clientX - ev.touches[1].clientX,
+                         ev.touches[0].clientY - ev.touches[1].clientY);
+      if (gt.d > 0 && d > 0) {
+        var before = { x: (gt.cx - gpan.x) / gpan.z, y: (gt.cy - gpan.y) / gpan.z };
+        gpan.z = clamp(gpan.z * (d / gt.d), 0.4, 2.2);
+        gpan.x = gt.cx - before.x * gpan.z; gpan.y = gt.cy - before.y * gpan.z;
+        applyPan(); updateLinks();
+      }
+      gt.d = d;
+      return;
+    }
+    var t = ev.touches[0]; if (!t) return;
+    gpan.x += t.clientX - gt.lx; gpan.y += t.clientY - gt.ly;
+    gt.lx = t.clientX; gt.ly = t.clientY;
+    applyPan();
+  }, { passive: false });
+  wrap.addEventListener('touchend', function () { gt.mode = null; wrap.classList.remove('panning'); });
+  wrap.addEventListener('touchcancel', function () { gt.mode = null; wrap.classList.remove('panning'); });
+
   wrap.addEventListener('wheel', function (ev) {
     ev.preventDefault();
     var r = wrap.getBoundingClientRect();

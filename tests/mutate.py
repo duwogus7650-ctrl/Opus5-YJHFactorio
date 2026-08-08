@@ -310,6 +310,57 @@ MUTATIONS = [
      b'offGrid = true;',
      ['ui.onGridControllerQuiet'], 'uismoke.js'),
 
+    # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    ('캔버스가 터치를 아예 안 받는다', '50_ui.js',
+     b"  canvas.addEventListener('touchstart', function (ev) {",
+     b"  canvas.addEventListener('__nope', function (ev) {",
+     ['mobile.tapPlacesBuilding', 'mobile.dragPlacesBelts'], 'mobile.js'),
+
+    ('한 손가락 이동이 안 된다', '50_ui.js',
+     b"    else { tch.mode = 'pan'; }",
+     b"    else { tch.mode = null; }",
+     ['mobile.oneFingerPans'], 'mobile.js'),
+
+    ('두 손가락 핀치를 무시한다', '50_ui.js',
+     b"    if (tch.mode === 'pinch' && ev.touches.length >= 2) {",
+     b'    if (false) {',
+     ['mobile.pinchZooms'], 'mobile.js'),
+
+    # 탭 문턱을 0 으로 두면 손가락 흔들림이 전부 드래그로 읽혀 선택이 안 된다
+    ('탭 문턱을 0 으로 (손가락 흔들림을 드래그로 읽는다)', '50_ui.js',
+     b'    var TAP = 12;',
+     b'    var TAP = 0;',
+     ['mobile.tapOpensInspector'], 'mobile.js'),
+
+    ('노드 편집기가 터치 배선을 안 받는다', '55_logicui.js',
+     b"    outs[k].addEventListener('touchstart', (function (nid, port) {",
+     b"    outs[k].addEventListener('__nope', (function (nid, port) {",
+     ['mobile.logicWiringByTouch'], 'mobile.js'),
+
+    ('노드를 손가락으로 못 끈다', '55_logicui.js',
+     b"  head.addEventListener('touchstart', function (ev) {",
+     b"  head.addEventListener('__nope', function (ev) {",
+     ['mobile.logicNodeDragByTouch'], 'mobile.js'),
+
+    # 이 게이트는 처음에 "버튼이 보이는가" 만 봐서 MISS 가 났다 — 손잡이를 떼도
+    # 버튼은 그대로 보였기 때문이다. 지금은 눌러서 방향이 바뀌는지로 판정한다.
+    ('회전 버튼의 손잡이를 뗀다 (버튼은 남고 아무 일도 안 한다)', '50_ui.js',
+     b"  on('btnRotate', function () { toolDir = dirCW(toolDir); renderBuildList(); });",
+     b"  on('__nope', function () { toolDir = dirCW(toolDir); renderBuildList(); });",
+     ['mobile.rotateWithoutKeyboard'], 'mobile.js'),
+
+    # 폰에는 우클릭이 없다 — 철거가 막히면 잘못 놓은 건물을 영영 못 지운다
+    ('철거 모드가 아무것도 안 부순다', '50_ui.js',
+     b'  if (demolishMode) { rightClickAction(); renderInv(); return; }',
+     b'  if (false) { rightClickAction(); renderInv(); return; }',
+     ['mobile.demolishWithoutRightClick'], 'mobile.js'),
+
+    # 늘 부수는 모드는 모드가 아니라 사고다
+    ('철거 모드가 꺼져도 계속 부순다', '50_ui.js',
+     b'  demolishMode = !!on;',
+     b'  demolishMode = true;',
+     ['mobile.demolishOffKeepsBuilding'], 'mobile.js'),
+
     ('완료 화면에 심화 버튼을 안 단다', '52_tutorial.js',
      b'        \'<button id="tutorAdv" style="width:100%">',
      b'        \'<button id="tutorNope" style="width:100%">',
@@ -447,6 +498,17 @@ def main():
         return 2
     print('uismoke 기준선 GREEN — 게이트 %d개' % len(gate_results(out2)))
 
+    # 모바일 기준선. 기기 에뮬레이션이 켜진 상태에서 GREEN 이어야 터치 돌연변이를
+    # 판정할 수 있다 — 데스크톱으로 돌리면 TouchEvent 자체가 안 나가서 모든 터치
+    # 게이트가 무너지고, 그걸 "돌연변이가 잡혔다" 로 오독하게 된다.
+    rc, out3, err3 = run([sys.executable, os.path.join('tests', 'harness.py'),
+                          'mobile.js', 'chromium', 'mobile'])
+    if rc != 0:
+        print('FATAL: mobile 기준선이 RED 다.')
+        print(out3[-3000:])
+        return 2
+    print('mobile 기준선 GREEN — 게이트 %d개' % len(gate_results(out3)))
+
     only = None
     for a in sys.argv[1:]:
         if a.startswith('--only='):
@@ -495,7 +557,12 @@ def main():
                 emit(('INVALID', name, '돌연변이가 문법 오류를 냈다'))
                 invalid += 1
                 continue
-            hrc, hout, herr = run([sys.executable, os.path.join('tests', 'harness.py'), drv])
+            # 터치 드라이버는 기기 에뮬레이션이 켜져야 의미가 있다. 데스크톱으로
+            # 돌리면 TouchEvent 가 안 만들어져 게이트가 아니라 도구를 재게 된다.
+            hcmd = [sys.executable, os.path.join('tests', 'harness.py'), drv]
+            if drv == 'mobile.js':
+                hcmd += ['chromium', 'mobile']
+            hrc, hout, herr = run(hcmd)
             if hrc == 'TIMEOUT':
                 # 게이트가 잡은 것이 아니다 — 판정 자체가 성립하지 않았다.
                 # 무한 루프는 FAIL 로 안 나오고 화면이 멈출 뿐이라, 이 결함은

@@ -326,6 +326,7 @@ function boot() {
   bindInput(canvas);
   bindMini();
   bindSaveButtons();
+  bindMobileBar();
   bindTutorial();
   bindLogicPane();
   fillHelp();
@@ -410,6 +411,20 @@ window.__GAME = {
     var e = entities[ctrlId]; if (!e) return false;
     return graphLink(e.graph, fn, fp, tn, tp);
   },
+  // 노드의 화면상 위치 (터치 드래그가 실제로 옮겼는지 보려면 좌표가 필요하다)
+  gPos: function (ctrlId, nid) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return null;
+    var n = graphNode(e.graph, nid); if (!n) return null;
+    return { x: n.x, y: n.y };
+  },
+  // 타일 좌표 → CSS 픽셀. 터치 좌표는 clientX/Y 라 dpr 을 나눈 값이어야 한다.
+  // cam.x/y 와 screenOf 는 **타일 단위**다 (픽셀이 아니다 — cam.x 는 [4, W-4] 로
+  // 클램프된다). TILE 을 곱했다가 화면좌표가 59587 로 나왔다.
+  tileToScreen: function (tx, ty) {
+    var p = screenOf(tx + 0.5, ty + 0.5), d = cam.dpr || 1;
+    return { x: p.x / d, y: p.y / d };
+  },
+  camera: function () { return { x: cam.x, y: cam.y, z: cam.z, dpr: cam.dpr || 1 }; },
   gOut: function (ctrlId, nid, port) {
     var e = entities[ctrlId]; if (!e) return null;
     var n = graphNode(e.graph, nid); if (!n) return null;
@@ -678,6 +693,10 @@ window.__GAME = {
     },
     tileUnderCursor: function () { return [hoverT.x, hoverT.y]; },
     curTool: function () { return tool; },
+    // 모바일 시험용 — 도구를 든 채로 스와이프하면 건설이라, 지도 이동을 재려면
+    // 먼저 손을 비워야 한다. tool(undefined) 로도 되지만 의도가 안 드러난다.
+    clearTool: function () { selectTool(null); return tool; },
+    renderGraph: function () { renderGraph(); return true; },
     curDir: function () { return toolDir; },
     logicOpen: function () { return logicOpen; },
     selectedId: function () { return selected; },

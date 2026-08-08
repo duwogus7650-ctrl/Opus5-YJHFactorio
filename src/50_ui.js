@@ -145,6 +145,93 @@ function bindInput(canvas) {
     }
     mouse.down = false; dragLast = null;
   });
+  // --- 터치 ------------------------------------------------------------------
+  // 폰에는 버튼이 셋(좌·우·휠)이 아니라 손가락 개수밖에 없다. 그래서 의도를
+  // **손가락 수**로 가른다:
+  //   손가락 1개 + 도구 있음 → 건설 (탭 = 한 칸, 끌기 = 여러 칸)
+  //   손가락 1개 + 도구 없음 → 지도 이동 (그 자리에서 떼면 = 선택)
+  //   손가락 2개            → 핀치 확대 + 이동
+  // 우클릭(철거)에 해당하는 것이 없으므로 **철거는 도구로** 만든다(아래 'demolish').
+  var tch = { mode: null, id: null, sx: 0, sy: 0, lx: 0, ly: 0, moved: 0,
+              pinchD: 0, pinchCx: 0, pinchCy: 0 };
+  function localXY(t) {
+    var r = canvas.getBoundingClientRect();
+    return { x: t.clientX - r.left, y: t.clientY - r.top };
+  }
+  function dist2(a, b) {
+    var dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  function setHoverFrom(p) {
+    mouse.x = p.x; mouse.y = p.y;
+    var w = worldOf(p.x, p.y);
+    hoverT.x = Math.floor(w.x); hoverT.y = Math.floor(w.y);
+  }
+
+  canvas.addEventListener('touchstart', function (ev) {
+    ev.preventDefault();
+    if (ev.touches.length >= 2) {
+      tch.mode = 'pinch';
+      tch.pinchD = dist2(ev.touches[0], ev.touches[1]);
+      var c = localXY({ clientX: (ev.touches[0].clientX + ev.touches[1].clientX) / 2,
+                        clientY: (ev.touches[0].clientY + ev.touches[1].clientY) / 2 });
+      tch.pinchCx = c.x; tch.pinchCy = c.y;
+      // 핀치로 바뀌면 그전까지의 한 손가락 건설은 중단한다 (두 손가락은 건설이 아니다)
+      mouse.down = false; dragLast = null;
+      return;
+    }
+    var t = ev.touches[0]; if (!t) return;
+    var p = localXY(t);
+    tch.id = t.identifier; tch.sx = p.x; tch.sy = p.y; tch.lx = p.x; tch.ly = p.y; tch.moved = 0;
+    setHoverFrom(p);
+    if (pickMode) { tch.mode = 'pick'; return; }
+    if (tool) { tch.mode = 'build'; mouse.down = true; dragLast = null; dragPlace(); }
+    else { tch.mode = 'pan'; }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', function (ev) {
+    ev.preventDefault();
+    if (tch.mode === 'pinch' && ev.touches.length >= 2) {
+      var d = dist2(ev.touches[0], ev.touches[1]);
+      if (tch.pinchD > 0 && d > 0) {
+        var before = worldOf(tch.pinchCx, tch.pinchCy);
+        cam.z = clamp(cam.z * (d / tch.pinchD), 0.35, 2.6);
+        var after = worldOf(tch.pinchCx, tch.pinchCy);
+        cam.x += before.x - after.x; cam.y += before.y - after.y;
+        clampCam(); refreshHover();
+      }
+      tch.pinchD = d;
+      return;
+    }
+    var t = ev.touches[0]; if (!t) return;
+    var p = localXY(t);
+    var dx = p.x - tch.lx, dy = p.y - tch.ly;
+    tch.moved += Math.abs(dx) + Math.abs(dy);
+    tch.lx = p.x; tch.ly = p.y;
+    setHoverFrom(p);
+    if (tch.mode === 'pan') {
+      cam.x -= dx / (TILE * cam.z); cam.y -= dy / (TILE * cam.z);
+      clampCam(); refreshHover();
+    } else if (tch.mode === 'build') {
+      dragPlace();
+    }
+  }, { passive: false });
+
+  function endTouch(ev) {
+    if (tch.mode === 'pinch') {
+      if (!ev.touches || ev.touches.length === 0) { tch.mode = null; tch.pinchD = 0; }
+      return;
+    }
+    // 손가락이 거의 안 움직였으면 탭이다. 손가락은 완벽히 가만있지 않으므로
+    // 문턱을 둔다 — 0 으로 두면 실기에서 탭이 전부 드래그로 읽힌다.
+    var TAP = 12;
+    if (tch.mode === 'pick') { doPick(); }
+    else if (tch.mode === 'pan' && tch.moved <= TAP) { pickEntity(); }
+    mouse.down = false; dragLast = null; tch.mode = null;
+  }
+  canvas.addEventListener('touchend', function (ev) { ev.preventDefault(); endTouch(ev); }, { passive: false });
+  canvas.addEventListener('touchcancel', function (ev) { endTouch(ev); });
+
   canvas.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
   canvas.addEventListener('wheel', function (ev) {
     ev.preventDefault();
@@ -240,6 +327,10 @@ function dragPlace() {
 
 function pickEntity() {
   var e = entityAt(hoverT.x, hoverT.y);
+  // 철거 모드 — 폰에는 우클릭이 없다. 이게 없으면 잘못 놓은 건물을 영영 못 지운다.
+  // 우클릭 경로(rightClickAction)와 같은 일을 하도록 그쪽을 그대로 부른다;
+  // 따로 구현하면 "우클릭으로는 나무가 베이는데 철거 버튼으로는 안 된다" 가 생긴다.
+  if (demolishMode) { rightClickAction(); renderInv(); return; }
   if (!e) { selected = null; hideInsp(); return; }
   if (e.type === 'controller') { openLogic(e); return; }
   selected = e.id;
@@ -488,6 +579,12 @@ function hideInsp() {
 function showInsp(e) {
   var p = document.getElementById('insp');
   document.getElementById('inspTitle').textContent = BUILDINGS[e.type].name + ' #' + e.id;
+  // 좁은 화면에서는 시트가 겹친다 — 인스펙터를 열면 건설 시트는 접는다.
+  if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) {
+    document.body.classList.remove('sheet-build', 'sheet-right');
+    var bb = document.getElementById('btnSheetBuild'); if (bb) bb.classList.remove('on');
+    var br = document.getElementById('btnSheetRight'); if (br) br.classList.remove('on');
+  }
   p.style.display = 'block';
   lastInspSig = null;
   refreshInsp();
@@ -794,10 +891,55 @@ function bindSaveButtons() {
 
 function bindMini() {
   var c = document.getElementById('mini');
-  c.addEventListener('mousedown', function (ev) {
+  function jump(clientX, clientY) {
     var r = c.getBoundingClientRect();
-    cam.x = (ev.clientX - r.left) / r.width * W;
-    cam.y = (ev.clientY - r.top) / r.height * H;
+    cam.x = (clientX - r.left) / r.width * W;
+    cam.y = (clientY - r.top) / r.height * H;
     clampCam(); refreshHover();
-  });
+  }
+  c.addEventListener('mousedown', function (ev) { jump(ev.clientX, ev.clientY); });
+  c.addEventListener('touchstart', function (ev) {
+    ev.preventDefault();
+    var t = ev.touches[0]; if (t) jump(t.clientX, t.clientY);
+  }, { passive: false });
+}
+
+// --- 모바일 조작 바 ----------------------------------------------------------
+// 폰에는 키보드도 우클릭도 없다. R(회전)·철거·T(연구)·H(도움말)이 단축키로만
+// 존재하면 그 기능들은 폰에서 **없는 기능**이다. 철거가 특히 그렇다 —
+// 우클릭 없이는 잘못 놓은 건물을 영원히 못 지운다.
+var demolishMode = false;
+function setDemolish(on) {
+  demolishMode = !!on;
+  if (demolishMode) selectTool(null);
+  var b = document.getElementById('btnDemolish');
+  if (b) b.classList.toggle('on', demolishMode);
+  var cv2 = document.getElementById('view');
+  if (cv2) cv2.style.cursor = demolishMode ? 'not-allowed' : 'crosshair';
+}
+function toggleSheet(name) {
+  var cls = 'sheet-' + name, on = document.body.classList.contains(cls);
+  document.body.classList.remove('sheet-build', 'sheet-right');
+  if (!on) document.body.classList.add(cls);
+  var ids = { build: 'btnSheetBuild', right: 'btnSheetRight' };
+  for (var k in ids) {
+    var b = document.getElementById(ids[k]);
+    if (b) b.classList.toggle('on', document.body.classList.contains('sheet-' + k));
+  }
+}
+function bindMobileBar() {
+  function on(id, fn) { var b = document.getElementById(id); if (b) b.onclick = fn; }
+  on('btnSheetBuild', function () { toggleSheet('build'); });
+  on('btnSheetRight', function () { toggleSheet('right'); });
+  on('btnRotate', function () { toolDir = dirCW(toolDir); renderBuildList(); });
+  on('btnDemolish', function () { setDemolish(!demolishMode); });
+  on('btnTech', function () { toggleTech(); });
+  on('btnHelp', function () { toggleHelp(); });
+  // 좁은 화면에서는 건설 시트를 먼저 열어 둔다 — 빈 화면만 보이면 무엇부터
+  // 해야 할지 알 수 없다.
+  if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) {
+    document.body.classList.add('sheet-build');
+    var bb = document.getElementById('btnSheetBuild');
+    if (bb) bb.classList.add('on');
+  }
 }

@@ -41,6 +41,8 @@ if not os.path.isabs(DRIVER) and not os.path.isfile(DRIVER):
 # 전용이라 다른 엔진에서는 쓸 수 없기 때문이다. **판정 로직은 여기 한 곳뿐이다**;
 # 엔진마다 다른 채점기를 만들면 어느 쪽이 맞는지 알 수 없게 된다.
 ENGINE = (sys.argv[2] if len(sys.argv) > 2 else 'edge').lower()
+# 기기 프로필 (playwright 엔진에서만 의미가 있다). desktop | mobile | tablet
+DEVICE = (sys.argv[3] if len(sys.argv) > 3 else 'desktop').lower()
 PW_ENGINES = ('firefox', 'webkit', 'chromium')
 
 EDGE_CANDIDATES = [
@@ -88,9 +90,9 @@ def run_browser(exe, page_path, args, timeout=300):
         shutil.rmtree(profile, ignore_errors=True)
 
 
-def run_playwright(engine, driver_path, timeout=600):
+def run_playwright(engine, driver_path, timeout=600, device='desktop'):
     """Playwright 러너로 다른 엔진에서 돌린다. 표준출력이 그대로 판정 채널이다."""
-    cmd = ['node', os.path.join(ROOT, 'tests', 'pwrun.js'), engine, driver_path, '400000']
+    cmd = ['node', os.path.join(ROOT, 'tests', 'pwrun.js'), engine, driver_path, '400000', device]
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=timeout)
     return (p.returncode,
             p.stdout.decode('utf-8', 'replace'),
@@ -104,7 +106,7 @@ def main():
 
     if ENGINE in PW_ENGINES:
         exe = ENGINE + ' (playwright)'
-        rc, payload, err = run_playwright(ENGINE, DRIVER)
+        rc, payload, err = run_playwright(ENGINE, DRIVER, device=DEVICE)
         if START not in payload or END not in payload:
             print('FATAL: 드라이버 결과를 찾지 못했다 (엔진 %s, rc=%s)' % (ENGINE, rc))
             print('  stdout(앞 400자): %r' % payload[:400])

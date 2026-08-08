@@ -16,6 +16,22 @@ const os = require('os');
 const ENGINE = process.argv[2] || 'firefox';
 const DRIVER = process.argv[3] || 'driver.js';
 const TIMEOUT = parseInt(process.argv[4] || '300000', 10);
+const DEVICE = (process.argv[5] || 'desktop').toLowerCase();
+
+// 기기 프로필. **hasTouch/isMobile 을 켜야 진짜 TouchEvent 가 나간다** —
+// 뷰포트만 줄이면 여전히 마우스 이벤트라 "폰에서 되는가"를 재는 게 아니다.
+const DEVICES = {
+  desktop: { viewport: { width: 1280, height: 800 } },
+  // iPhone 13 급 세로. 폭 390 은 요즘 폰의 사실상 하한선이다.
+  mobile:  { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3,
+             isMobile: true, hasTouch: true,
+             userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
+                        'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' },
+  // 작은 태블릿 세로 — 패널이 두 개 이상 들어갈 수 있는 경계
+  tablet:  { viewport: { width: 768, height: 1024 }, deviceScaleFactor: 2,
+             isMobile: true, hasTouch: true }
+};
+if (!DEVICES[DEVICE]) { console.error('FATAL: 알 수 없는 기기 ' + DEVICE); process.exit(2); }
 
 const ROOT = path.join(__dirname, '..');
 const DIST = path.join(ROOT, 'dist', 'Logic-Foundry.html');
@@ -45,7 +61,11 @@ const DRV = path.isAbsolute(DRIVER) ? DRIVER : path.join(ROOT, 'tests', DRIVER);
   let browser;
   try {
     browser = await browserType.launch({ headless: true });
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    // firefox 는 isMobile/hasTouch 를 지원하지 않는다 — 뷰포트만 적용하고 그 사실을
+    // 남긴다. 조용히 데스크톱으로 도는 것을 GREEN 으로 읽으면 거짓 검증이 된다.
+    const prof = Object.assign({}, DEVICES[DEVICE]);
+    if (ENGINE === 'firefox') { delete prof.isMobile; delete prof.hasTouch; }
+    const ctx = await browser.newContext(prof);
     const page = await ctx.newPage();
     const consoleErrors = [];
     page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + String(e && e.message)));
