@@ -381,6 +381,10 @@ function stepCrafter(e, dt, speed) {
   }
   var rec = e.recipe ? RECIPES[e.recipe] : null;
   if (!rec) { e.progress = 0; e.stallT += dt; e.working = false; return; }
+  // **연구 조건은 시뮬에서도 지킨다.** 예전에는 UI 의 레시피 목록만 걸러서,
+  // 그 목록을 지나지 않고 걸린 레시피(저장본·시험 훅)는 연구 없이도 돌았다.
+  // 관문이 한 곳에만 있으면 그 곳을 안 지나는 길이 곧 구멍이다.
+  if (rec.tech && !techDone[rec.tech]) { e.progress = 0; e.stallT += dt; e.working = false; return; }
   if (!e.enabled) { e.stallT += dt; e.working = false; return; }
   if (e.powerSat <= 0) { e.stallT += dt; e.working = false; return; }
   if (e.progress === 0 && !machineRecipeReady(e, rec)) { e.stallT += dt; e.working = false; return; }

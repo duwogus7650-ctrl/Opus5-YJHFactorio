@@ -798,6 +798,13 @@ function refreshInsp() {
   // 사실은 [내용물] 행이 **없는 것**으로만 드러났다. 없는 것은 아무도 못 읽는다.
   if ((e.type === 'assembler' || e.type === 'furnace') && e.recipe) {
     var rec = RECIPES[e.recipe], missing = [];
+    // 연구가 안 된 레시피는 시뮬에서도 안 돈다 — 그걸 안 알려주면 조용한 정지가 된다
+    if (rec.tech && !techDone[rec.tech]) {
+      s.push('<div class="frow" style="align-items:flex-start"><label>정지 이유</label>' +
+        '<span class="bad">' + TECHS[rec.tech].name + ' 연구가 필요하다' +
+        '<br><span class="hint">이 레시피는 연구가 끝나야 돈다. <b>T</b> 에서 연구한다.</span>' +
+        '</span></div>');
+    }
     for (var mk in rec.inp) {
       if ((e.inv[mk] || 0) < rec.inp[mk]) missing.push(ITEMS[mk].name + ' ' + (e.inv[mk] || 0) + '/' + rec.inp[mk]);
     }

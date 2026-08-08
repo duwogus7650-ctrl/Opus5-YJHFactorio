@@ -1515,6 +1515,32 @@
       chk('ctrl.truthThresholdIsHalf', at04 === false && at05 === true,
         '0.4 → 참=' + at04 + ' · 0.5 → 참=' + at05 + ' (문턱은 0.5 이상이다)');
 
+      // --- 연구 관문은 UI 목록이 아니라 시뮬에 있어야 한다 --------------------
+      // 관문이 레시피 드롭다운에만 있으면, 그 목록을 안 지나는 길(저장본·시험 훅)은
+      // 연구 없이도 만든다. 관문은 결과가 나오는 자리에 있어야 한다.
+      G.reset(7700); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.powerCheat(true);
+      var tf = G.build('furnace', 40, 40, 0);
+      G.setRecipe(tf, 'steel');                 // 강철은 'steel' 연구가 필요하다
+      G.putFromStock(tf);
+      G.run(G.recipeInfo('steel').time * 1.5);
+      var lockedOut = (G.ent(tf).out['steel'] || 0);
+      G.research('steel');
+      G.run(G.recipeInfo('steel').time * 1.5);
+      var freeOut = (G.ent(tf).out['steel'] || 0);
+      chk('recipe.techGatedInSim', lockedOut === 0 && freeOut > 0,
+        '연구 전 강철 산출 ' + lockedOut + '개(0이어야) → 연구 후 ' + freeOut +
+        '개 (>0이어야 · 조건 발생 확인)');
+
+      // 튜토리얼 판정은 트랙과 무관해야 한다. 'null' 은 호출자에게 '해당 없음'과
+      // '실패'가 구별되지 않아, 세계 상태와 무관하게 0/9 를 내는 게이트를 만든다.
+      G.reset(7701); G.clearEntities(); G.tutorialReset(true);
+      var advProbe = G.tutorialCheckById('green-sci');     // 기초 트랙인데 심화 id
+      chk('tut.checkByIdSpansTracks', typeof advProbe === 'boolean' && advProbe === false,
+        '기초 트랙에서 심화 id 판정 → ' + JSON.stringify(advProbe) +
+        ' (false 여야 · null 이면 해당없음과 실패가 같아진다)');
+      chk('tut.checkByIdRejectsUnknown', G.tutorialCheckById('no-such-step') === null,
+        '없는 id → null (음성 대조군: 이게 null 이 아니면 위 검사가 아무것도 안 본다)');
+
       // --- 평가 순서의 진짜 계약: 입력이 먼저 돈다 --------------------------
       // 이게 깨지면 노드는 **직전 틱 값**으로 계산한다. 되먹임(1틱 지연)은 의도된
       // 것이지만, 되먹임이 아닌 배선까지 한 틱 밀리면 회로가 조용히 틀린 답을 낸다.

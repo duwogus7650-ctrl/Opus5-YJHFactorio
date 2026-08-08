@@ -71,7 +71,13 @@ const DRV = path.isAbsolute(DRIVER) ? DRIVER : path.join(ROOT, 'tests', DRIVER);
     page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + String(e && e.message)));
     page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push('console: ' + m.text()); });
 
-    await page.goto('file:///' + file.replace(/\\/g, '/'), { waitUntil: 'load', timeout: 60000 });
+    // 드라이버에 넘길 질의문자열. **예전에는 이걸 아무도 안 읽었다** — 세션 내내
+    // `LF_QS="speed=60&mins=40"` 을 붙여 놓고 실제로는 기본값으로 돌았고, 그 사실이
+    // 어디에도 드러나지 않았다. 조용히 무시되는 손잡이는 없느니만 못하다.
+    const QS = (process.env.LF_QS || '').replace(/^\?/, '');
+    if (QS) console.error('질의문자열: ?' + QS);
+    await page.goto('file:///' + file.replace(/\\/g, '/') + (QS ? '?' + QS : ''),
+                    { waitUntil: 'load', timeout: 60000 });
     // 드라이버가 #testout 에 결과를 실을 때까지 기다린다 (판정 채널은 엔진과 무관)
     await page.waitForFunction(
       () => {

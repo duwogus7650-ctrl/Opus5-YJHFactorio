@@ -1715,6 +1715,10 @@ function stepCrafter(e, dt, speed) {
   }
   var rec = e.recipe ? RECIPES[e.recipe] : null;
   if (!rec) { e.progress = 0; e.stallT += dt; e.working = false; return; }
+  // **연구 조건은 시뮬에서도 지킨다.** 예전에는 UI 의 레시피 목록만 걸러서,
+  // 그 목록을 지나지 않고 걸린 레시피(저장본·시험 훅)는 연구 없이도 돌았다.
+  // 관문이 한 곳에만 있으면 그 곳을 안 지나는 길이 곧 구멍이다.
+  if (rec.tech && !techDone[rec.tech]) { e.progress = 0; e.stallT += dt; e.working = false; return; }
   if (!e.enabled) { e.stallT += dt; e.working = false; return; }
   if (e.powerSat <= 0) { e.stallT += dt; e.working = false; return; }
   if (e.progress === 0 && !machineRecipeReady(e, rec)) { e.stallT += dt; e.working = false; return; }
@@ -4431,6 +4435,13 @@ function refreshInsp() {
   // 사실은 [내용물] 행이 **없는 것**으로만 드러났다. 없는 것은 아무도 못 읽는다.
   if ((e.type === 'assembler' || e.type === 'furnace') && e.recipe) {
     var rec = RECIPES[e.recipe], missing = [];
+    // 연구가 안 된 레시피는 시뮬에서도 안 돈다 — 그걸 안 알려주면 조용한 정지가 된다
+    if (rec.tech && !techDone[rec.tech]) {
+      s.push('<div class="frow" style="align-items:flex-start"><label>정지 이유</label>' +
+        '<span class="bad">' + TECHS[rec.tech].name + ' 연구가 필요하다' +
+        '<br><span class="hint">이 레시피는 연구가 끝나야 돈다. <b>T</b> 에서 연구한다.</span>' +
+        '</span></div>');
+    }
     for (var mk in rec.inp) {
       if ((e.inv[mk] || 0) < rec.inp[mk]) missing.push(ITEMS[mk].name + ' ' + (e.inv[mk] || 0) + '/' + rec.inp[mk]);
     }
@@ -6771,13 +6782,20 @@ window.__GAME = {
   reachSteps: function (reset) { if (reset) resetReachSteps(); return reachStepsTotal; },
   // **id 로 찾는다.** 번호로 지목하면 단계를 하나 추가할 때마다 게이트가 통째로
   // 밀려 깨진다 (실제로 5단계를 둘로 나누자 4건이 어긋났다).
+  // **두 트랙을 다 뒤진다.** 예전엔 지금 트랙만 봐서, 기초 진행 중에 심화 id 를 물으면
+  // null 이 나왔다 — 호출자에게 null 은 '해당 없음'과 '실패'가 구별되지 않아, 세계
+  // 상태가 어떻든 0/9 로 읽히는 게이트가 만들어졌다. 판정은 순수한 세계 상태 술어이고
+  // id 는 두 트랙에 걸쳐 유일하므로(검증함), 트랙과 무관하게 답할 수 있다.
   tutorialCheckById: function (id) {
-    var steps = curSteps();
-    for (var i = 0; i < steps.length; i++) {
-      if (steps[i].id !== id) continue;
-      try { return !!steps[i].check(); } catch (e) { return 'ERROR:' + e; }
+    var lists = [TUTORIAL_STEPS, ADVANCED_STEPS];
+    for (var L = 0; L < lists.length; L++) {
+      var steps = lists[L];
+      for (var i = 0; i < steps.length; i++) {
+        if (steps[i].id !== id) continue;
+        try { return !!steps[i].check(); } catch (e) { return 'ERROR:' + e; }
+      }
     }
-    return null;
+    return null;                     // 정말 없는 id 일 때만 null
   },
   tutorialCheck: function (idx) {
     var s = curSteps()[idx];

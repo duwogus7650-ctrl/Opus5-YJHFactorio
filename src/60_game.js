@@ -809,13 +809,20 @@ window.__GAME = {
   reachSteps: function (reset) { if (reset) resetReachSteps(); return reachStepsTotal; },
   // **id 로 찾는다.** 번호로 지목하면 단계를 하나 추가할 때마다 게이트가 통째로
   // 밀려 깨진다 (실제로 5단계를 둘로 나누자 4건이 어긋났다).
+  // **두 트랙을 다 뒤진다.** 예전엔 지금 트랙만 봐서, 기초 진행 중에 심화 id 를 물으면
+  // null 이 나왔다 — 호출자에게 null 은 '해당 없음'과 '실패'가 구별되지 않아, 세계
+  // 상태가 어떻든 0/9 로 읽히는 게이트가 만들어졌다. 판정은 순수한 세계 상태 술어이고
+  // id 는 두 트랙에 걸쳐 유일하므로(검증함), 트랙과 무관하게 답할 수 있다.
   tutorialCheckById: function (id) {
-    var steps = curSteps();
-    for (var i = 0; i < steps.length; i++) {
-      if (steps[i].id !== id) continue;
-      try { return !!steps[i].check(); } catch (e) { return 'ERROR:' + e; }
+    var lists = [TUTORIAL_STEPS, ADVANCED_STEPS];
+    for (var L = 0; L < lists.length; L++) {
+      var steps = lists[L];
+      for (var i = 0; i < steps.length; i++) {
+        if (steps[i].id !== id) continue;
+        try { return !!steps[i].check(); } catch (e) { return 'ERROR:' + e; }
+      }
     }
-    return null;
+    return null;                     // 정말 없는 id 일 때만 null
   },
   tutorialCheck: function (idx) {
     var s = curSteps()[idx];
