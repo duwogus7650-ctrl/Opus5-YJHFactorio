@@ -775,8 +775,20 @@
       var tut0 = G.tutorial();
       chk('tutorial.startsAtFirstStep',
         tut0.on === true && tut0.step === 0 && tut0.done === false && tut0.total >= 8 &&
-        tut0.id === 'miner',
-        '단계 ' + tut0.total + '개 · 시작 단계 = ' + tut0.id + ' (진행 ' + tut0.step + ')');
+        tut0.id === 'miner' && tut0.ids.indexOf('copper') >= 0,
+        '단계 ' + tut0.total + '개 · 시작 = ' + tut0.id + ' · 구리 단계 포함=' +
+        (tut0.ids.indexOf('copper') >= 0) + ' (구리 없이는 회로기판·연구팩을 못 만든다)');
+
+      // 재료가 모자랄 때 "어디서 얻는지"까지 말해야 한다.
+      // 부족하다고만 하면 플레이어가 그 자리에서 막힌다 (회로기판이 실제로 그랬다).
+      var howCircuit = G.howToGet('circuit');
+      var howPlate = G.howToGet('iron-plate');
+      var howOre = G.howToGet('iron-ore');
+      chk('help.tellsHowToGetMaterials',
+        !!howCircuit && howCircuit.indexOf('손 조립') >= 0 && howCircuit.indexOf('구리선') >= 0 &&
+        !!howPlate && howPlate.indexOf('용광로') >= 0 &&
+        !!howOre && howOre.indexOf('채광기') >= 0,
+        '회로기판 → "' + howCircuit + '" · 철판 → "' + howPlate + '" · 철광석 → "' + howOre + '"');
 
       // 음성 대조군 — 아무것도 안 하고 시간만 흘려도 넘어가면 안 된다.
       // (이게 통과하면 "저절로 진행되는 튜토리얼"이라 아래 검사가 무의미해진다.)

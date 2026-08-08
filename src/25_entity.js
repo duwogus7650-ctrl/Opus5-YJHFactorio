@@ -47,10 +47,31 @@ function canPlace(type, tx, ty, dir, restore) {
   if (!restore) {
     var cost = B.cost;
     for (var k in cost) {
-      if ((inventory[k] || 0) < cost[k]) return { ok: false, why: ITEMS[k].name + ' ' + cost[k] + '개 필요' };
+      if ((inventory[k] || 0) < cost[k]) {
+        return { ok: false, missing: k, need: cost[k], have: (inventory[k] || 0),
+                 why: ITEMS[k].name + ' ' + cost[k] + '개 필요 (지금 ' + (inventory[k] || 0) + '개)' };
+      }
     }
   }
   return { ok: true, w: w, h: h };
+}
+
+// "그건 어디서 얻나" — 부족하다고만 말하면 플레이어가 막힌다.
+// 재료 사슬을 한 줄로 펴서 알려준다. 예: 회로기판 → 철판 1 + 구리선 3 (손 조립)
+function howToGet(itemId) {
+  var r = RECIPES[itemId];
+  if (!r) {
+    // 레시피가 없으면 땅에서 나오는 것이다
+    if (ORE_ITEM.indexOf(itemId) > 0) return '채광기를 그 광맥 위에 놓아 캔다';
+    return null;
+  }
+  var parts = [];
+  for (var k in r.inp) parts.push(r.inp[k] + '×' + ITEMS[k].name);
+  var recipe = parts.join(' + ');
+  if (r.tech && !techDone[r.tech]) return TECHS[r.tech].name + ' 연구가 먼저다';
+  if (r.handOk) return recipe + ' → 우측 [손 조립]에서 클릭';
+  if (r.cat === 'smelt') return recipe + ' → 용광로에 넣는다';
+  return recipe + ' → 조립기에 레시피를 걸어 만든다';
 }
 
 // --- 배치 -------------------------------------------------------------------

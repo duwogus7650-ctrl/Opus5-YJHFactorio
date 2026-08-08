@@ -127,7 +127,11 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 .tchk{color:var(--run)}
 .tnow{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:5px;line-height:1.35}
 .twhy{font-size:11.5px;color:var(--warn);line-height:1.6;margin-bottom:6px}
-.thow{font-size:11.5px;color:var(--ink-2);line-height:1.65}
+.thow{font-size:11.5px;color:var(--ink-2);line-height:1.6;margin:0;padding-left:18px}
+.thow li{margin:3px 0}
+.thow b{color:var(--ink)}
+.tneed{margin-top:7px;padding-top:6px;border-top:1px solid var(--rule);
+  font-size:10.5px;color:var(--ink-3);line-height:1.5}
 #tutorFoot{display:flex;gap:6px;padding:0 11px 9px}
 
 /* 인스펙터 */
@@ -567,30 +571,30 @@ var RECIPE_IDS = Object.keys(RECIPES);
 // --- 건물 스펙 -------------------------------------------------------------
 // cost: 배치 비용(인벤토리에서 차감).  w/h: 타일 크기.
 var BUILDINGS = {
-  'belt':      { name: '벨트', w: 1, h: 1, cost: { 'belt-item': 1 }, rot: true,
+  'belt':      { hotkey: '1', name: '벨트', w: 1, h: 1, cost: { 'belt-item': 1 }, rot: true,
                  desc: '아이템을 2레인으로 나른다. 합 15개/s (레인당 7.5).' },
   'splitter':  { name: '분배기', w: 2, h: 1, cost: { 'belt-item': 4, 'circuit': 2 }, rot: true, tech: 'logistics',
                  desc: '입력을 두 갈래로 균등 분배. 우선순위 지정 가능.' },
-  'inserter':  { name: '인서터', w: 1, h: 1, cost: { 'inserter-item': 1 }, rot: true, power: 13,
+  'inserter':  { hotkey: '2', name: '인서터', w: 1, h: 1, cost: { 'inserter-item': 1 }, rot: true, power: 13,
                  desc: '뒤에서 집어 앞에 놓는다. 0.83개/s. 제어기로 켜고 끌 수 있다.' },
-  'miner':     { name: '채광기', w: 2, h: 2, cost: { 'gear': 5, 'iron-plate': 10 }, rot: true, power: 90,
+  'miner':     { hotkey: '3', name: '채광기', w: 2, h: 2, cost: { 'gear': 5, 'iron-plate': 10 }, rot: true, power: 90,
                  desc: '아래 광맥을 0.5개/s 로 캔다. 출력 방향으로 뱉는다.' },
-  'furnace':   { name: '용광로', w: 2, h: 2, cost: { 'brick': 5, 'iron-plate': 5 }, power: 180,
+  'furnace':   { hotkey: '4', name: '용광로', w: 2, h: 2, cost: { 'brick': 5, 'iron-plate': 5 }, power: 180,
                  desc: '광석을 판으로. 3.2초에 1개.' },
-  'assembler': { name: '조립기', w: 3, h: 3, cost: { 'gear': 9, 'circuit': 3, 'iron-plate': 9 }, power: 155,
+  'assembler': { hotkey: '5', name: '조립기', w: 3, h: 3, cost: { 'gear': 9, 'circuit': 3, 'iron-plate': 9 }, power: 155,
                  desc: '레시피를 지정해 조립. 제작속도 0.75.' },
-  'generator': { name: '발전기', w: 3, h: 3, cost: { 'gear': 8, 'iron-plate': 12, 'brick': 10 },
+  'generator': { hotkey: '6', name: '발전기', w: 3, h: 3, cost: { 'gear': 8, 'iron-plate': 12, 'brick': 10 },
                  desc: '석탄을 태워 900 kW. 0.225 석탄/s 를 먹는다.' },
-  'pole':      { name: '전주', w: 1, h: 1, cost: { 'wire': 2, 'iron-plate': 1 },
+  'pole':      { hotkey: '7', name: '전주', w: 1, h: 1, cost: { 'wire': 2, 'iron-plate': 1 },
                  desc: '5x5 공급, 7.5타일 연결. 전력망은 여기로만 이어진다.' },
-  'chest':     { name: '상자', w: 1, h: 1, cost: { 'iron-plate': 8 },
+  'chest':     { hotkey: '8', name: '상자', w: 1, h: 1, cost: { 'iron-plate': 8 },
                  desc: '600개 보관. 제어기의 재고 센서가 읽는 대상.' },
-  'lab':       { name: '연구소', w: 3, h: 3, cost: { 'gear': 10, 'circuit': 10, 'belt-item': 4 }, power: 60,
+  'lab':       { hotkey: '9', name: '연구소', w: 3, h: 3, cost: { 'gear': 10, 'circuit': 10, 'belt-item': 4 }, power: 60,
                  desc: '연구팩을 소비해 기술을 연다.' },
   // 제어기는 전기를 쓰지 않는다 (Factorio 의 회로망과 같다).
   // 전력을 요구하게 두면 "전력이 부족할 때 부하를 차단하는" 배선이 자기 전원을 끊는
   // 순간 제어기도 죽고, 지배가 풀려 라인이 다시 켜지고, 또 죽는 발진이 된다.
-  'controller':{ name: '제어기', w: 2, h: 2, cost: { 'circuit': 5, 'iron-plate': 5 },
+  'controller':{ hotkey: '0', name: '제어기', w: 2, h: 2, cost: { 'circuit': 5, 'iron-plate': 5 },
                  desc: '★ 공장의 두뇌. 노드 그래프를 직접 배선한다. 클릭해서 편집. 전기를 쓰지 않는다.' },
   'turret':    { name: '기관총 터렛', w: 2, h: 2, cost: { 'gear': 10, 'iron-plate': 20 }, tech: 'military',
                  desc: '사거리 18타일. 탄창을 인서터로 넣어줘야 쏜다.' },
@@ -1256,10 +1260,31 @@ function canPlace(type, tx, ty, dir, restore) {
   if (!restore) {
     var cost = B.cost;
     for (var k in cost) {
-      if ((inventory[k] || 0) < cost[k]) return { ok: false, why: ITEMS[k].name + ' ' + cost[k] + '개 필요' };
+      if ((inventory[k] || 0) < cost[k]) {
+        return { ok: false, missing: k, need: cost[k], have: (inventory[k] || 0),
+                 why: ITEMS[k].name + ' ' + cost[k] + '개 필요 (지금 ' + (inventory[k] || 0) + '개)' };
+      }
     }
   }
   return { ok: true, w: w, h: h };
+}
+
+// "그건 어디서 얻나" — 부족하다고만 말하면 플레이어가 막힌다.
+// 재료 사슬을 한 줄로 펴서 알려준다. 예: 회로기판 → 철판 1 + 구리선 3 (손 조립)
+function howToGet(itemId) {
+  var r = RECIPES[itemId];
+  if (!r) {
+    // 레시피가 없으면 땅에서 나오는 것이다
+    if (ORE_ITEM.indexOf(itemId) > 0) return '채광기를 그 광맥 위에 놓아 캔다';
+    return null;
+  }
+  var parts = [];
+  for (var k in r.inp) parts.push(r.inp[k] + '×' + ITEMS[k].name);
+  var recipe = parts.join(' + ');
+  if (r.tech && !techDone[r.tech]) return TECHS[r.tech].name + ' 연구가 먼저다';
+  if (r.handOk) return recipe + ' → 우측 [손 조립]에서 클릭';
+  if (r.cat === 'smelt') return recipe + ' → 용광로에 넣는다';
+  return recipe + ' → 조립기에 레시피를 걸어 만든다';
 }
 
 // --- 배치 -------------------------------------------------------------------
@@ -3351,7 +3376,14 @@ function tryPlace(tx, ty) {
   if (!tool) return false;
   var e = placeEntity(tool, tx, ty, toolDir, false);
   if (!e) {
-    var why = canPlace(tool, tx, ty, toolDir).why;
+    var chk = canPlace(tool, tx, ty, toolDir);
+    var why = chk.why;
+    // 재료가 모자란 경우에는 "어디서 얻는지"까지 함께 말한다.
+    // 부족하다고만 하면 플레이어가 그 자리에서 막힌다 (회로기판이 실제로 그랬다).
+    if (chk.missing) {
+      var how = howToGet(chk.missing);
+      if (how) why += ' — ' + how;
+    }
     if (why && placeFailMsg !== why) { toast(why, 'bad'); placeFailMsg = why; placeFailT = gameTime; }
     return false;
   }
@@ -3434,10 +3466,13 @@ function bindInput(canvas) {
     if (k === 'h' || k === 'H' || k === '?') { toggleHelp(); return; }
     if (k === 'p' || k === 'P') { showPollution = !showPollution; return; }
     if (k === 'q' || k === 'Q') { pipetteTool(); return; }
+    // 단축키는 건물에 **고정**돼 있다 (BUILDINGS[].hotkey).
+    // 예전엔 "잠긴 것을 뺀 목록의 순서"로 매겼는데, 연구로 새 건물이 열리면
+    // 번호가 통째로 밀려서 3=채광기를 외운 사람이 물류학을 연구하는 순간
+    // 3=인서터가 됐다. 손에 익은 번호가 바뀌면 안 된다.
     if (k >= '0' && k <= '9') {
-      var i = k === '0' ? 9 : (parseInt(k, 10) - 1);
-      var list = visibleBuildIds();
-      if (list[i]) selectTool(list[i]);
+      var hit = buildIdForKey(k);
+      if (hit) selectTool(hit);
     }
   });
   window.addEventListener('keyup', function (ev) { keys[ev.key.toLowerCase()] = false; });
@@ -3603,6 +3638,14 @@ function drawOverlays() {
 }
 
 // --- HUD ---------------------------------------------------------------------
+// 숫자 키 → 건물. 잠금 여부와 무관하게 항상 같은 건물을 가리킨다.
+function buildIdForKey(k) {
+  for (var i = 0; i < BUILD_IDS.length; i++) {
+    if (BUILDINGS[BUILD_IDS[i]].hotkey === k) return BUILD_IDS[i];
+  }
+  return null;
+}
+
 function visibleBuildIds() {
   return BUILD_IDS.filter(function (b) {
     var B = BUILDINGS[b];
@@ -3618,12 +3661,10 @@ function renderBuildList() {
   var host = document.getElementById('buildList');
   if (!host) return;
   var html = [];
-  var vis = visibleBuildIds();
   for (var i = 0; i < BUILD_IDS.length; i++) {
     var id = BUILD_IDS[i], B = BUILDINGS[id];
     var locked = B.tech && !techDone[B.tech];
-    var vi = vis.indexOf(id);
-    var key = (vi >= 0 && vi < 10) ? (vi === 9 ? '0' : String(vi + 1)) : '';
+    var key = B.hotkey || '';   // 고정 — 연구를 해도 번호가 밀리지 않는다
     var poor = false;
     for (var k in B.cost) if ((inventory[k] || 0) < B.cost[k]) poor = true;
     html.push('<div class="bitem' + (tool === id ? ' sel' : '') + (locked ? ' locked' : '') +
@@ -4061,13 +4102,25 @@ function hasBeltInFront(e) {
 }
 
 // --- 단계 정의 ---------------------------------------------------------------
-// title: 한 줄 목표 · why: 왜 하는지(개념) · how: 손이 할 일 · check: 세계 상태 판정
+// title : 한 줄 목표
+// why   : 왜 하는지 (개념 한 문장)
+// how   : 손이 할 일 — **한 줄에 하나씩.** 문단으로 쓰면 안 읽는다.
+// need  : 드는 재료와 얻는 법 (없으면 생략). "부족하다"만 말하면 그 자리에서 막힌다.
+// check : 세계 상태 판정
+//
+// 단축키는 건물에 고정돼 있다(BUILDINGS[].hotkey). 여기 적힌 번호는 연구를 해도 안 바뀐다.
 var TUTORIAL_STEPS = [
   {
     id: 'miner',
-    title: '채광기를 광맥 위에 놓고 전기를 보낸다',
+    title: '채광기를 철광맥 위에 놓는다',
     why: '전주 5×5 안에 든 기계만 전기를 받는다. 전력망이 이 게임의 첫 제약이다.',
-    how: '단축키 3 → 지도의 회색 돌무더기(철광맥) 위에 좌클릭. 전기가 안 오면 전주(8)를 사이에 놓아 이어라. 시작 발전기는 이미 연료가 들어 있다.',
+    how: [
+      '건설 목록에서 <b>3 채광기</b>를 고른다',
+      '지도의 <b>회색 돌무더기</b>(철광맥) 위에 좌클릭',
+      '전기가 안 오면 <b>7 전주</b>를 발전기와 채광기 사이에 놓아 잇는다',
+      '시작 발전기에는 연료가 이미 들어 있다'
+    ],
+    need: '톱니 5 · 철판 10 (창고에 있다)',
     check: function () {
       return !!anyEntity(function (e) {
         return e.type === 'miner' && e.net >= 0 && !e.depleted;
@@ -4078,7 +4131,11 @@ var TUTORIAL_STEPS = [
     id: 'belt',
     title: '채광기 출구에 벨트를 잇는다',
     why: '기계는 스스로 물건을 옮기지 않는다. 벨트가 공장의 혈관이다.',
-    how: '채광기의 노란 화살표가 출구다(R로 회전). 단축키 1 → 출구 칸부터 좌클릭 드래그하면 방향까지 자동으로 이어 깔린다.',
+    how: [
+      '<b>1 벨트</b>를 고른다',
+      '채광기의 <b>노란 화살표</b>가 출구다 — <b>R</b>로 돌린다',
+      '출구 칸부터 <b>좌클릭 드래그</b> — 방향까지 자동으로 이어진다'
+    ],
     check: function () {
       return !!anyEntity(function (e) { return e.type === 'miner' && hasBeltInFront(e); });
     }
@@ -4086,15 +4143,25 @@ var TUTORIAL_STEPS = [
   {
     id: 'smelt',
     title: '용광로로 철판을 만든다',
-    why: '광석은 그대로 못 쓴다. 벨트에서 기계로 넣는 일은 인서터가 한다 — 기계끼리는 직접 주고받지 않는다.',
-    how: '단축키 4로 용광로를 놓고, 단축키 2로 인서터를 벨트와 용광로 사이에 놓는다. 인서터는 뒤에서 집어 앞에 놓는다(R로 방향).',
+    why: '기계끼리는 직접 주고받지 않는다. 벨트에서 기계로 넣는 일은 인서터가 한다.',
+    how: [
+      '<b>4 용광로</b>를 벨트 옆에 놓는다',
+      '<b>2 인서터</b>를 <b>벨트와 용광로 사이</b>에 놓는다',
+      '인서터는 <b>뒤에서 집어 앞에 놓는다</b> — R로 방향을 맞춘다',
+      '용광로는 처음 들어온 광석에 맞춰 레시피를 스스로 잡는다'
+    ],
+    need: '용광로 = 벽돌 5 + 철판 5 · 인서터 = 창고에 12개 있다',
     check: function () { return prodStats.smelted >= 1; }
   },
   {
     id: 'chest',
     title: '철판을 상자에 5개 모은다',
-    why: '상자는 저장이자 **제어기의 눈**이다. 뒤에서 재고를 읽어 공장을 판단하게 만든다.',
-    how: '단축키 9로 상자를 놓고, 용광로 → 인서터 → (벨트) → 인서터 → 상자로 잇는다.',
+    why: '상자는 저장이자 <b>제어기의 눈</b>이다. 나중에 여기 재고를 읽어 공장을 판단하게 만든다.',
+    how: [
+      '<b>8 상자</b>를 놓는다',
+      '용광로 → <b>인서터</b> → 상자 로 잇는다',
+      '거리가 멀면 사이에 벨트를 깐다 (인서터는 한 칸만 건넨다)'
+    ],
     check: function () {
       return !!anyEntity(function (e) {
         return e.type === 'chest' && invCount(e.inv, 'iron-plate') >= 5;
@@ -4105,28 +4172,63 @@ var TUTORIAL_STEPS = [
     id: 'assemble',
     title: '조립기로 톱니를 만든다',
     why: '조립기는 레시피를 지정해야 움직인다. 여기서부터 생산 사슬이 길어진다.',
-    how: '단축키 5로 조립기를 놓고 좌클릭 → 인스펙터에서 레시피를 "톱니"로. 철판을 인서터로 넣어라.',
+    how: [
+      '<b>5 조립기</b>를 놓고 <b>좌클릭</b>한다',
+      '왼쪽 아래 인스펙터에서 레시피를 <b>톱니</b>로 고른다',
+      '인서터로 철판을 넣어준다'
+    ],
+    need: '조립기 = 톱니 9 + 회로기판 3 + 철판 9 · 톱니는 우측 [손 조립]에서도 만든다',
     check: function () { return (prodStats.byRecipe['gear'] || 0) >= 1; }
+  },
+  {
+    id: 'copper',
+    title: '구리도 캔다 — 구리판을 만든다',
+    why: '여기서부터 구리가 필요하다. 연구팩도, 회로기판도 구리로 만든다.',
+    how: [
+      '지도에서 <b>주황색 돌무더기</b>가 구리광맥이다',
+      '철과 <b>똑같이</b> 잇는다: 채광기 → 벨트 → 인서터 → 용광로',
+      '용광로는 구리광석이 들어오면 구리판으로 알아서 바꾼다',
+      '철 라인과 <b>같은 용광로를 쓰지 마라</b> — 한 용광로는 한 가지만 굽는다'
+    ],
+    check: function () { return (prodStats.byRecipe['copper-plate'] || 0) >= 1; }
   },
   {
     id: 'research',
     title: '연구소를 돌려 연구를 시작한다',
-    why: '연구가 새 건물과 제어기 노드를 연다. 적색 연구팩은 구리판+톱니로 만든다.',
-    how: '단축키 0으로 연구소를 놓고, 조립기 레시피를 "적색 연구팩"으로 바꿔 만든 뒤 인서터로 연구소에 넣는다. T로 연구창을 열어 무엇을 연구할지 고른다.',
+    why: '연구가 새 건물과 제어기 노드를 연다.',
+    how: [
+      '<b>적색 연구팩 = 구리판 1 + 톱니 1</b>',
+      '우측 <b>[손 조립]</b>에서 클릭하면 하나씩 바로 만들어진다',
+      '<b>9 연구소</b>를 놓고 인서터로 연구팩을 넣는다',
+      '<b>T</b>를 눌러 무엇을 연구할지 고른다'
+    ],
+    need: '연구소 = 톱니 10 + 회로기판 10 + 벨트 4',
     check: function () { return !!currentResearch && researchProgress >= 1; }
   },
   {
     id: 'controller',
     title: '제어기를 놓고 편집기를 연다',
     why: '★ 여기서부터가 이 게임의 본체다. 제어기는 전기를 쓰지 않는다.',
-    how: '건설 목록에서 제어기를 놓고 **좌클릭**하면 노드 편집기가 열린다.',
+    how: [
+      '<b>제어기 = 회로기판 5 + 철판 5</b>',
+      '<b>회로기판 = 철판 1 + 구리선 3</b>',
+      '<b>구리선 = 구리판 1</b> → 2개가 나온다',
+      '셋 다 우측 <b>[손 조립]</b>에서 클릭으로 만든다 (구리선을 먼저 여러 개)',
+      '<b>0 제어기</b>를 놓고 <b>좌클릭</b>하면 노드 편집기가 열린다'
+    ],
+    need: '재료가 모자라면 배치할 때 무엇이 몇 개 필요한지, 어디서 얻는지 알려준다',
     check: function () { return countEntity('controller') >= 1 && !!tutorial.flags.openedEditor; }
   },
   {
     id: 'wire',
     title: '재고를 보고 기계를 켜고 끄게 배선한다',
-    why: '조건이 바뀌면 공장이 스스로 판단한다. 정답 배선은 없다 — 같은 목표를 여러 방법으로 풀 수 있다.',
-    how: '편집기에서 [예제 불러오기]를 누르면 재고 히스테리시스 회로가 대상까지 물린 채 들어온다. 한 번 보고 나면 나머지는 응용이다. (상자와 조립기를 먼저 지어 두면 자동으로 물린다)',
+    why: '조건이 바뀌면 공장이 스스로 판단한다. 정답 배선은 없다.',
+    how: [
+      '편집기 위쪽 <b>[예제 불러오기]</b>를 누른다',
+      '재고 히스테리시스 회로가 <b>대상까지 물린 채</b> 들어온다',
+      '상자 재고가 50 미만이면 켜고 200 초과면 끈다 — 값을 바꿔 보라',
+      '한 번 보고 나면 나머지는 응용이다'
+    ],
     check: function () {
       return !!anyEntity(function (e) { return e.logicForced && e.fEnable; });
     }
@@ -4134,8 +4236,13 @@ var TUTORIAL_STEPS = [
   {
     id: 'defend',
     title: '터렛을 세우고 탄약을 넣는다',
-    why: '오염이 퍼지면 적이 온다. 터렛은 탄창을 인서터로 넣어줘야 쏜다 — 방어도 생산 문제다.',
-    how: 'T에서 군수를 연구한 뒤 터렛을 놓고, 조립기로 탄창을 만들어 인서터로 넣는다.',
+    why: '오염이 퍼지면 적이 온다. 첫 습격은 5분 뒤부터다.',
+    how: [
+      '<b>T</b>에서 <b>군수</b>를 연구한다',
+      '터렛을 공장 바깥쪽에 놓는다',
+      '<b>탄창 = 철판 4</b> — [손 조립]이나 조립기로 만든다',
+      '<b>인서터로 넣어줘야 쏜다</b> — 방어도 생산 문제다'
+    ],
     check: function () {
       return !!anyEntity(function (e) { return e.type === 'turret' && e.ammo > 0; });
     }
@@ -4225,7 +4332,11 @@ function renderTutorial() {
   }
   lines.push('<div class="tnow">' + s.title + '</div>');
   lines.push('<div class="twhy">' + s.why + '</div>');
-  lines.push('<div class="thow">' + s.how + '</div>');
+  // how 는 한 줄에 하나씩 — 문단으로 붙여 놓으면 읽지 않는다
+  lines.push('<ol class="thow">');
+  for (var h = 0; h < s.how.length; h++) lines.push('<li>' + s.how[h] + '</li>');
+  lines.push('</ol>');
+  if (s.need) lines.push('<div class="tneed">' + s.need + '</div>');
   body.innerHTML = lines.join('');
 }
 
@@ -5240,6 +5351,7 @@ window.__GAME = {
               byRecipe: JSON.parse(JSON.stringify(prodStats.byRecipe)) }
     };
   },
+  howToGet: function (itemId) { return howToGet(itemId); },
   tutorialReset: function (on) { resetTutorial(on); renderTutorial(); return tutorial.step; },
   tutorialSkip: function () { var s = skipTutorialStep(); renderTutorial(); return s; },
   // 각 단계의 check() 를 지금 상태에서 직접 물어본다 (게이트가 단계별로 검정할 때)

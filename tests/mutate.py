@@ -147,7 +147,17 @@ MUTATIONS = [
      b'  if (false) return;',
      ['tutorial.doesNotAdvanceIdle']),
 
+    ('재료를 어디서 얻는지 안 알려준다', '25_entity.js',
+     b'function howToGet(itemId) {\n  var r = RECIPES[itemId];',
+     b'function howToGet(itemId) {\n  if (true) return null;\n  var r = RECIPES[itemId];',
+     ['help.tellsHowToGetMaterials']),
+
     # ---- UI 경로 (uismoke.js 로 판정) ----
+    ('단축키를 다시 목록 순서로 매긴다', '50_ui.js',
+     b'      var hit = buildIdForKey(k);',
+     b"      var hit = visibleBuildIds()[k === '0' ? 9 : (parseInt(k, 10) - 1)];",
+     ['ui.hotkeyMatchesLabel'], 'uismoke.js'),
+
     ('인스펙터를 매 갱신마다 통째로 다시 그린다', '50_ui.js',
      b'  if (sig !== lastInspSig) {',
      b'  if (true) {',

@@ -248,7 +248,7 @@
       var tHead = G.ui.panelText('#tutorHead');
       var tNow = G.ui.panelText('.tnow');
       chk('ui.tutorialPanelShows',
-        !!tp && tp.style.display === 'block' && /1\s*\/\s*9/.test(tHead || '') && !!tNow,
+        !!tp && tp.style.display === 'block' && /1\s*\/\s*\d+/.test(tHead || '') && !!tNow,
         '튜토리얼 패널 표시 · 머리글 "' + tHead + '" · 현재 목표 "' + (tNow || '').slice(0, 24) + '…"');
 
       // 건너뛰기 버튼이 실제로 한 단계만 넘긴다
@@ -269,6 +269,42 @@
       document.getElementById('tutorBtn').click();
       chk('ui.tutorialReopens', document.getElementById('tutor').style.display === 'block',
         '[튜토리얼] 버튼 → 다시 표시=' + (document.getElementById('tutor').style.display === 'block'));
+
+      // --- 13. 단축키는 연구를 해도 절대 안 밀린다 --------------------------
+      // 예전엔 "잠긴 것을 뺀 목록의 순서"로 번호를 매겨서, 물류학을 연구해 분배기가
+      // 열리는 순간 3=채광기가 3=인서터로 바뀌었다. 손에 익은 번호가 바뀌면 안 된다.
+      G.reset(424242); G.giveAll(9999); G.ui.closeHelp(); G.ui.refresh();
+      function keyMap() {
+        var m = {}, rows = document.querySelectorAll('#buildList .bitem');
+        for (var i = 0; i < rows.length; i++) {
+          var kEl = rows[i].querySelector('.bkey');
+          var k = kEl ? kEl.textContent.trim() : '';
+          if (k) m[k] = rows[i].getAttribute('data-b');
+        }
+        return m;
+      }
+      var mapBefore = keyMap();
+      var lockedBefore = !!document.querySelector('#buildList .bitem[data-b="splitter"].locked');
+      G.research('logistics'); G.research('military');   // 분배기·터렛·벽이 열린다
+      G.ui.refresh();
+      var mapAfter = keyMap();
+      var same = JSON.stringify(mapBefore) === JSON.stringify(mapAfter);
+      var lockedAfter = !!document.querySelector('#buildList .bitem[data-b="splitter"].locked');
+      chk('ui.hotkeysStableAfterResearch',
+        lockedBefore === true && lockedAfter === false && same && Object.keys(mapAfter).length === 10,
+        '연구 전 분배기 잠김=' + lockedBefore + ' → 후 잠김=' + lockedAfter + ' (조건 발생 확인) · ' +
+        '단축키 매핑 ' + Object.keys(mapAfter).length + '개가 동일=' + same +
+        ' · 3번=' + mapAfter['3'] + ' 0번=' + mapAfter['0']);
+
+      // 화면에 적힌 번호를 실제로 눌렀을 때 그 건물이 잡혀야 한다
+      var mismatched = [];
+      for (var kk in mapAfter) {
+        key(kk);
+        if (G.ui.curTool() !== mapAfter[kk]) mismatched.push(kk + '→' + G.ui.curTool() + '(표시:' + mapAfter[kk] + ')');
+      }
+      key('Escape');
+      chk('ui.hotkeyMatchesLabel', mismatched.length === 0,
+        '표시된 번호 10개를 모두 눌러 확인' + (mismatched.length ? ' · 어긋남: ' + mismatched.join(', ') : ' · 전부 일치'));
 
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

@@ -92,7 +92,14 @@ function tryPlace(tx, ty) {
   if (!tool) return false;
   var e = placeEntity(tool, tx, ty, toolDir, false);
   if (!e) {
-    var why = canPlace(tool, tx, ty, toolDir).why;
+    var chk = canPlace(tool, tx, ty, toolDir);
+    var why = chk.why;
+    // 재료가 모자란 경우에는 "어디서 얻는지"까지 함께 말한다.
+    // 부족하다고만 하면 플레이어가 그 자리에서 막힌다 (회로기판이 실제로 그랬다).
+    if (chk.missing) {
+      var how = howToGet(chk.missing);
+      if (how) why += ' — ' + how;
+    }
     if (why && placeFailMsg !== why) { toast(why, 'bad'); placeFailMsg = why; placeFailT = gameTime; }
     return false;
   }
@@ -175,10 +182,13 @@ function bindInput(canvas) {
     if (k === 'h' || k === 'H' || k === '?') { toggleHelp(); return; }
     if (k === 'p' || k === 'P') { showPollution = !showPollution; return; }
     if (k === 'q' || k === 'Q') { pipetteTool(); return; }
+    // 단축키는 건물에 **고정**돼 있다 (BUILDINGS[].hotkey).
+    // 예전엔 "잠긴 것을 뺀 목록의 순서"로 매겼는데, 연구로 새 건물이 열리면
+    // 번호가 통째로 밀려서 3=채광기를 외운 사람이 물류학을 연구하는 순간
+    // 3=인서터가 됐다. 손에 익은 번호가 바뀌면 안 된다.
     if (k >= '0' && k <= '9') {
-      var i = k === '0' ? 9 : (parseInt(k, 10) - 1);
-      var list = visibleBuildIds();
-      if (list[i]) selectTool(list[i]);
+      var hit = buildIdForKey(k);
+      if (hit) selectTool(hit);
     }
   });
   window.addEventListener('keyup', function (ev) { keys[ev.key.toLowerCase()] = false; });
@@ -344,6 +354,14 @@ function drawOverlays() {
 }
 
 // --- HUD ---------------------------------------------------------------------
+// 숫자 키 → 건물. 잠금 여부와 무관하게 항상 같은 건물을 가리킨다.
+function buildIdForKey(k) {
+  for (var i = 0; i < BUILD_IDS.length; i++) {
+    if (BUILDINGS[BUILD_IDS[i]].hotkey === k) return BUILD_IDS[i];
+  }
+  return null;
+}
+
 function visibleBuildIds() {
   return BUILD_IDS.filter(function (b) {
     var B = BUILDINGS[b];
@@ -359,12 +377,10 @@ function renderBuildList() {
   var host = document.getElementById('buildList');
   if (!host) return;
   var html = [];
-  var vis = visibleBuildIds();
   for (var i = 0; i < BUILD_IDS.length; i++) {
     var id = BUILD_IDS[i], B = BUILDINGS[id];
     var locked = B.tech && !techDone[B.tech];
-    var vi = vis.indexOf(id);
-    var key = (vi >= 0 && vi < 10) ? (vi === 9 ? '0' : String(vi + 1)) : '';
+    var key = B.hotkey || '';   // 고정 — 연구를 해도 번호가 밀리지 않는다
     var poor = false;
     for (var k in B.cost) if ((inventory[k] || 0) < B.cost[k]) poor = true;
     html.push('<div class="bitem' + (tool === id ? ' sel' : '') + (locked ? ' locked' : '') +
