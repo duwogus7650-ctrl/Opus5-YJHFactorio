@@ -1005,6 +1005,204 @@
         tutSaved === 2 && tutAfterReset === 0 && tutLoaded === 2,
         '저장 시 단계 ' + tutSaved + ' → 리셋 ' + tutAfterReset + ' → 복원 ' + tutLoaded);
 
+      // ================= 8d. 심화 과정 (부하 차단 · 방어) ==================
+      // 심화 단계는 "노드를 놓았는가"가 아니라 **신호가 목적지까지 흐르는가**로 판정한다.
+      // 놓기만 한 노드는 아무것도 안 하므로, 그걸 통과시키면 게이트가 거짓말을 한다.
+      labSetup();
+
+      // 음성 대조군 — 기초를 안 끝냈으면 심화로 못 들어간다.
+      // 심화 문서는 공장·제어기·연구소가 이미 있다고 가정하고 쓰여 있다.
+      var advTooEarly = G.tutorialAdvance();
+      chk('adv.requiresBasicDone',
+        advTooEarly === false && G.tutorial().track === 'basic',
+        '기초 0/10 에서 심화 시작 시도 → 거절=' + (advTooEarly === false) +
+        ' · 트랙 ' + G.tutorial().track);
+
+      // 기초를 끝내고 넘어간다
+      for (var ab = 0; ab < 12; ab++) G.tutorialSkip();
+      var basicDone = G.tutorial();
+      var advOk = G.tutorialAdvance();
+      var advT = G.tutorial();
+      chk('adv.startsAtFirstStep',
+        basicDone.done === true && advOk === true && advT.track === 'adv' &&
+        advT.step === 0 && advT.total === 8 && advT.id === 'green-sci' &&
+        advT.done === false,
+        '기초 완료(' + basicDone.step + '/' + basicDone.total + ') → 심화 ' +
+        advT.step + '/' + advT.total + ' · 첫 단계 ' + advT.id +
+        ' · 단계 목록 [' + advT.advIds.join(',') + ']');
+
+      // 판정 없이 저절로 진행되면 안 된다 (기초와 같은 원칙)
+      G.run(20);
+      chk('adv.doesNotAdvanceIdle', G.tutorial().step === 0,
+        '20초 동안 아무것도 안 했을 때 심화 단계 ' + G.tutorial().step + ' (0이어야)');
+
+      // --- 배선 판정: 놓기만 한 노드는 통과하면 안 된다 --------------------
+      // 심화 3단계 = 전력 만족도를 화면에 띄운다
+      var ctrl = G.place('controller', 60, 60, 0);
+      chk('adv.rigBuilt', !!ctrl, '심화 배선 시험용 제어기 id=' + ctrl);
+      var nPow = G.gAdd(ctrl, 'power', 10, 10);
+      var nDisp = G.gAdd(ctrl, 'display', 300, 10);
+      var seeBefore = G.tutorialCheck(2);          // 노드만 있고 배선은 없다
+      G.gLink(ctrl, nPow, 0, nDisp, 0);
+      var seeAfter = G.tutorialCheck(2);
+      chk('adv.seePowerNeedsWiring',
+        seeBefore === false && seeAfter === true,
+        '전력·표시 노드를 놓기만 했을 때 ' + seeBefore + ' → 선을 이은 뒤 ' + seeAfter +
+        ' (놓기만 한 노드를 통과시키면 판정이 거짓말이 된다)');
+
+      // 심화 4단계 = power → cmp → enable. 비교를 건너뛴 직결은 통과하면 안 된다.
+      var asmT = G.place('assembler', 64, 60, 0);
+      var nEn = G.gAdd(ctrl, 'enable', 600, 10);
+      G.gCfg(ctrl, nEn, 'ent', asmT);
+      G.gLink(ctrl, nPow, 0, nEn, 0);              // 비교 없이 바로 이었다
+      var shedDirect = G.tutorialCheck(3);
+      var nCmp = G.gAdd(ctrl, 'cmp', 300, 120);
+      G.gCfg(ctrl, nCmp, 'op', '<');
+      G.gLink(ctrl, nPow, 0, nCmp, 0);
+      G.gLink(ctrl, nCmp, 0, nEn, 0);              // 비교를 거쳐 다시 잇는다
+      var shedViaCmp = G.tutorialCheck(3);
+      chk('adv.naiveShedNeedsComparator',
+        shedDirect === false && shedViaCmp === true,
+        '전력→가동 직결 ' + shedDirect + ' → 전력→비교→가동 ' + shedViaCmp +
+        ' (문턱을 정하는 것이 부하 차단의 핵심이라 비교가 빠지면 배운 게 없다)');
+
+      // 대상이 안 걸린 출력 노드는 장식이다 — 통과시키면 안 된다
+      var nEn2 = G.gAdd(ctrl, 'enable', 600, 200);   // cfg.ent 를 일부러 안 준다
+      var nCmp2 = G.gAdd(ctrl, 'cmp', 300, 200);
+      var ctrl2 = G.place('controller', 68, 60, 0);
+      var p2 = G.gAdd(ctrl2, 'power', 10, 10);
+      var c2 = G.gAdd(ctrl2, 'cmp', 200, 10);
+      var e2 = G.gAdd(ctrl2, 'enable', 400, 10);     // 대상 없음
+      G.gLink(ctrl2, p2, 0, c2, 0); G.gLink(ctrl2, c2, 0, e2, 0);
+      var noTargetOnly = (function () {
+        // ctrl 쪽 배선을 잠시 끊어 ctrl2 만 남긴 상태로 물어본다
+        G.remove(ctrl);
+        var r = G.tutorialCheck(3);
+        return r;
+      })();
+      chk('adv.outputNeedsTarget',
+        noTargetOnly === false,
+        '대상이 안 걸린 [기계 가동/정지] 로만 이어진 배선 → ' + noTargetOnly +
+        ' (false 여야 한다. 대상 없는 출력 노드는 공장을 못 움직인다)');
+      G.remove(ctrl2);
+
+      // 심화 5단계 = SR 래치. RESET 이 안 물리면 한 번 켜지고 영영 안 꺼진다.
+      var ctrl3 = G.place('controller', 72, 60, 0);
+      var asm3 = G.place('assembler', 76, 60, 0);
+      var p3 = G.gAdd(ctrl3, 'power', 10, 10);
+      var cSet = G.gAdd(ctrl3, 'cmp', 200, 10); G.gCfg(ctrl3, cSet, 'op', '>');
+      var cRst = G.gAdd(ctrl3, 'cmp', 200, 140); G.gCfg(ctrl3, cRst, 'op', '<');
+      var nLat = G.gAdd(ctrl3, 'latch', 400, 60);
+      var eLat = G.gAdd(ctrl3, 'enable', 600, 60); G.gCfg(ctrl3, eLat, 'ent', asm3);
+      G.gLink(ctrl3, p3, 0, cSet, 0);
+      G.gLink(ctrl3, cSet, 0, nLat, 0);            // SET 만 물렸다
+      G.gLink(ctrl3, nLat, 0, eLat, 0);
+      var latchNoReset = G.tutorialCheck(4);
+      G.gLink(ctrl3, p3, 0, cRst, 0);
+      G.gLink(ctrl3, cRst, 0, nLat, 1);            // RESET 을 마저 물린다
+      var latchFull = G.tutorialCheck(4);
+      chk('adv.latchNeedsReset',
+        latchNoReset === false && latchFull === true,
+        'RESET 미연결 래치 ' + latchNoReset + ' → RESET 연결 후 ' + latchFull +
+        ' (RESET 이 없으면 한 번 켜진 뒤 영영 안 꺼져서 부하 차단이 성립하지 않는다)');
+
+      // 되먹임(순환) 배선이 있어도 판정이 멈추지 않아야 한다.
+      // 이 게임의 그래프는 순환이 정상이므로, 도달성 탐색이 순환 방어를 안 하면
+      // 게이트가 아니라 게임이 프리즈한다.
+      // graphLink 는 **자기 자신으로의 링크를 거부한다**(35_logic.js). 처음에 자기
+      // 되먹임으로 짰다가 링크가 아예 안 생겨서, 순환 방어를 빼는 돌연변이에도
+      // 이 게이트가 통과해 버렸다(MISS). 순환이 실제로 생겼는지를 먼저 단언한다.
+      var m1 = G.gAdd(ctrl3, 'math', 400, 260);
+      var m2 = G.gAdd(ctrl3, 'math', 520, 260);
+      G.gLink(ctrl3, nLat, 0, m1, 0);
+      var lk1 = G.gLink(ctrl3, m1, 0, m2, 0);
+      var lk2 = G.gLink(ctrl3, m2, 0, m1, 1);      // m1 → m2 → m1 = 진짜 순환
+      var cycInfo = G.gInfo(ctrl3);
+      chk('adv.cyclicRigIsActuallyCyclic',
+        lk1 === true && lk2 === true && cycInfo.cycles >= 1,
+        '순환 배선 생성 ' + lk1 + '/' + lk2 + ' · 컴파일러가 센 되먹임 간선 ' +
+        cycInfo.cycles + '개 (0이면 이 시험은 아무것도 안 보고 있는 것이다)');
+      G.reachSteps(true);                          // 걸음 수 계수기 리셋
+      var cyclicOk = G.tutorialCheck(4);
+      var cycSteps = G.reachSteps(false);
+      // **boolean 으로는 무한 루프를 못 본다** — 안 끝나면 이 줄에 오지도 못한다.
+      // 실제로 순환 방어를 지운 돌연변이가 여기서 브라우저를 영구히 매달았고,
+      // 게이트가 FAIL 을 내는 대신 45건짜리 돌연변이 실행이 통째로 멎었다.
+      // 그래서 판정을 "끝났는가"가 아니라 **몇 걸음에 끝났는가**로 바꿨다.
+      chk('adv.cyclicSearchIsBounded',
+        cyclicOk === true && cycSteps > 0 && cycSteps < 400,
+        '되먹임 그래프에서 도달성 탐색 걸음 수 ' + cycSteps +
+        ' (노드 ' + cycInfo.nodes + '개짜리 그래프다. 순환 방어가 깨지면 상한 20000 까지 튄다)');
+
+      // --- 방어 단계 ------------------------------------------------------
+      labSetup();
+      G.tutorial();                                 // 트랙 초기화 확인용
+      for (var ab2 = 0; ab2 < 12; ab2++) G.tutorialSkip();
+      G.tutorialAdvance();
+      G.research('military');                       // 벽·터렛·탄창이 여기서 열린다
+      G.research('logic-mem'); G.research('defense-ai');
+      var wallN = 0;
+      for (var wx = 0; wx < 11; wx++) { if (G.place('wall', 40 + wx, 70, 0)) wallN++; }
+      var tur1 = G.place('turret', 40, 72, 0);
+      var tur2 = G.place('turret', 43, 72, 0);
+      var wallShort = G.tutorialCheck(5);           // 벽 11개 — 하나 모자란다
+      if (G.place('wall', 51, 70, 0)) wallN++;
+      var wallOk = G.tutorialCheck(5);
+      chk('adv.wallTurretThreshold',
+        wallShort === false && wallOk === true && !!tur1 && !!tur2,
+        '벽 11개 ' + wallShort + ' → 12개 ' + wallOk + ' · 터렛 ' +
+        ((tur1 ? 1 : 0) + (tur2 ? 1 : 0)) + '기 (문턱 바로 아래에서 실패해야 문턱이 산다)');
+
+      // 탄약: 손으로 채운 것만으로는 통과하면 안 된다 — 자동 보급이 이 단계의 목적이다
+      G.setInv('ammo', 40);
+      G.putFromStock(tur1); G.putFromStock(tur2);
+      var ammoByHand = G.tutorialCheck(6);
+      // 터렛은 2x2 다 — tur1 이 40~41, tur2 가 43~44 를 먹으므로 42 만 비어 있다.
+      // 인서터를 서쪽(dir 3)으로 두면 앞칸이 41 = tur1 안이 된다.
+      var insA = G.place('inserter', 42, 72, 3);
+      var ammoAuto = G.tutorialCheck(6);
+      chk('adv.ammoNeedsInserter',
+        ammoByHand === false && ammoAuto === true && !!insA,
+        '손으로만 채웠을 때 ' + ammoByHand + ' → 터렛에 넣는 인서터를 놓은 뒤 ' + ammoAuto +
+        ' (손 보급은 첫 습격만 막는다 — 자동화가 이 단계의 목적이다)');
+
+      // 마지막 단계: 적 근접을 무언가에 잇는다
+      var ctrl4 = G.place('controller', 60, 76, 0);
+      var nEnemy = G.gAdd(ctrl4, 'enemy', 10, 10);
+      var nLamp = G.gAdd(ctrl4, 'lamp', 300, 10);
+      var defBefore = G.tutorialCheck(7);
+      G.gLink(ctrl4, nEnemy, 0, nLamp, 0);
+      var defAfter = G.tutorialCheck(7);
+      chk('adv.defenseAutoNeedsWiring',
+        defBefore === false && defAfter === true,
+        '적 근접 노드만 놓았을 때 ' + defBefore + ' → 경보 램프에 이은 뒤 ' + defAfter);
+
+      // 끝까지 건너뛰면 멈춘다 (기초와 같은 규율 — 넘어가면 12/8 처럼 표시된다)
+      for (var ab3 = 0; ab3 < 20; ab3++) G.tutorialSkip();
+      var advEnd = G.tutorial();
+      chk('adv.terminates',
+        advEnd.done === true && advEnd.step === 8 && advEnd.total === 8,
+        '심화를 끝까지 건너뛰면 완료=' + advEnd.done + ' · 단계 ' + advEnd.step + '/' + advEnd.total);
+
+      // 저장·복원이 트랙까지 기억해야 한다. 트랙을 잃으면 심화 3단계가
+      // 기초 3단계로 읽혀 엉뚱한 단계가 통과된다.
+      labSetup();
+      for (var ab4 = 0; ab4 < 12; ab4++) G.tutorialSkip();
+      G.tutorialAdvance(); G.tutorialSkip(); G.tutorialSkip();
+      var advSavedT = G.tutorial();
+      var rawAdv = G.save();
+      G.reset(999);
+      var advReset = G.tutorial();
+      G.load(rawAdv);
+      var advLoaded = G.tutorial();
+      chk('adv.trackSurvivesSaveLoad',
+        advSavedT.track === 'adv' && advSavedT.step === 2 &&
+        advReset.track === 'basic' && advReset.step === 0 &&
+        advLoaded.track === 'adv' && advLoaded.step === 2 && advLoaded.id === 'see-power',
+        '저장 시 ' + advSavedT.track + ' ' + advSavedT.step + ' → 리셋 ' + advReset.track +
+        ' ' + advReset.step + ' → 복원 ' + advLoaded.track + ' ' + advLoaded.step +
+        ' (' + advLoaded.id + ')');
+
       // ================= 9. 결정론 =======================================
       function scenarioHash(seed) {
         G.reset(seed); G.giveAll(99999); G.clearEnemies(); G.powerCheat(true);

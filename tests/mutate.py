@@ -30,6 +30,55 @@ except Exception:
     pass
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# --- 강제 종료 안전장치 ------------------------------------------------------
+# finally 로 되돌리는 것은 **프로세스가 살아 있을 때만** 통한다. 타임아웃이나
+# Ctrl-C 로 죽으면 되돌리기가 아예 실행되지 않아 소스가 돌연변이된 채 남는다.
+# 실제로 그렇게 되어 52_tutorial.js 의 순환 방어가 지워진 채 작업 트리에 남았다.
+# 그래서 시작할 때 전 소스를 통째로 떠 두고, 다음 실행이 그 흔적을 보면 먼저 되돌린다.
+def _bak_dir():
+    return os.path.join(ROOT, 'tests', '.mutate-backup')
+
+def snapshot_sources():
+    d = _bak_dir()
+    if not os.path.isdir(d):
+        os.makedirs(d)
+    for fn in os.listdir(os.path.join(ROOT, 'src')):
+        src = os.path.join(ROOT, 'src', fn)
+        if os.path.isfile(src):
+            with open(src, 'rb') as f:
+                data = f.read()
+            with open(os.path.join(d, fn), 'wb') as f:
+                f.write(data)
+
+def restore_sources_if_dirty():
+    """이전 실행이 비정상 종료돼 백업이 남아 있으면 바이트 그대로 되돌린다."""
+    d = _bak_dir()
+    if not os.path.isdir(d):
+        return []
+    changed = []
+    for fn in os.listdir(d):
+        bak, live = os.path.join(d, fn), os.path.join(ROOT, 'src', fn)
+        if not os.path.isfile(live):
+            continue
+        with open(bak, 'rb') as f:
+            want = f.read()
+        with open(live, 'rb') as f:
+            got = f.read()
+        if want != got:
+            with open(live, 'wb') as f:
+                f.write(want)
+            changed.append(fn)
+    return changed
+
+def clear_snapshot():
+    d = _bak_dir()
+    if not os.path.isdir(d):
+        return
+    for fn in os.listdir(d):
+        os.remove(os.path.join(d, fn))
+    os.rmdir(d)
+
 SRC = os.path.join(ROOT, 'src')
 
 ENV = dict(os.environ)
@@ -160,6 +209,112 @@ MUTATIONS = [
      b'function howToGet(itemId) {\n  if (true) return null;\n  var r = RECIPES[itemId];',
      ['help.tellsHowToGetMaterials']),
 
+    # ---- 심화 과정 (부하 차단 · 방어) ----
+    # 배선 판정이 "놓기만 한 노드"를 통과시키면 심화 단계는 전부 무의미해진다.
+    ('배선 판정이 도달성 대신 노드 존재만 본다', '52_tutorial.js',
+     b'      if (reachableNodes(g, g.nodes[i].nid, kindsTo, pred).length) hit = true;',
+     b'      hit = true;',
+     ['adv.seePowerNeedsWiring', 'adv.defenseAutoNeedsWiring']),
+
+    ('중간 노드를 건너뛴 직결도 통과시킨다', '52_tutorial.js',
+     b'      var mids = reachableNodes(g, g.nodes[i].nid, [kindMid]);',
+     b'      var mids = g.nodes;',
+     ['adv.naiveShedNeedsComparator']),
+
+    # RESET 이 없는 래치는 한 번 켜진 뒤 영영 안 꺼진다 — 부하 차단이 성립하지 않는다
+    ('RESET 이 안 물린 래치도 완성으로 친다', '52_tutorial.js',
+     b'        return portFed(g, L.nid, 1);',
+     b'        return true;',
+     ['adv.latchNeedsReset']),
+
+    ('대상 없는 출력 노드도 배선으로 친다', '52_tutorial.js',
+     b'function hasTarget(n) { return !!n.cfg && n.cfg.ent !== null && n.cfg.ent !== undefined; }',
+     b'function hasTarget(n) { return !!n; }',
+     ['adv.outputNeedsTarget']),
+
+    # 순환 방어를 빼면 되먹임 배선에서 탐색이 안 끝난다 — 게이트가 아니라 게임이 멈춘다
+    # 이 돌연변이는 예전에 **무한 루프를 내서 게이트가 아니라 실행 전체를 세웠다.**
+    # 이제 REACH_LIMIT 상한이 있어 멈추기는 하지만 걸음 수가 폭발하고,
+    # adv.cyclicSearchIsBounded 가 그 숫자를 본다.
+    ('도달성 탐색의 순환 방어를 뺀다', '52_tutorial.js',
+     b'    if (seen[cur]) continue;',
+     b'    if (false) continue;',
+     ['adv.cyclicSearchIsBounded']),
+
+    # 상한을 지우면 seen 이 살아 있는 한 정상 동작한다 — 단독으로는 안 잡힌다.
+    # 대신 상한 자체를 1 로 낮추면 탐색이 아무것도 못 찾아 판정이 무너진다.
+    # 상한 1 이면 첫 바퀴에서 **직접 이웃**까지는 찾는다. 그래서 1홉 배선을 보는
+    # 게이트는 안 뒤집힌다. naiveShedNeedsComparator 도 power→cmp, cmp→enable 로
+    # **1홉 탐색 두 번**이라 통과해 버렸다(MISS 2회로 확인). 한 번의 탐색이 2홉을
+    # 타야 하는 latchNeedsReset(power→cmp→latch) 만이 이 상한에 실제로 걸린다.
+    ('도달성 탐색 상한을 1 로 낮춘다', '52_tutorial.js',
+     b'var REACH_LIMIT = 20000;',
+     b'var REACH_LIMIT = 1;',
+     ['adv.latchNeedsReset']),
+
+    ('손으로 채운 터렛도 자동 보급으로 친다', '52_tutorial.js',
+     b'             inserterFeedsTurret();',
+     b'             true;',
+     ['adv.ammoNeedsInserter']),
+
+    ('기초를 안 끝내도 심화로 들어간다', '52_tutorial.js',
+     b'  if (!tutorial.done) return false;',
+     b'  if (false) return false;',
+     ['adv.requiresBasicDone']),
+
+    ('저장본이 트랙을 안 기억한다', '60_game.js',
+     b"      tutorial.track = (data.tut.track === 'adv') ? 'adv' : 'basic';",
+     b"      tutorial.track = 'basic';",
+     ['adv.trackSurvivesSaveLoad']),
+
+    # skipTutorialStep 의 상한만 깨면 renderTutorial 의 오버플로 가드가 대신 step 을
+    # 8 에서 멈춰 세워 MISS 가 난다(이중 방어 — 실제로 그렇게 났다). 두 곳이 함께
+    # 쓰는 진실의 출처인 curSteps() 를 깨야 한 방에 무너진다.
+    ('트랙과 무관하게 기초 단계 배열을 쓴다', '52_tutorial.js',
+     b"function curSteps() { return tutorial.track === 'adv' ? ADVANCED_STEPS : TUTORIAL_STEPS; }",
+     b'function curSteps() { return TUTORIAL_STEPS; }',
+     ['adv.terminates']),
+
+    # ---- 부하 차단 (shedding.js 로 판정) ----
+    # 순진한 배선이 실제로 떨리는지는 boolean 이 아니라 **횟수**로만 볼 수 있다.
+    # 주의: powerStats.sat(=G.state().power.sat)은 nt.sat 이 아니라 전세계 합계에서
+    # 따로 계산된다(30_power.js:186). 그래서 nt.sat 을 깨도 shed.deficitExists 는
+    # 안 뒤집힌다(MISS 로 확인). 망별 sat 을 읽는 것은 [전력 만족도] 노드 쪽이다.
+    ('망별 전력 만족도가 항상 100% (제어기가 부족을 못 본다)', '30_power.js',
+     b'    nt.sat = nt.demand <= 0 ? 1 : Math.min(1, nt.supplyCap / nt.demand);',
+     b'    nt.sat = 1;',
+     ['shed.naiveOscillates'], 'shedding.js'),
+
+    ('꺼진 기계도 계속 전기를 먹는다 (부하 차단이 무의미해진다)', '30_power.js',
+     b'  if (!e.enabled) return 0;',
+     b'  if (false) return 0;',
+     ['shed.naiveOscillates', 'shed.actuallyRecoversPower'], 'shedding.js'),
+
+    # 여기에 'SR 래치를 비교기로 바꾼다' 돌연변이를 넣었다가 MISS 가 났고, 빼는 것이
+    # 옳다고 판단했다. 이유: 제대로 설계된 히스테리시스는 **차단 후 값이 밴드 안에
+    # 떨어지도록** 문턱을 잡는다(82.9% → RESET(<90) → 차단 → 96.8% < SET(98)).
+    # 그 조건에서는 기억을 잃은 비교기도 같은 답(꺼짐)을 내므로 이 리그로는 구별이
+    # 안 된다. 래치의 기억 자체는 driver.js 의 logic.hysteresisHolds 가 돌연변이로
+    # 검정하고 있으므로 중복 커버가 아니라 **적절한 위치에서** 검정되는 것이다.
+    # shed.latchSettles 는 돌연변이 검정된 게이트가 아니라 **관측치**로 읽어야 한다.
+
+    # ---- 전력망 밖 제어기 경고 ----
+    ('전력망 밖 제어기 경고를 없앤다', '55_logicui.js',
+     b"    if (g.nodes[i].kind === 'power') { offGrid = !!curCtrl && curCtrl.net < 0; break; }",
+     b'    if (false) { offGrid = true; break; }',
+     ['ui.offGridControllerWarns'], 'uismoke.js'),
+
+    # 항상 뜨는 경고는 경고가 아니라 배경이다
+    ('망에 붙은 제어기에도 경고를 띄운다', '55_logicui.js',
+     b'offGrid = !!curCtrl && curCtrl.net < 0;',
+     b'offGrid = true;',
+     ['ui.onGridControllerQuiet'], 'uismoke.js'),
+
+    ('완료 화면에 심화 버튼을 안 단다', '52_tutorial.js',
+     b'        \'<button id="tutorAdv" style="width:100%">',
+     b'        \'<button id="tutorNope" style="width:100%">',
+     ['ui.advButtonAppearsWhenDone'], 'uismoke.js'),
+
     ('가져오기가 원본을 안 비운다 (복제)', '25_entity.js',
      b'  drain(e.inv); e.inv = {};',
      b'  drain(e.inv);',
@@ -245,8 +400,17 @@ def write_bytes(p, b):
         f.write(b)
 
 
+# 타임아웃은 선택이 아니다. 돌연변이가 **무한 루프**를 내면 헤드리스 브라우저가
+# 페이지를 끝내지 못하고, 타임아웃 없는 subprocess.run 은 영원히 기다린다.
+# 실제로 순환 방어를 지운 돌연변이에서 그렇게 되어 45건짜리 실행이 통째로 멎었고,
+# 강제 종료로 죽이는 바람에 소스가 돌연변이된 채 작업 트리에 남았다.
+RUN_TIMEOUT = 180
+
 def run(cmd):
-    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, env=ENV)
+    try:
+        p = subprocess.run(cmd, cwd=ROOT, capture_output=True, env=ENV, timeout=RUN_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return 'TIMEOUT', '', 'timed out after %ds' % RUN_TIMEOUT
     return p.returncode, p.stdout.decode('utf-8', 'replace'), p.stderr.decode('utf-8', 'replace')
 
 
@@ -283,6 +447,20 @@ def main():
         return 2
     print('uismoke 기준선 GREEN — 게이트 %d개' % len(gate_results(out2)))
 
+    only = None
+    for a in sys.argv[1:]:
+        if a.startswith('--only='):
+            only = a.split('=', 1)[1]
+    if only:
+        globals()['MUTATIONS'] = [m for m in MUTATIONS if only in m[0] or only in m[1]]
+        print('필터 --only=%s → %d 건만 돌린다' % (only, len(MUTATIONS)))
+
+    recovered = restore_sources_if_dirty()
+    if recovered:
+        print('!! 이전 실행이 비정상 종료돼 소스가 돌연변이된 채 남아 있었다.')
+        print('   백업에서 되돌렸다: %s' % ', '.join(sorted(recovered)))
+    snapshot_sources()
+
     caught, missed, invalid = 0, 0, 0
     rows = []
     revert_failed = []
@@ -318,6 +496,14 @@ def main():
                 invalid += 1
                 continue
             hrc, hout, herr = run([sys.executable, os.path.join('tests', 'harness.py'), drv])
+            if hrc == 'TIMEOUT':
+                # 게이트가 잡은 것이 아니다 — 판정 자체가 성립하지 않았다.
+                # 무한 루프는 FAIL 로 안 나오고 화면이 멈출 뿐이라, 이 결함은
+                # 게이트가 아니라 코드의 상한(REACH_LIMIT 등)으로 막아야 한다.
+                emit(('INVALID', name, '돌연변이가 무한 루프를 냈다 (%ds 안에 안 끝남) — '
+                                       '게이트로는 못 잡는 종류다' % RUN_TIMEOUT))
+                invalid += 1
+                continue
             got = gate_results(hout)
             flipped = [g for g in expect if got.get(g) == 'FAIL']
             still = [g for g in expect if got.get(g) == 'PASS']
@@ -341,6 +527,8 @@ def main():
 
     # 원본 상태로 다시 빌드해 둔다
     run([sys.executable, 'build.py'])
+
+    clear_snapshot()
 
     print('=' * 92)
     print(' 잡음 %d · 놓침 %d · 무효 %d  / 전체 %d' % (caught, missed, invalid, len(MUTATIONS)))

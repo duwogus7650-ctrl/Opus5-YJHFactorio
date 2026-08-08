@@ -88,8 +88,25 @@ function renderGraph() {
   for (var n = 0; n < g.nodes.length; n++) buildNodeDom(inner, g, g.nodes[n]);
   applyPan();
   updateLinks();
-  document.getElementById('cycleInfo').textContent =
-    g.nodes.length + '노드 · ' + g.links.length + '배선' + (g.cycles ? ' · 되먹임 ' + g.cycles + '개(1틱 지연)' : '');
+  updateCycleInfo(g);
+}
+
+// 제어기가 전력망 밖이면 [전력 만족도] 노드가 **영원히 0** 을 낸다 (netSatOf 는
+// net<0 에 0 을 돌려준다). 제어기는 전기를 안 쓰므로 전주 밖에 놓기 쉬운데,
+// 그러면 부하 차단 회로 전체가 조용히 죽고 화면에는 아무 단서도 없다.
+// 측정 하네스가 실제로 이 함정에 걸려 "발진 0회"라는 거짓 결론을 냈다.
+function updateCycleInfo(g) {
+  var el = document.getElementById('cycleInfo');
+  if (!el) return;
+  var txt = g.nodes.length + '노드 · ' + g.links.length + '배선' +
+            (g.cycles ? ' · 되먹임 ' + g.cycles + '개(1틱 지연)' : '');
+  var offGrid = false;
+  for (var i = 0; i < g.nodes.length; i++) {
+    if (g.nodes[i].kind === 'power') { offGrid = !!curCtrl && curCtrl.net < 0; break; }
+  }
+  el.innerHTML = offGrid
+    ? txt + ' · <b class="bad">이 제어기가 전력망 밖이다 — 만족%가 0으로 읽힌다. 전주 범위 안으로 옮겨라</b>'
+    : txt;
 }
 
 function buildNodeDom(inner, g, n) {
@@ -296,8 +313,7 @@ function updateLive() {
     var port = parseInt(dots[k].getAttribute('data-out'), 10);
     if (nn && truthy(nn.out[port])) dots[k].classList.add('on'); else dots[k].classList.remove('on');
   }
-  document.getElementById('cycleInfo').textContent =
-    g.nodes.length + '노드 · ' + g.links.length + '배선' + (g.cycles ? ' · 되먹임 ' + g.cycles + '개(1틱 지연)' : '');
+  updateCycleInfo(g);
 }
 
 // --- 화면 이동/확대 ----------------------------------------------------------

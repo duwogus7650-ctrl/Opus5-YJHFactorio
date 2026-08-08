@@ -10,3 +10,4 @@ node_modules/
 
 # 스크린샷은 커밋한다 (README 가 참조하고, 눈으로 검수한 증거다)
 # shots/ 는 제외하지 않는다
+tests/.mutate-backup/

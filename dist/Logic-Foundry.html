@@ -4165,8 +4165,9 @@ function bindMini() {
 
 var tutorial = {
   on: true,          // 패널을 띄우는가
-  step: 0,           // 현재 단계 인덱스
-  done: false,
+  track: 'basic',    // 'basic' 기초 10단계 / 'adv' 심화
+  step: 0,           // 현재 트랙 안에서의 단계 인덱스
+  done: false,       // **현재 트랙**을 끝냈는가
   flags: {},         // 상태로는 못 보는 사건 (편집기를 열었다 등)
   justDone: -1,      // 방금 완료한 단계 (연출용)
   celebrateT: 0
@@ -4200,6 +4201,97 @@ function hasBeltInFront(e) {
     if (c) return true;
   }
   return false;
+}
+
+// --- 배선 판정 도우미 --------------------------------------------------------
+// 심화 단계는 "제어기에 무엇을 배선했는가"로 판정한다. 노드를 놓기만 한 것은
+// 아무것도 아니고, **신호가 실제로 목적지까지 흐르는 배선**이어야 통과한다.
+// 그래서 노드 개수가 아니라 링크를 따라간 도달성으로 본다.
+function eachCtrlGraph(fn) {
+  forEachEntity(function (e) { if (e.type === 'controller' && e.graph) fn(e.graph); });
+}
+// startNid 에서 링크를 따라 도달하는 노드 중 kinds 에 속하는 것 전부.
+// **첫 하나에서 멈추지 않는다** — 멈추면 "그 하나가 막다른 길일 때" 뒤에 있는
+// 멀쩡한 경로를 못 보고 거짓 실패를 낸다.
+// 걸음 수 누적 — 게이트가 "순환에서 탐색이 폭발하지 않는가"를 숫자로 검정한다.
+// 이게 없으면 순환 방어가 깨졌는지를 "멈추나 안 멈추나"로만 볼 수 있는데,
+// 안 멈추는 것은 게이트가 못 잡는다. 브라우저가 통째로 매달릴 뿐이다.
+var reachStepsTotal = 0;
+function resetReachSteps() { reachStepsTotal = 0; }
+var REACH_LIMIT = 20000;
+
+function reachableNodes(g, startNid, kinds, pred) {
+  var seen = {}, stack = [startNid], out = [], guard = 0;
+  // 상한은 seen 과 **겹치는 방어**다. seen 하나만 믿으면 그것이 깨진 순간
+  // 판정이 틀리는 게 아니라 브라우저가 멈춘다 — 이 검사는 플레이어 기계에서
+  // 초당 4번 돈다. 실제로 seen 을 지운 돌연변이가 헤드리스 브라우저를 영구히
+  // 매달아 돌연변이 게이트 전체를 세웠고, 그래서 상한을 따로 두게 됐다.
+  while (stack.length && guard++ < REACH_LIMIT) {
+    var cur = stack.pop();
+    if (seen[cur]) continue;                 // 되먹임 배선이 있으므로 순환 방어는 필수
+    seen[cur] = 1;
+    for (var i = 0; i < g.links.length; i++) {
+      var l = g.links[i];
+      if (l.fn !== cur) continue;
+      var nx = graphNode(g, l.tn);
+      if (!nx) continue;
+      if (kinds.indexOf(nx.kind) >= 0 && (!pred || pred(nx))) out.push(nx);
+      stack.push(l.tn);
+    }
+  }
+  reachStepsTotal += guard;
+  return out;
+}
+function portFed(g, nid, port) {
+  for (var i = 0; i < g.links.length; i++) {
+    if (g.links[i].tn === nid && g.links[i].tp === port) return true;
+  }
+  return false;
+}
+// 출력 노드는 대상이 물려 있어야 실제로 공장을 움직인다. 대상이 빈 노드는 장식이다.
+function hasTarget(n) { return !!n.cfg && n.cfg.ent !== null && n.cfg.ent !== undefined; }
+
+// kindFrom 에서 출발해 kindsTo 중 하나에 닿는 배선이 어느 제어기에든 있는가
+function ctrlFeeds(kindFrom, kindsTo, pred) {
+  var hit = false;
+  eachCtrlGraph(function (g) {
+    if (hit) return;
+    for (var i = 0; i < g.nodes.length; i++) {
+      if (g.nodes[i].kind !== kindFrom) continue;
+      if (reachableNodes(g, g.nodes[i].nid, kindsTo, pred).length) hit = true;
+    }
+  });
+  return hit;
+}
+// kindFrom → (kindMid 를 거쳐) → kindTo. 중간 노드 후보를 전부 시도한다.
+function ctrlPathThrough(kindFrom, kindMid, kindTo, midOk) {
+  var hit = false;
+  eachCtrlGraph(function (g) {
+    if (hit) return;
+    for (var i = 0; i < g.nodes.length; i++) {
+      if (g.nodes[i].kind !== kindFrom) continue;
+      var mids = reachableNodes(g, g.nodes[i].nid, [kindMid]);
+      for (var j = 0; j < mids.length; j++) {
+        if (midOk && !midOk(g, mids[j])) continue;
+        if (reachableNodes(g, mids[j].nid, [kindTo], hasTarget).length) hit = true;
+      }
+    }
+  });
+  return hit;
+}
+// 인서터가 앞칸에 터렛을 두고 있는가 (= 탄약을 자동으로 넣는 배치인가)
+function inserterFeedsTurret() {
+  return !!anyEntity(function (e) {
+    if (e.type !== 'inserter') return false;
+    var t = inserterTarget(e);
+    var tgt = entityAt(t.x, t.y);
+    return !!tgt && tgt.type === 'turret';
+  });
+}
+function countEntityWhere(type, fn) {
+  var n = 0;
+  forEachEntity(function (e) { if (e.type === type && fn(e)) n++; });
+  return n;
 }
 
 // --- 단계 정의 ---------------------------------------------------------------
@@ -4353,6 +4445,162 @@ var TUTORIAL_STEPS = [
   }
 ];
 
+// ===========================================================================
+//  심화 과정 — 부하 차단과 방어
+//
+//  기초 10단계가 "공장을 짓는 법"이라면 여기는 "공장이 스스로 판단하게 만드는 법"이다.
+//  두 주제를 고른 이유는 이 게임에서 **되먹임이 반드시 필요해지는 두 자리**이기 때문이다.
+//    · 부하 차단 — 자르면 여유가 생기고, 여유가 생기면 되돌리고 싶어진다. 그 순환이
+//      기억 없이는 발진한다. 제어의 첫 수업이 여기서 저절로 나온다.
+//    · 방어      — 적은 오염을 따라오고 오염은 생산을 따라온다. 생산을 늘릴수록 방어가
+//      비싸진다. 이 게임에서 유일하게 "덜 만드는 것"이 정답이 될 수 있는 축이다.
+//
+//  4단계는 **일부러 고장난 회로를 만들게 한다.** 떨리는 걸 직접 봐야 5단계의 래치가
+//  왜 필요한지 안다. 고친 것만 보여주면 아무도 왜 그런지 모른다.
+// ===========================================================================
+var ADVANCED_STEPS = [
+  {
+    id: 'green-sci',
+    title: '녹색 연구팩을 만든다',
+    why: '심화 기능은 전부 녹색 연구팩을 먹는다. 녹색은 광석이 아니라 <b>완성품</b>(벨트·인서터)이 재료다 — 여기서부터 공장이 공장을 먹인다.',
+    how: [
+      '<b>T</b>에서 <b>물류학</b>을 먼저 연구한다 (적색 20)',
+      '<b>녹색 연구팩 = 벨트 1 + 인서터 1</b>',
+      '벨트와 인서터를 <b>쓰지 말고 재료로 모아라</b> — 이게 처음엔 아깝게 느껴진다',
+      '우측 <b>[손 조립]</b>으로도 되고, 조립기에 레시피를 걸어도 된다'
+    ],
+    need: '벨트 = 톱니 1 + 철판 1 (2개 나옴) · 인서터 = 톱니 1 + 회로기판 1 + 철판 1',
+    check: function () { return (prodStats.byRecipe['sci-green'] || 0) >= 1; }
+  },
+  {
+    id: 'mem-tech',
+    title: '논리 II — 기억소자를 연구한다',
+    why: '지금 제어기는 <b>지금 이 순간</b>만 본다. 기억이 없으면 "아까 내가 껐었나"를 모르고, 그래서 다음 단계의 부하 차단이 반드시 떨린다.',
+    how: [
+      '<b>T</b>에서 <b>논리 II — 기억소자</b>를 연구한다',
+      '연구가 끝나면 왼쪽 목록의 <b>SR 래치·카운터·엣지 검출·샘플 홀드</b> 자물쇠가 풀린다'
+    ],
+    need: '적색 연구팩 40 · 선행 = 물류학',
+    check: function () { return !!techDone['logic-mem']; }
+  },
+  {
+    id: 'see-power',
+    title: '제어기가 전기를 보게 한다',
+    why: '자를지 말지는 "얼마나 모자라나"에서 나온다. 판단을 만들기 전에 먼저 <b>눈</b>을 붙인다.',
+    how: [
+      '제어기를 <b>좌클릭</b>해 편집기를 연다',
+      '입력에서 <b>전력 만족도</b>를 놓는다',
+      '출력에서 <b>수치 표시</b>를 놓는다',
+      '전력 만족도의 <b>만족%</b> 포트를 끌어 수치 표시에 잇는다',
+      '<b>100</b>이 뜨면 전기가 남는 것이고, 숫자가 내려가면 기계가 느려지고 있다는 뜻이다',
+      '<b>0이 계속 뜨면 제어기가 전주 범위 밖이다</b> — 제어기는 전기를 안 써서 밖에 놓기 쉬운데, 밖이면 전기를 못 읽는다'
+    ],
+    need: '제어기를 <b>전주 5×5 안</b>으로 옮겨야 만족%가 읽힌다. 편집기 위쪽에 경고가 뜬다.',
+    check: function () { return ctrlFeeds('power', ['display', 'lamp']); }
+  },
+  {
+    id: 'naive-shed',
+    title: '순진하게 잘라 보고 — 떨리는 것을 직접 본다',
+    why: '★ 이 단계는 <b>일부러 고장난 것을 만든다.</b> 자르면 여유가 생기고, 여유가 생기면 되돌아가고, 되돌아가면 또 모자란다. 이 순환을 눈으로 봐야 다음 단계가 이해된다.',
+    how: [
+      '<b>비교</b> 노드를 놓는다 — 연산은 <b>&gt;=</b>',
+      '전력 만족도의 <b>만족%</b> → 비교의 <b>A</b>',
+      '<b>상수</b> 95 → 비교의 <b>B</b>',
+      '비교의 <b>참</b> → <b>기계 가동/정지</b>, 대상은 <b>안 급한 기계</b>(연구소나 여분 조립기)',
+      '읽으면 "<b>전기가 95% 이상일 때만 돌린다</b>" 가 된다 — 부등호를 뒤집으면 모자랄 때 켜는 꼴이 되니 주의',
+      '전기를 일부러 모자라게 만든다 — 기계를 더 짓거나 발전기 하나를 정지시킨다',
+      '그 기계가 <b>1초에도 몇 번씩</b> 켜졌다 꺼지는지 본다'
+    ],
+    need: '이 배선은 <b>틀린 배선이다.</b> 다음 단계에서 고친다.',
+    check: function () { return ctrlPathThrough('power', 'cmp', 'enable'); }
+  },
+  {
+    id: 'latch-shed',
+    title: 'SR 래치로 떨림을 없앤다 — 부하 차단 완성',
+    why: '에어컨은 26도에 켜고 26도에 끄지 않는다. <b>26도에 켜고 24도까지 내려가야 끈다.</b> 켜는 문턱과 끄는 문턱을 벌리고, 그 사이는 <b>기억</b>으로 버틴다. 그 기억이 SR 래치다.',
+    how: [
+      '<b>SR 래치</b>를 놓는다 — 출력 Q는 "지금 돌려도 되는가"로 쓴다',
+      '비교 <b>만족% &gt; 98</b> → 래치의 <b>SET</b> (여유롭다 → 다시 돌려라)',
+      '비교 <b>만족% &lt; 90</b> → 래치의 <b>RESET</b> (모자란다 → 꺼라)',
+      '래치의 <b>Q</b> → <b>기계 가동/정지</b>',
+      '이제 90~98% 사이에서는 <b>직전 결정을 그대로 유지</b>한다 — 떨림이 사라진다',
+      '한 걸음 더: <b>타이머</b>를 SET 쪽에 끼면 복귀를 30초 늦출 수 있다'
+    ],
+    need: '두 문턱이 <b>겹치면 안 된다</b> — 90 &lt; 98 처럼 벌려야 한다',
+    check: function () {
+      return ctrlPathThrough('power', 'latch', 'enable', function (g, L) {
+        return portFed(g, L.nid, 1);     // RESET 이 안 물리면 한 번 켜지고 영영 안 꺼진다
+      });
+    }
+  },
+  {
+    id: 'wall-turret',
+    title: '벽으로 길을 좁히고 터렛을 세운다',
+    why: '적은 <b>오염 구름을 따라</b> 온다. 벽은 적을 세우는 것이 아니라 <b>어디로 올지 정하는 것</b>이다 — 터렛 앞으로 오게 만드는 도구다.',
+    how: [
+      '<b>T</b>에서 <b>군수</b>를 연구한다 (적색 20)',
+      '우하단 <b>지도</b>에서 둥지(적 진영) 방향을 확인한다',
+      '그쪽 면에 <b>벽을 12칸 이상</b> 줄지어 세운다',
+      '<b>터렛 2기</b>를 벽 <b>뒤</b>에 놓는다 — 사거리 18칸이라 벽 너머를 쏜다',
+      '터렛만 흩어 놓으면 적이 사이로 지나쳐 공장을 문다'
+    ],
+    need: '벽 = 벽돌 2 · 터렛 = 톱니 10 + 철판 20',
+    check: function () { return countEntity('wall') >= 12 && countEntity('turret') >= 2; }
+  },
+  {
+    id: 'ammo-line',
+    title: '탄약 보급을 자동화한다',
+    why: '손으로 넣는 방어는 <b>첫 습격만</b> 막는다. 두 번째에 빈 터렛이 된다. 방어도 결국 생산 라인이다.',
+    how: [
+      '조립기 하나의 레시피를 <b>탄창</b>으로 바꾼다 (철판 4)',
+      '벨트로 터렛 근처까지 끌고 간다',
+      '<b>인서터의 앞칸이 터렛</b>이 되게 놓는다 — R로 방향을 맞춘다',
+      '터렛 2기가 각각 <b>20발 이상</b> 차면 통과다',
+      '급하면 터렛을 클릭해 <b>[보유 자재 넣기]</b>로 먼저 채워도 된다'
+    ],
+    need: '탄창 1개 = 철판 4 · 터렛 하나가 가득 차면 200발',
+    check: function () {
+      return countEntityWhere('turret', function (e) { return e.ammo >= 20; }) >= 2 &&
+             inserterFeedsTurret();
+    }
+  },
+  {
+    id: 'defense-auto',
+    title: '적이 오면 공장이 스스로 물러선다',
+    why: '습격 중에 제일 급한 건 전기다. 적이 붙었을 때 연구소가 전기를 먹고 있으면 터렛이 느려진다. <b>적 근접</b>을 신호로 읽어 생산을 잠시 접는다.',
+    how: [
+      '<b>T</b>에서 <b>방어 자동화</b>를 연구한다',
+      '입력에서 <b>적 근접</b>을 놓는다 (반경 30)',
+      '<b>마릿수</b> → <b>비교 &gt; 0</b> → <b>경보 램프</b> (문구는 "습격")',
+      '같은 신호를 <b>논리 NOT A</b>에 넣고, 그 출력을 <b>기계 가동/정지</b>에 잇는다',
+      '적이 있으면 0 → 그 기계가 멈추고, 적이 없으면 1 → 다시 돈다',
+      '이게 부하 차단과 같은 구조다 — 읽는 대상만 전기에서 적으로 바뀌었다'
+    ],
+    need: '적색 50 + 녹색 50 · 선행 = 군수 + 논리 II',
+    check: function () { return ctrlFeeds('enemy', ['lamp', 'enable', 'fire']); }
+  }
+];
+
+// 현재 트랙의 단계 배열
+function curSteps() { return tutorial.track === 'adv' ? ADVANCED_STEPS : TUTORIAL_STEPS; }
+function trackName() { return tutorial.track === 'adv' ? '심화' : '튜토리얼'; }
+
+// 기초를 끝낸 사람만 심화로 넘어간다. 되돌아가지는 않는다 —
+// 기초 진행도를 덮어쓰면 "다 깼는데 다시 10/10 이 아니다"가 되어 후퇴로 읽힌다.
+function startAdvanced() {
+  if (tutorial.track === 'adv') return false;
+  // 기초를 안 끝냈으면 거절한다. 심화는 공장이 이미 돌아가고 있다고 **가정하고**
+  // 쓰여 있어서 (제어기·연구소·전력망이 있다는 전제), 빈 판에서 열면 첫 단계부터
+  // 막힌다. 버튼은 완료 화면에만 나오지만 저장본 조작이나 훅으로도 못 들어오게 막는다.
+  if (!tutorial.done) return false;
+  tutorial.track = 'adv';
+  tutorial.step = 0;
+  tutorial.done = false;
+  tutorial.justDone = -1;
+  tutorial.on = true;
+  return true;
+}
+
 // --- 진행 --------------------------------------------------------------------
 var tutorTimer = 0;
 function stepTutorial(dt) {
@@ -4361,7 +4609,8 @@ function stepTutorial(dt) {
   tutorTimer += dt;
   if (tutorTimer < 0.25) return;      // 4Hz 로 충분하다
   tutorTimer = 0;
-  var s = TUTORIAL_STEPS[tutorial.step];
+  var steps = curSteps();
+  var s = steps[tutorial.step];
   if (!s) { tutorial.done = true; return; }
   var ok = false;
   try { ok = !!s.check(); } catch (e) { logError('tutorial:' + s.id, e); }
@@ -4369,9 +4618,13 @@ function stepTutorial(dt) {
   tutorial.justDone = tutorial.step;
   tutorial.celebrateT = 2.2;
   tutorial.step++;
-  if (tutorial.step >= TUTORIAL_STEPS.length) {
+  if (tutorial.step >= steps.length) {
     tutorial.done = true;
-    if (typeof toast === 'function') toast('튜토리얼 완료 — 이제 공장은 당신 것이다', 'good');
+    if (typeof toast === 'function') {
+      toast(tutorial.track === 'adv'
+        ? '심화 과정 완료 — 공장이 스스로 판단한다'
+        : '튜토리얼 완료 — 이제 공장은 당신 것이다', 'good');
+    }
   } else if (typeof toast === 'function') {
     toast('✔ ' + s.title, 'good');
   }
@@ -4382,9 +4635,10 @@ function stepTutorial(dt) {
 // step 은 총 단계 수를 넘지 않게 고정한다 (넘게 두면 진행 표시가 24/9 처럼 나온다).
 function skipTutorialStep() {
   if (tutorial.done) return tutorial.step;
+  var n = curSteps().length;
   tutorial.step++;
-  if (tutorial.step >= TUTORIAL_STEPS.length) {
-    tutorial.step = TUTORIAL_STEPS.length;
+  if (tutorial.step >= n) {
+    tutorial.step = n;
     tutorial.done = true;
   }
   return tutorial.step;
@@ -4392,6 +4646,7 @@ function skipTutorialStep() {
 
 function resetTutorial(on) {
   tutorial.on = on !== false;
+  tutorial.track = 'basic';
   tutorial.step = 0;
   tutorial.done = false;
   tutorial.flags = {};
@@ -4410,27 +4665,48 @@ function renderTutorial() {
 
   var body = document.getElementById('tutorBody');
   var head = document.getElementById('tutorHead');
-  var n = TUTORIAL_STEPS.length;
+  var foot = document.getElementById('tutorFoot');
+  var steps = curSteps();
+  var n = steps.length;
 
   if (tutorial.done) {
-    head.textContent = '튜토리얼 — 완료 ' + n + '/' + n;
-    body.innerHTML =
-      '<div class="ok" style="font-weight:600;margin-bottom:6px">전부 끝냈다.</div>' +
-      '<div class="dim" style="font-size:11.5px;line-height:1.6">' +
-      '이제 스스로 할 차례다. 다음으로 해볼 만한 것: <b>부하 차단</b> — 전력 만족도가 떨어지면 ' +
-      '우선순위가 낮은 라인을 먼저 끈다. 순진하게 배선하면 발진하니 <b>SR 래치 + 타이머</b>가 필요하다. ' +
-      'H를 눌러 도움말에서 자세히 볼 수 있다.</div>';
+    head.textContent = trackName() + ' — 완료 ' + n + '/' + n;
+    if (foot) foot.style.display = 'none';
+    if (tutorial.track === 'basic') {
+      body.innerHTML =
+        '<div class="ok" style="font-weight:600;margin-bottom:6px">전부 끝냈다.</div>' +
+        '<div class="dim" style="font-size:11.5px;line-height:1.6;margin-bottom:8px">' +
+        '공장 짓는 법은 익혔다. 남은 것은 <b>공장이 스스로 판단하게 만드는 일</b>이다.<br>' +
+        '심화 과정 8단계는 두 가지를 가르친다 — 전기가 모자랄 때 <b>덜 급한 라인부터 끊는 것</b>(부하 차단)과, ' +
+        '<b>적의 습격을 막는 것</b>. 둘 다 순진하게 하면 실패하고, 왜 실패하는지를 직접 보게 한다.</div>' +
+        '<button id="tutorAdv" style="width:100%">심화 과정 시작 — 부하 차단과 방어</button>';
+      var ab = document.getElementById('tutorAdv');
+      if (ab) ab.onclick = function () { startAdvanced(); renderTutorial(); };
+    } else {
+      body.innerHTML =
+        '<div class="ok" style="font-weight:600;margin-bottom:6px">심화까지 끝냈다.</div>' +
+        '<div class="dim" style="font-size:11.5px;line-height:1.6">' +
+        '이제 가르칠 것이 없다. 남은 것은 당신이 정한다 — 되먹임을 어디에 걸지, 무엇을 먼저 끊을지, ' +
+        '얼마나 크게 지을지. 오염은 생산에 비례하고 적은 오염을 따라오므로, ' +
+        '<b>덜 만드는 것이 정답인 순간</b>이 반드시 온다. H로 도움말을 볼 수 있다.</div>';
+    }
     return;
   }
+  if (foot) foot.style.display = '';
 
-  head.textContent = '튜토리얼 ' + (tutorial.step + 1) + '/' + n;
-  var s = TUTORIAL_STEPS[tutorial.step];
+  // step 이 배열을 넘어서면 여기서 s 가 undefined 가 되어 패널이 통째로 죽는다
+  // (돌연변이 시험이 실제로 이 경로를 밟아 드라이버를 죽였다). 지금 코드로는 그런
+  // step 이 나올 수 없지만, 저장본 손상이나 트랙 계산 실수 한 번이면 나온다.
+  if (tutorial.step >= n) { tutorial.step = n; tutorial.done = true; renderTutorial(); return; }
+
+  head.textContent = trackName() + ' ' + (tutorial.step + 1) + '/' + n;
+  var s = steps[tutorial.step];
   var lines = [];
   // 지나온 단계는 접어서 성취감만 남긴다
   if (tutorial.step > 0) {
     lines.push('<div class="tdone">');
     for (var i = 0; i < tutorial.step; i++) {
-      lines.push('<span class="tchk">✔</span> ' + TUTORIAL_STEPS[i].title + '<br>');
+      lines.push('<span class="tchk">✔</span> ' + steps[i].title + '<br>');
     }
     lines.push('</div>');
   }
@@ -4547,8 +4823,25 @@ function renderGraph() {
   for (var n = 0; n < g.nodes.length; n++) buildNodeDom(inner, g, g.nodes[n]);
   applyPan();
   updateLinks();
-  document.getElementById('cycleInfo').textContent =
-    g.nodes.length + '노드 · ' + g.links.length + '배선' + (g.cycles ? ' · 되먹임 ' + g.cycles + '개(1틱 지연)' : '');
+  updateCycleInfo(g);
+}
+
+// 제어기가 전력망 밖이면 [전력 만족도] 노드가 **영원히 0** 을 낸다 (netSatOf 는
+// net<0 에 0 을 돌려준다). 제어기는 전기를 안 쓰므로 전주 밖에 놓기 쉬운데,
+// 그러면 부하 차단 회로 전체가 조용히 죽고 화면에는 아무 단서도 없다.
+// 측정 하네스가 실제로 이 함정에 걸려 "발진 0회"라는 거짓 결론을 냈다.
+function updateCycleInfo(g) {
+  var el = document.getElementById('cycleInfo');
+  if (!el) return;
+  var txt = g.nodes.length + '노드 · ' + g.links.length + '배선' +
+            (g.cycles ? ' · 되먹임 ' + g.cycles + '개(1틱 지연)' : '');
+  var offGrid = false;
+  for (var i = 0; i < g.nodes.length; i++) {
+    if (g.nodes[i].kind === 'power') { offGrid = !!curCtrl && curCtrl.net < 0; break; }
+  }
+  el.innerHTML = offGrid
+    ? txt + ' · <b class="bad">이 제어기가 전력망 밖이다 — 만족%가 0으로 읽힌다. 전주 범위 안으로 옮겨라</b>'
+    : txt;
 }
 
 function buildNodeDom(inner, g, n) {
@@ -4755,8 +5048,7 @@ function updateLive() {
     var port = parseInt(dots[k].getAttribute('data-out'), 10);
     if (nn && truthy(nn.out[port])) dots[k].classList.add('on'); else dots[k].classList.remove('on');
   }
-  document.getElementById('cycleInfo').textContent =
-    g.nodes.length + '노드 · ' + g.links.length + '배선' + (g.cycles ? ' · 되먹임 ' + g.cycles + '개(1틱 지연)' : '');
+  updateCycleInfo(g);
 }
 
 // --- 화면 이동/확대 ----------------------------------------------------------
@@ -5031,7 +5323,7 @@ function saveGame() {
     nests: nests.map(function (n) { return [n.x, n.y, n.hp, n.absorbed, n.cool, n.seed]; }),
     enemies: enemies.map(function (e) { return [Math.round(e.x * 100), Math.round(e.y * 100), e.hp, e.tier]; }),
     evo: evolution, ws: waveStats,
-    tut: { on: tutorial.on, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
+    tut: { on: tutorial.on, track: tutorial.track, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
     prod: { smelted: prodStats.smelted, crafted: prodStats.crafted, byRecipe: prodStats.byRecipe }
   };
   try {
@@ -5152,6 +5444,8 @@ function loadGame(raw) {
     if (data.ws) for (var wk in data.ws) waveStats[wk] = data.ws[wk];
     if (data.tut) {
       tutorial.on = data.tut.on !== false; tutorial.step = data.tut.step || 0;
+      // 옛 저장본에는 track 이 없다 — 그때는 기초뿐이었으므로 basic 으로 읽는다
+      tutorial.track = (data.tut.track === 'adv') ? 'adv' : 'basic';
       tutorial.done = !!data.tut.done; tutorial.flags = data.tut.flags || {};
     }
     if (data.prod) {
@@ -5445,11 +5739,14 @@ window.__GAME = {
   canAcceptTest: function (id, item) { return canAccept(entities[id], item); },
   // 튜토리얼 — 판정은 "세계가 실제로 그렇게 됐는가"로만 한다
   tutorial: function () {
+    var steps = curSteps();
     return {
       on: tutorial.on, step: tutorial.step, done: tutorial.done,
-      total: TUTORIAL_STEPS.length,
-      id: tutorial.done ? null : TUTORIAL_STEPS[tutorial.step].id,
-      ids: TUTORIAL_STEPS.map(function (s) { return s.id; }),
+      track: tutorial.track,
+      total: steps.length,
+      id: tutorial.done ? null : steps[tutorial.step].id,
+      ids: steps.map(function (s) { return s.id; }),
+      advIds: ADVANCED_STEPS.map(function (s) { return s.id; }),
       flags: JSON.parse(JSON.stringify(tutorial.flags)),
       prod: { smelted: prodStats.smelted, crafted: prodStats.crafted,
               byRecipe: JSON.parse(JSON.stringify(prodStats.byRecipe)) }
@@ -5463,8 +5760,12 @@ window.__GAME = {
   tutorialReset: function (on) { resetTutorial(on); renderTutorial(); return tutorial.step; },
   tutorialSkip: function () { var s = skipTutorialStep(); renderTutorial(); return s; },
   // 각 단계의 check() 를 지금 상태에서 직접 물어본다 (게이트가 단계별로 검정할 때)
+  tutorialAdvance: function () { var ok = startAdvanced(); renderTutorial(); return ok; },
+  // 도달성 탐색이 쓴 걸음 수. 순환 방어가 깨지면 이 숫자가 상한까지 폭발한다 —
+  // "멈추나 안 멈추나"는 게이트가 못 보지만 걸음 수는 볼 수 있다.
+  reachSteps: function (reset) { if (reset) resetReachSteps(); return reachStepsTotal; },
   tutorialCheck: function (idx) {
-    var s = TUTORIAL_STEPS[idx];
+    var s = curSteps()[idx];
     if (!s) return null;
     try { return !!s.check(); } catch (e) { return 'ERROR:' + e; }
   },

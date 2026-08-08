@@ -417,6 +417,79 @@
         '상자 인스펙터: 넣기 버튼 없음=' + (document.getElementById('putBtn') === null) +
         ' · 가져오기 버튼 있음=' + (document.getElementById('takeBtn') !== null));
 
+      // --- 16. 심화 과정 진입 버튼 -----------------------------------------
+      // 기초를 끝낸 사람에게 다음 목적지를 주는 유일한 통로다. 완료 화면에만 나오고,
+      // 여기서만 심화로 들어갈 수 있으므로 버튼이 죽으면 심화 8단계가 통째로 사라진다.
+      G.reset(424242); G.clearEntities(); G.ui.closeHelp();
+      G.tutorialReset(true);
+      G.ui.refresh();
+      chk('ui.advButtonHiddenBeforeDone',
+        document.getElementById('tutorAdv') === null &&
+        document.getElementById('tutorFoot').style.display !== 'none',
+        '기초 진행 중: 심화 버튼 없음=' + (document.getElementById('tutorAdv') === null) +
+        ' · 건너뛰기 버튼 보임=' + (document.getElementById('tutorFoot').style.display !== 'none'));
+
+      for (var tz = 0; tz < 12; tz++) G.tutorialSkip();
+      var advBtn = document.getElementById('tutorAdv');
+      chk('ui.advButtonAppearsWhenDone',
+        !!advBtn && document.getElementById('tutorHead').textContent.indexOf('완료') >= 0 &&
+        document.getElementById('tutorFoot').style.display === 'none',
+        '기초 완료 화면: 심화 버튼 존재=' + !!advBtn + ' · 머리말="' +
+        document.getElementById('tutorHead').textContent + '" · 건너뛰기 숨김=' +
+        (document.getElementById('tutorFoot').style.display === 'none'));
+
+      if (advBtn) advBtn.click();
+      var advNow = G.tutorial();
+      chk('ui.advButtonEntersChapter',
+        advNow.track === 'adv' && advNow.step === 0 && advNow.done === false &&
+        document.getElementById('tutorHead').textContent.indexOf('심화 1/8') >= 0 &&
+        document.getElementById('tutorBody').textContent.indexOf('녹색 연구팩') >= 0,
+        '버튼 클릭 → 트랙 ' + advNow.track + ' ' + advNow.step + '/' + advNow.total +
+        ' · 머리말="' + document.getElementById('tutorHead').textContent + '"');
+
+      // 음성 대조군 — 심화 중에는 심화 버튼이 다시 나오면 안 된다 (눌러 봐야 되돌아감만 된다)
+      chk('ui.advButtonGoneInsideChapter',
+        document.getElementById('tutorAdv') === null &&
+        document.getElementById('tutorFoot').style.display !== 'none',
+        '심화 진행 중: 심화 버튼 없음=' + (document.getElementById('tutorAdv') === null) +
+        ' · 건너뛰기 버튼 다시 보임=' + (document.getElementById('tutorFoot').style.display !== 'none'));
+
+      // --- 17. 전력망 밖 제어기 경고 ----------------------------------------
+      // 제어기는 전기를 안 쓴다. 그래서 전주 밖에 놓기 쉬운데, 밖이면 netSatOf 가
+      // 0 을 돌려줘 [전력 만족도]가 **영원히 0** 이 되고 부하 차단 회로가 통째로
+      // 죽는다. 화면에 단서가 없으면 아무도 못 찾는다 — 측정 하네스가 실제로
+      // 이 함정에 걸려 "발진 0회"라는 거짓 결론을 냈다.
+      G.reset(424242); G.clearEntities(); G.ui.closeHelp(); G.powerCheat(false);
+      G.giveAll(9999);
+      var offCtrl = G.place('controller', 20, 20, 0);      // 전주 하나 없는 허허벌판
+      G.run(1);
+      G.gAdd(offCtrl, 'power', 10, 10);
+      G.ui.openLogic(offCtrl);
+      var offTxt = document.getElementById('cycleInfo').textContent;
+      chk('ui.offGridControllerWarns',
+        G.ent(offCtrl).net < 0 && offTxt.indexOf('전력망 밖') >= 0,
+        '전주 없는 곳의 제어기 net=' + G.ent(offCtrl).net + ' · 머리말="' + offTxt + '"');
+
+      // 음성 대조군 — 망에 붙은 제어기에는 이 경고가 뜨면 안 된다.
+      // 항상 뜨는 경고는 경고가 아니라 배경이고, 진짜 문제를 가린다.
+      // 망을 만드는 것은 발전기가 아니라 **전주**다 (rebuildPower 는 전주에서
+      // 5x5 를 찍는다). 발전기만 놓고 대조군을 짰다가 net=-1 이 나와 헛돌았다.
+      // 제어기는 2x2 다 — 전주와 한 칸이라도 겹치면 배치가 조용히 실패하고
+      // G.ent() 가 null 을 돌려준다(그렇게 짰다가 드라이버가 죽었다).
+      // 전주 공급구역은 전주 좌표 ±2 이므로 (33,33) 전주는 31~35 를 덮는다.
+      G.place('generator', 30, 30, 0);
+      G.place('pole', 33, 33, 0);
+      var onCtrl = G.place('controller', 35, 35, 0);   // 35 칸이 공급구역 안이다
+      G.run(1);
+      G.gAdd(onCtrl, 'power', 10, 10);
+      G.ui.openLogic(onCtrl);
+      var onTxt = document.getElementById('cycleInfo').textContent;
+      chk('ui.onGridControllerQuiet',
+        G.ent(onCtrl).net >= 0 && onTxt.indexOf('전력망 밖') < 0,
+        '발전기 옆 제어기 net=' + G.ent(onCtrl).net + ' · 머리말="' + onTxt +
+        '" (경고 없음=' + (onTxt.indexOf('전력망 밖') < 0) + ')');
+      G.ui.closeLogic();
+
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', G.ui.nodeCount() < 0, '노드 수가 음수일 리 없다', true);

@@ -179,7 +179,7 @@ function saveGame() {
     nests: nests.map(function (n) { return [n.x, n.y, n.hp, n.absorbed, n.cool, n.seed]; }),
     enemies: enemies.map(function (e) { return [Math.round(e.x * 100), Math.round(e.y * 100), e.hp, e.tier]; }),
     evo: evolution, ws: waveStats,
-    tut: { on: tutorial.on, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
+    tut: { on: tutorial.on, track: tutorial.track, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
     prod: { smelted: prodStats.smelted, crafted: prodStats.crafted, byRecipe: prodStats.byRecipe }
   };
   try {
@@ -300,6 +300,8 @@ function loadGame(raw) {
     if (data.ws) for (var wk in data.ws) waveStats[wk] = data.ws[wk];
     if (data.tut) {
       tutorial.on = data.tut.on !== false; tutorial.step = data.tut.step || 0;
+      // 옛 저장본에는 track 이 없다 — 그때는 기초뿐이었으므로 basic 으로 읽는다
+      tutorial.track = (data.tut.track === 'adv') ? 'adv' : 'basic';
       tutorial.done = !!data.tut.done; tutorial.flags = data.tut.flags || {};
     }
     if (data.prod) {
@@ -593,11 +595,14 @@ window.__GAME = {
   canAcceptTest: function (id, item) { return canAccept(entities[id], item); },
   // 튜토리얼 — 판정은 "세계가 실제로 그렇게 됐는가"로만 한다
   tutorial: function () {
+    var steps = curSteps();
     return {
       on: tutorial.on, step: tutorial.step, done: tutorial.done,
-      total: TUTORIAL_STEPS.length,
-      id: tutorial.done ? null : TUTORIAL_STEPS[tutorial.step].id,
-      ids: TUTORIAL_STEPS.map(function (s) { return s.id; }),
+      track: tutorial.track,
+      total: steps.length,
+      id: tutorial.done ? null : steps[tutorial.step].id,
+      ids: steps.map(function (s) { return s.id; }),
+      advIds: ADVANCED_STEPS.map(function (s) { return s.id; }),
       flags: JSON.parse(JSON.stringify(tutorial.flags)),
       prod: { smelted: prodStats.smelted, crafted: prodStats.crafted,
               byRecipe: JSON.parse(JSON.stringify(prodStats.byRecipe)) }
@@ -611,8 +616,12 @@ window.__GAME = {
   tutorialReset: function (on) { resetTutorial(on); renderTutorial(); return tutorial.step; },
   tutorialSkip: function () { var s = skipTutorialStep(); renderTutorial(); return s; },
   // 각 단계의 check() 를 지금 상태에서 직접 물어본다 (게이트가 단계별로 검정할 때)
+  tutorialAdvance: function () { var ok = startAdvanced(); renderTutorial(); return ok; },
+  // 도달성 탐색이 쓴 걸음 수. 순환 방어가 깨지면 이 숫자가 상한까지 폭발한다 —
+  // "멈추나 안 멈추나"는 게이트가 못 보지만 걸음 수는 볼 수 있다.
+  reachSteps: function (reset) { if (reset) resetReachSteps(); return reachStepsTotal; },
   tutorialCheck: function (idx) {
-    var s = TUTORIAL_STEPS[idx];
+    var s = curSteps()[idx];
     if (!s) return null;
     try { return !!s.check(); } catch (e) { return 'ERROR:' + e; }
   },

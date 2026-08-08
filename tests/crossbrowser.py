@@ -29,7 +29,7 @@ ENV = dict(os.environ)
 ENV['PYTHONIOENCODING'] = 'utf-8'
 
 ENGINES = ['edge', 'chromium', 'firefox', 'webkit']
-DRIVERS = [('driver.js', '모델'), ('uismoke.js', '클릭')]
+DRIVERS = [('driver.js', '모델'), ('uismoke.js', '클릭'), ('shedding.js', '부하차단')]
 
 RESULT_RE = re.compile(r'^\s*(GREEN|RED)\s+—\s+(.*)$', re.M)
 COUNT_RE = re.compile(r'실검사 (\d+)건')
