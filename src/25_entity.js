@@ -397,7 +397,10 @@ function pushToFront(e) {
 }
 
 function stepMiner(e, dt) {
-  if (!e.enabled || e.powerSat <= 0) { e.working = false; e.stallT += dt; pushToFront(e); return; }
+  // **정지는 정지다.** 예전에는 꺼진 채광기도 pushToFront 로 버퍼를 계속 벨트에
+  // 밀어냈다 — 제어기로 '정지' 시켜 놓고도 물건이 계속 나가면 정지가 아니다.
+  // (전기가 없어 멈춘 경우도 같다.)
+  if (!e.enabled || e.powerSat <= 0) { e.working = false; e.stallT += dt; return; }
   if (invTotal(e.out) >= SPEC.machineBufOut) { e.working = false; e.stallT += dt; pushToFront(e); return; }
   e.progress += dt * SPEC.minerRate * machineSpeedMul * e.powerSat;
   e.working = true;

@@ -6,7 +6,10 @@
 //  실제 순차논리(D 플립플롭 한 단)와 같은 의미이고, 그래서 SR 래치·카운터·PID 같은
 //  상태 소자를 자연스럽게 배선할 수 있다.
 //
-//  값은 전부 실수 하나. 참/거짓은 0 초과 = 참으로 본다.
+//  값은 전부 실수 하나. **참/거짓은 0.5 이상 = 참**이다 (TRUE_EPS).
+//  0 초과가 아니다 — 0.4 는 거짓이다. 신호가 대부분 정수(0/1)라 잡음을
+//  참으로 읽지 않으려고 이렇게 뒀다. 사칙 1/4=0.25, PID 출력 0.3 처럼
+//  소수를 내는 노드를 참/거짓 자리에 물릴 때 걸린다 — 도움말에도 적어 둔다.
 // ===========================================================================
 
 var TRUE_EPS = 0.5;      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
@@ -482,6 +485,16 @@ function stepController(e, dt) {
   for (var k = 0; k < g.order.length; k++) {
     var node = g.byId[g.order[k]];
     if (node) evalNode(g, node, dt, e);
+  }
+  // 1틱 펄스는 표본으로 못 잡는다(폭 16.7ms vs 편집기 표본 140ms). 값 대신
+  // **상승 횟수**를 세어 두면 표본을 놓쳐도 증거가 남는다. 편집기는 이 숫자가
+  // 늘었는지로 LED 를 켠다 — 그래야 타이머가 도는 것이 화면에 보인다.
+  for (var f = 0; f < g.nodes.length; f++) {
+    var fn = g.nodes[f];
+    if (!fn.fires) { fn.fires = []; for (var z = 0; z < fn.out.length; z++) fn.fires.push(0); }
+    for (var fp = 0; fp < fn.out.length; fp++) {
+      if (fn.out[fp] >= TRUE_EPS && fn.prev[fp] < TRUE_EPS) fn.fires[fp]++;
+    }
   }
   e.lastEval = { nodes: g.nodes.length, links: g.links.length, cycles: g.cycles || 0 };
 }

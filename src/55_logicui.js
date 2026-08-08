@@ -12,9 +12,13 @@ var linking = null;         // { nid, port } — 출력 포트에서 끌기 시�
 var liveTimer = null;
 
 function openLogic(e) {
+  var switching = (curCtrl !== e);
   curCtrl = e;
   logicOpen = true;
   if (!e.graph) e.graph = newGraph();
+  // **다른 제어기를 열면 화면을 처음으로 되돌린다.** 예전에는 이전 제어기에서
+  // 끌어다 놓은 위치가 그대로 남아, 노드가 있는데도 빈 화면만 보였다.
+  if (switching) { gpan.x = 20; gpan.y = 20; gpan.z = 1; }
   document.getElementById('logic').style.display = 'block';
   document.getElementById('ctrlName').textContent = '#' + e.id;
   tutorial.flags.openedEditor = true;    // 상태로는 못 보는 사건이라 여기서 표시한다
@@ -78,6 +82,8 @@ function applyPan() {
 }
 
 function renderGraph() {
+  // 컴파일은 updateLinks 한 곳에서만 한다(여기서도 하면 중복이고, 두 곳에 같은
+  // 방어가 있으면 한쪽을 깨뜨려도 다른 쪽이 가려 게이트를 검정할 수 없다).
   var inner = document.getElementById('graphInner');
   if (!inner || !curCtrl) return;
   var g = curCtrl.graph;
@@ -237,7 +243,7 @@ function buildNodeDom(inner, g, n) {
   ports.className = 'ports';
   var cin = document.createElement('div'); cin.className = 'pcol i';
   for (var pi = 0; pi < d.ins.length; pi++) {
-    var pr = document.createElement('div'); pr.className = 'port';
+    var pr = document.createElement('div'); pr.className = 'port in';
     var dot = document.createElement('div'); dot.className = 'dot';
     dot.setAttribute('data-in', String(pi));
     var nm = document.createElement('span'); nm.textContent = d.ins[pi];
@@ -246,7 +252,7 @@ function buildNodeDom(inner, g, n) {
   }
   var cout = document.createElement('div'); cout.className = 'pcol o';
   for (var po = 0; po < d.outs.length; po++) {
-    var pr2 = document.createElement('div'); pr2.className = 'port';
+    var pr2 = document.createElement('div'); pr2.className = 'port out';
     var dot2 = document.createElement('div'); dot2.className = 'dot';
     dot2.setAttribute('data-out', String(po));
     var nm2 = document.createElement('span'); nm2.textContent = d.outs[po];
@@ -308,7 +314,21 @@ function buildNodeDom(inner, g, n) {
     window.addEventListener('touchend', tup);
     window.addEventListener('touchcancel', tup);
   }, { passive: false });
-  var outs = el.querySelectorAll('[data-out]');
+  // **행 전체를 배선 표적으로 만든다.** 예전에는 9x9px 도트에만 핸들러가 붙어
+  // 있었는데 CSS 는 .port 행 전체에 crosshair 커서를 주고 hover 로 도트를
+  // 강조했다 — 살아 있는 폭이 41% 뿐이라 이름표에 떨구면 조용히 실패했다.
+  // 폰에서는 9 CSS px 를 손가락으로 맞춰야 했다.
+  var outRows = el.querySelectorAll('.port.out');
+  for (var orI = 0; orI < outRows.length; orI++) {
+    var odt = outRows[orI].querySelector('[data-out]');
+    if (odt) outRows[orI].setAttribute('data-out', odt.getAttribute('data-out'));
+  }
+  var inRows = el.querySelectorAll('.port.in');
+  for (var irI = 0; irI < inRows.length; irI++) {
+    var idt = inRows[irI].querySelector('[data-in]');
+    if (idt) inRows[irI].setAttribute('data-in', idt.getAttribute('data-in'));
+  }
+  var outs = el.querySelectorAll('.port.out[data-out]');
   for (var k = 0; k < outs.length; k++) {
     outs[k].onmousedown = (function (nid, port) {
       return function (ev) {
@@ -356,7 +376,7 @@ function buildNodeDom(inner, g, n) {
       };
     })(n.nid, parseInt(outs[k].getAttribute('data-out'), 10)), { passive: false });
   }
-  var ins = el.querySelectorAll('[data-in]');
+  var ins = el.querySelectorAll('.port.in[data-in]');
   for (var m = 0; m < ins.length; m++) {
     ins[m].onmouseup = (function (nid, port) {
       return function (ev) {
@@ -389,6 +409,10 @@ function portPos(nid, port, isOut) {
            y: el.offsetTop + dot.offsetTop + dot.offsetHeight / 2 };
 }
 function updateLinks(tempTo) {
+  // **그리기 전에 컴파일한다.** back 플래그는 graphCompile 이 세우므로, 더러운
+  // 그래프를 그대로 그리면 '되먹임 점선' 이 한 편집 전 상태로 나온다 —
+  // 방금 만든 되먹임 배선이 표시가 안 났다.
+  if (curCtrl && curCtrl.graph && curCtrl.graph.dirty) graphCompile(curCtrl.graph);
   var svg = document.getElementById('links');
   if (!svg || !curCtrl) return;
   var g = curCtrl.graph;
@@ -422,7 +446,13 @@ function updateLive() {
     var n = g.nodes[i];
     for (var p = 0; p < n.out.length; p++) {
       var el = document.querySelector('[data-pv="' + n.nid + ':' + p + '"]');
-      if (el) el.textContent = fmt(n.out[p], 1);
+      if (el) {
+        // 값은 늘 현재값을 보여준다(거짓말하지 않는다). 펄스형 신호는 그것만으로는
+        // 영원히 0 이므로 누적 발화 횟수를 옆에 붙인다.
+        var txt = fmt(n.out[p], 1);
+        if (n.fires && n.fires[p] > 0) txt += ' ↑' + n.fires[p];
+        el.textContent = txt;
+      }
     }
   }
   // 활성 배선 강조
@@ -433,7 +463,19 @@ function updateLive() {
     var nid = parseInt(host.getAttribute('data-nid'), 10);
     var nn = graphNode(g, nid);
     var port = parseInt(dots[k].getAttribute('data-out'), 10);
-    if (nn && truthy(nn.out[port])) dots[k].classList.add('on'); else dots[k].classList.remove('on');
+    // **1틱 펄스는 값 표본으로 못 잡는다** — 폭 16.7ms 에 표본 주기 140ms 다.
+    // 그래서 값이 아니라 '지난 갱신 이후 몇 번 올라갔는가' 로도 켠다.
+    var lit = false;
+    if (nn) {
+      lit = truthy(nn.out[port]);
+      if (!lit && nn.fires) {
+        if (!nn._uiFires) nn._uiFires = [];
+        var seenN = nn._uiFires[port] || 0;
+        if (nn.fires[port] > seenN) lit = true;
+        nn._uiFires[port] = nn.fires[port];
+      }
+    }
+    if (lit) dots[k].classList.add('on'); else dots[k].classList.remove('on');
   }
   // 출력 노드의 해석 줄 — 값이 바뀌면 문장도 바뀐다
   var means = document.querySelectorAll('[data-mean]');

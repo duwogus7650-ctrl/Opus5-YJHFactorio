@@ -542,6 +542,83 @@
         '부등호를 < 로 뒤집자 → "' + fixTxt + '" · 실제 기계 가동=' + G.ent(mAsm).enabled);
       G.ui.closeLogic();
 
+      // --- 19. 편집기 — 감사가 짚은 네 가지 ---------------------------------
+      G.reset(424242); G.clearEntities(); G.ui.closeHelp(); G.powerCheat(true);
+      G.giveAll(9999);
+      var edC = G.place('controller', 60, 60, 0);
+      var edC2 = G.place('controller', 66, 60, 0);
+      G.ui.openLogic(edC);
+      var e1 = G.gAdd(edC, 'const', 40, 40);
+      var e2 = G.gAdd(edC, 'display', 40, 220);
+      G.ui.renderGraph();
+
+      // (a) **배선 표적이 포트 행 전체여야 한다.** 9px 도트뿐이면 이름표에 떨궜을 때
+      //     조용히 실패한다 — 살아 있는 폭이 41% 였다.
+      var outRow = document.querySelector('#graphInner .node .port.out[data-out]');
+      var inRow = document.querySelector('#graphInner .node .port.in[data-in]');
+      var rowW = outRow ? outRow.getBoundingClientRect().width : 0;
+      var dotEl = outRow ? outRow.querySelector('.dot') : null;
+      var dotW = dotEl ? dotEl.getBoundingClientRect().width : 0;
+      chk('ui.portRowIsTheTarget',
+        !!outRow && !!inRow && rowW > dotW * 2,
+        '포트 행이 배선 표적인가 — 행 폭 ' + Math.round(rowW) + 'px vs 도트 ' +
+        Math.round(dotW) + 'px (행에 data-out/in 이 붙어야 한다)');
+
+      // 실제로 **이름표 위에서** 끌어 배선이 걸리는지
+      var linksBefore = G.gInfo(edC).links;
+      if (outRow && inRow) {
+        var orr = outRow.getBoundingClientRect(), irr = inRow.getBoundingClientRect();
+        // 도트가 아니라 행의 오른쪽 끝(이름표 쪽)에서 시작한다
+        outRow.dispatchEvent(new MouseEvent('mousedown',
+          { clientX: orr.right - 4, clientY: orr.top + orr.height / 2, bubbles: true, cancelable: true }));
+        inRow.dispatchEvent(new MouseEvent('mouseup',
+          { clientX: irr.right - 4, clientY: irr.top + irr.height / 2, bubbles: true, cancelable: true }));
+      }
+      chk('ui.wiringWorksOnLabel', G.gInfo(edC).links > linksBefore,
+        '포트 이름표 위에서 끌어 배선 → 배선 ' + linksBefore + ' → ' + G.gInfo(edC).links);
+
+      // (b) **되먹임 점선이 즉시 나와야 한다.** 예전에는 한 편집 뒤처졌다.
+      var m1 = G.gAdd(edC, 'math', 300, 40);
+      var m2 = G.gAdd(edC, 'math', 300, 220);
+      G.gLink(edC, m1, 0, m2, 0);
+      G.gLink(edC, m2, 0, m1, 1);          // 되먹임을 방금 만들었다
+      G.ui.renderGraph();
+      var dashed = document.querySelectorAll('#links [stroke-dasharray="6 4"]').length;
+      chk('ui.feedbackShownImmediately',
+        G.gInfo(edC).cycles >= 1 && dashed >= 1,
+        '되먹임 배선을 만든 직후 → 컴파일러가 센 되먹임 ' + G.gInfo(edC).cycles +
+        '개 · 화면의 점선 ' + dashed + '개 (0이면 한 편집 뒤처진 것)');
+
+      // (c) **다른 제어기를 열면 화면이 처음으로 돌아가야 한다.**
+      //     예전에는 이전 위치가 남아 노드가 있는데도 빈 화면만 보였다.
+      G.ui.panGraph(-4000, -3000);
+      var panned = G.ui.graphPan();
+      G.ui.openLogic(edC2);
+      var reset = G.ui.graphPan();
+      chk('ui.editorViewResetsOnSwitch',
+        Math.abs(panned.x) > 1000 && Math.abs(reset.x) < 200 && Math.abs(reset.y) < 200,
+        '멀리 끌어다 놓고(' + Math.round(panned.x) + ',' + Math.round(panned.y) +
+        ') 다른 제어기를 열자 → (' + Math.round(reset.x) + ',' + Math.round(reset.y) + ')');
+
+      // 음성 대조군 — **같은** 제어기를 다시 열 때는 보던 위치를 지켜야 한다.
+      // 매번 초기화하면 노드를 옮겨 가며 작업할 수가 없다.
+      G.ui.panGraph(-1500, -900);
+      var kept0 = G.ui.graphPan();
+      G.ui.openLogic(edC2);
+      var kept1 = G.ui.graphPan();
+      chk('ui.editorViewKeptOnSameCtrl',
+        Math.abs(kept1.x - kept0.x) < 1 && Math.abs(kept1.y - kept0.y) < 1,
+        '같은 제어기를 다시 열자 → (' + Math.round(kept0.x) + ',' + Math.round(kept0.y) +
+        ') → (' + Math.round(kept1.x) + ',' + Math.round(kept1.y) + ') 유지');
+
+      // (d) 편집기 안내줄이 참/거짓 문턱과 펄스 표기를 말해야 한다.
+      var hintTxt = document.querySelector('#logicBar .hint');
+      chk('ui.editorHintExplainsThreshold',
+        !!hintTxt && hintTxt.textContent.indexOf('0.5') >= 0 &&
+        hintTxt.textContent.indexOf('↑') >= 0,
+        '편집기 안내줄 = "' + (hintTxt ? hintTxt.textContent.slice(0, 90) : '없음') + '"');
+      G.ui.closeLogic();
+
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', G.ui.nodeCount() < 0, '노드 수가 음수일 리 없다', true);

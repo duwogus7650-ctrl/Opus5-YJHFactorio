@@ -472,6 +472,21 @@ window.__GAME = {
     var n = graphNode(e.graph, nid); if (!n) return false;
     n.x = x; n.y = y; e.graph.dirty = true; return true;
   },
+  // 펄스 누적 발화 횟수 (값 표본으로는 1틱 신호를 못 잡는다)
+  beltClear: function (id) {
+    var e = entities[id]; if (!e || !e.cells) return false;
+    for (var i = 0; i < e.cells.length; i++) { e.cells[i].lanes[0].length = 0; e.cells[i].lanes[1].length = 0; }
+    return true;
+  },
+  gFires: function (ctrlId, nid, port) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return null;
+    var n = graphNode(e.graph, nid); if (!n || !n.fires) return 0;
+    return n.fires[port || 0] || 0;
+  },
+  setEnabled: function (id, on) {
+    var e = entities[id]; if (!e) return false;
+    e.playerEnabled = !!on; e.enabled = !!on; return true;
+  },
   gPos: function (ctrlId, nid) {
     var e = entities[ctrlId]; if (!e || !e.graph) return null;
     var n = graphNode(e.graph, nid); if (!n) return null;
@@ -820,6 +835,8 @@ window.__GAME = {
     clearTool: function () { selectTool(null); return tool; },
     renderGraph: function () { renderGraph(); return true; },
     updateLive: function () { updateLive(); return true; },
+    panGraph: function (dx, dy) { gpan.x += dx; gpan.y += dy; applyPan(); return { x: gpan.x, y: gpan.y }; },
+    graphPan: function () { return { x: gpan.x, y: gpan.y, z: gpan.z }; },
     curDir: function () { return toolDir; },
     logicOpen: function () { return logicOpen; },
     selectedId: function () { return selected; },

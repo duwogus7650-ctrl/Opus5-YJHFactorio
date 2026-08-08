@@ -413,6 +413,53 @@ MUTATIONS = [
      b'      var per = 0.05;',
      ['shed2.tutorialCircuitSettles'], 'shedding.js'),
 
+    # ---- 감사 6건: 편집기가 거짓말하던 것들 ----
+    # 1틱 펄스는 값 표본으로 못 잡는다. 발화 횟수 계수를 걷어내면 다시 안 보인다.
+    ('펄스 발화 횟수를 안 센다', '35_logic.js',
+     b'      if (fn.out[fp] >= TRUE_EPS && fn.prev[fp] < TRUE_EPS) fn.fires[fp]++;',
+     b'      if (false) fn.fires[fp]++;',
+     ['ctrl.pulseCountedNotSampled']),
+
+    # 반대로 아무 때나 세면 '안 도는 노드도 발화' 가 된다
+    ('멈춰 있는 노드까지 발화로 센다', '35_logic.js',
+     b'      if (fn.out[fp] >= TRUE_EPS && fn.prev[fp] < TRUE_EPS) fn.fires[fp]++;',
+     b'      if (true) fn.fires[fp]++;',
+     ['ctrl.idleNodeNeverFires']),
+
+    # 정지시킨 채광기가 버퍼를 계속 벨트로 밀어내던 것
+    ('정지한 채광기가 다시 벨트로 밀어낸다', '25_entity.js',
+     b'  if (!e.enabled || e.powerSat <= 0) { e.working = false; e.stallT += dt; return; }',
+     b'  if (!e.enabled || e.powerSat <= 0) { e.working = false; e.stallT += dt; pushToFront(e); return; }',
+     ['ctrl.stoppedMinerStopsFeeding']),
+
+    # 참/거짓 문턱
+    ('참 문턱을 0 초과로 되돌린다', '35_logic.js',
+     b'function truthy(v) { return v >= TRUE_EPS; }',
+     b'function truthy(v) { return v > 0; }',
+     ['ctrl.truthThresholdIsHalf']),
+
+    # ---- 편집기 UI (uismoke.js 로 판정) ----
+    ('배선 표적을 다시 9px 도트로 좁힌다', '55_logicui.js',
+     b"  var outs = el.querySelectorAll('.port.out[data-out]');",
+     b"  var outs = el.querySelectorAll('.dot[data-out]');",
+     ['ui.wiringWorksOnLabel'], 'uismoke.js'),
+
+    ('되먹임 표시를 다시 한 편집 뒤처지게', '55_logicui.js',
+     b'  if (curCtrl && curCtrl.graph && curCtrl.graph.dirty) graphCompile(curCtrl.graph);',
+     b'  if (false) graphCompile(curCtrl.graph);',
+     ['ui.feedbackShownImmediately'], 'uismoke.js'),
+
+    ('제어기를 바꿔도 편집기 화면을 안 되돌린다', '55_logicui.js',
+     b'  if (switching) { gpan.x = 20; gpan.y = 20; gpan.z = 1; }',
+     b'  if (false) { gpan.x = 20; gpan.y = 20; gpan.z = 1; }',
+     ['ui.editorViewResetsOnSwitch'], 'uismoke.js'),
+
+    # 매번 초기화하면 노드를 옮겨 가며 작업할 수가 없다
+    ('같은 제어기를 다시 열 때도 화면을 초기화한다', '55_logicui.js',
+     b'  var switching = (curCtrl !== e);',
+     b'  var switching = true;',
+     ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
+
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
     ('캔버스가 터치를 아예 안 받는다', '50_ui.js',
      b"  canvas.addEventListener('touchstart', function (ev) {",

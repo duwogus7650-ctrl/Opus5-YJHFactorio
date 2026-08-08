@@ -423,7 +423,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
 <div id="logic">
   <div id="logicBar">
     <span class="ttl">Controller <span id="ctrlName" class="num"></span></span>
-    <span class="hint">출력 포트에서 입력 포트로 끌어 배선 · 입력 포트 클릭 = 연결 해제 · 배경 드래그 = 이동 · 휠 = 확대</span>
+    <span class="hint">출력 → 입력으로 끌어 배선 · 입력 포트 클릭 = 해제 · 배경 드래그 = 이동 · 휠 = 확대 · <b>참 = 0.5 이상</b> (0.4는 거짓) · 값 옆 <b>↑n</b> = 지금까지 올라간 횟수</span>
     <span id="cycleInfo" class="num" style="color:var(--stop)"></span>
     <button onclick="loadExample()">예제 불러오기</button>
     <button class="pri" onclick="closeLogic()">닫기 (ESC)</button>
@@ -1703,7 +1703,10 @@ function pushToFront(e) {
 }
 
 function stepMiner(e, dt) {
-  if (!e.enabled || e.powerSat <= 0) { e.working = false; e.stallT += dt; pushToFront(e); return; }
+  // **정지는 정지다.** 예전에는 꺼진 채광기도 pushToFront 로 버퍼를 계속 벨트에
+  // 밀어냈다 — 제어기로 '정지' 시켜 놓고도 물건이 계속 나가면 정지가 아니다.
+  // (전기가 없어 멈춘 경우도 같다.)
+  if (!e.enabled || e.powerSat <= 0) { e.working = false; e.stallT += dt; return; }
   if (invTotal(e.out) >= SPEC.machineBufOut) { e.working = false; e.stallT += dt; pushToFront(e); return; }
   e.progress += dt * SPEC.minerRate * machineSpeedMul * e.powerSat;
   e.working = true;
@@ -2040,7 +2043,10 @@ function netPowerOf(e) {
 //  실제 순차논리(D 플립플롭 한 단)와 같은 의미이고, 그래서 SR 래치·카운터·PID 같은
 //  상태 소자를 자연스럽게 배선할 수 있다.
 //
-//  값은 전부 실수 하나. 참/거짓은 0 초과 = 참으로 본다.
+//  값은 전부 실수 하나. **참/거짓은 0.5 이상 = 참**이다 (TRUE_EPS).
+//  0 초과가 아니다 — 0.4 는 거짓이다. 신호가 대부분 정수(0/1)라 잡음을
+//  참으로 읽지 않으려고 이렇게 뒀다. 사칙 1/4=0.25, PID 출력 0.3 처럼
+//  소수를 내는 노드를 참/거짓 자리에 물릴 때 걸린다 — 도움말에도 적어 둔다.
 // ===========================================================================
 
 var TRUE_EPS = 0.5;      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
@@ -2516,6 +2522,16 @@ function stepController(e, dt) {
   for (var k = 0; k < g.order.length; k++) {
     var node = g.byId[g.order[k]];
     if (node) evalNode(g, node, dt, e);
+  }
+  // 1틱 펄스는 표본으로 못 잡는다(폭 16.7ms vs 편집기 표본 140ms). 값 대신
+  // **상승 횟수**를 세어 두면 표본을 놓쳐도 증거가 남는다. 편집기는 이 숫자가
+  // 늘었는지로 LED 를 켠다 — 그래야 타이머가 도는 것이 화면에 보인다.
+  for (var f = 0; f < g.nodes.length; f++) {
+    var fn = g.nodes[f];
+    if (!fn.fires) { fn.fires = []; for (var z = 0; z < fn.out.length; z++) fn.fires.push(0); }
+    for (var fp = 0; fp < fn.out.length; fp++) {
+      if (fn.out[fp] >= TRUE_EPS && fn.prev[fp] < TRUE_EPS) fn.fires[fp]++;
+    }
   }
   e.lastEval = { nodes: g.nodes.length, links: g.links.length, cycles: g.cycles || 0 };
 }
@@ -4379,6 +4395,14 @@ function fillHelp() {
     '<h4>제어기 — 이 게임의 본체</h4>',
     '<p>제어기는 매 틱 노드 그래프를 한 번 평가한다. 되먹임(순환) 배선은 <b>직전 틱 값</b>을 읽는다.',
     '즉 실제 순차논리의 레지스터 한 단과 같다. 그래서 SR 래치·카운터·PID 를 그대로 배선할 수 있다.</p>',
+    '<p><b>참/거짓 판정은 0.5 이상이 참이다.</b> 0 초과가 아니다 — 0.4 는 거짓으로 읽힌다.',
+    '사칙 <code>1÷4=0.25</code>, PID 출력 0.3 처럼 소수를 내는 노드를 참/거짓 자리에 바로 물리면',
+    '여기 걸린다. <code>비교 &gt; 0</code> 을 한 단 끼우면 된다.</p>',
+    '<p><b>평가 순서는 노드의 화면상 위치가 정한다</b>(왼쪽 위부터). 만든 순서가 아니라 보이는 배치가',
+    '규칙이므로, 같은 그림의 회로는 언제나 같게 돈다. 순환에서 어느 배선이 1틱 지연이 될지도 이 순서가 정한다.</p>',
+    '<p><b>타이머·엣지 검출은 1틱(약 17ms)짜리 펄스</b>다. 편집기 값창은 0.14초마다 표본을 뜨므로',
+    '그 순간 값은 거의 늘 0 으로 보인다. 그래서 값 옆에 <b>↑n</b> 으로 지금까지 올라간 횟수를 함께 적는다 —',
+    '그 숫자가 늘고 있으면 정상 동작이다.</p>',
     '<ul>',
     '<li><b>재고 히스테리시스</b> — 상자 재고가 50 미만이면 SET, 200 초과면 RESET 인 SR 래치를 만들어',
     '탄약 라인의 조립기를 켜고 끈다. 철을 탄약과 연구팩에 나눠 쓰는 문제가 저절로 풀린다.</li>',
@@ -5159,9 +5183,13 @@ var linking = null;         // { nid, port } — 출력 포트에서 끌기 시�
 var liveTimer = null;
 
 function openLogic(e) {
+  var switching = (curCtrl !== e);
   curCtrl = e;
   logicOpen = true;
   if (!e.graph) e.graph = newGraph();
+  // **다른 제어기를 열면 화면을 처음으로 되돌린다.** 예전에는 이전 제어기에서
+  // 끌어다 놓은 위치가 그대로 남아, 노드가 있는데도 빈 화면만 보였다.
+  if (switching) { gpan.x = 20; gpan.y = 20; gpan.z = 1; }
   document.getElementById('logic').style.display = 'block';
   document.getElementById('ctrlName').textContent = '#' + e.id;
   tutorial.flags.openedEditor = true;    // 상태로는 못 보는 사건이라 여기서 표시한다
@@ -5225,6 +5253,8 @@ function applyPan() {
 }
 
 function renderGraph() {
+  // 컴파일은 updateLinks 한 곳에서만 한다(여기서도 하면 중복이고, 두 곳에 같은
+  // 방어가 있으면 한쪽을 깨뜨려도 다른 쪽이 가려 게이트를 검정할 수 없다).
   var inner = document.getElementById('graphInner');
   if (!inner || !curCtrl) return;
   var g = curCtrl.graph;
@@ -5384,7 +5414,7 @@ function buildNodeDom(inner, g, n) {
   ports.className = 'ports';
   var cin = document.createElement('div'); cin.className = 'pcol i';
   for (var pi = 0; pi < d.ins.length; pi++) {
-    var pr = document.createElement('div'); pr.className = 'port';
+    var pr = document.createElement('div'); pr.className = 'port in';
     var dot = document.createElement('div'); dot.className = 'dot';
     dot.setAttribute('data-in', String(pi));
     var nm = document.createElement('span'); nm.textContent = d.ins[pi];
@@ -5393,7 +5423,7 @@ function buildNodeDom(inner, g, n) {
   }
   var cout = document.createElement('div'); cout.className = 'pcol o';
   for (var po = 0; po < d.outs.length; po++) {
-    var pr2 = document.createElement('div'); pr2.className = 'port';
+    var pr2 = document.createElement('div'); pr2.className = 'port out';
     var dot2 = document.createElement('div'); dot2.className = 'dot';
     dot2.setAttribute('data-out', String(po));
     var nm2 = document.createElement('span'); nm2.textContent = d.outs[po];
@@ -5455,7 +5485,21 @@ function buildNodeDom(inner, g, n) {
     window.addEventListener('touchend', tup);
     window.addEventListener('touchcancel', tup);
   }, { passive: false });
-  var outs = el.querySelectorAll('[data-out]');
+  // **행 전체를 배선 표적으로 만든다.** 예전에는 9x9px 도트에만 핸들러가 붙어
+  // 있었는데 CSS 는 .port 행 전체에 crosshair 커서를 주고 hover 로 도트를
+  // 강조했다 — 살아 있는 폭이 41% 뿐이라 이름표에 떨구면 조용히 실패했다.
+  // 폰에서는 9 CSS px 를 손가락으로 맞춰야 했다.
+  var outRows = el.querySelectorAll('.port.out');
+  for (var orI = 0; orI < outRows.length; orI++) {
+    var odt = outRows[orI].querySelector('[data-out]');
+    if (odt) outRows[orI].setAttribute('data-out', odt.getAttribute('data-out'));
+  }
+  var inRows = el.querySelectorAll('.port.in');
+  for (var irI = 0; irI < inRows.length; irI++) {
+    var idt = inRows[irI].querySelector('[data-in]');
+    if (idt) inRows[irI].setAttribute('data-in', idt.getAttribute('data-in'));
+  }
+  var outs = el.querySelectorAll('.port.out[data-out]');
   for (var k = 0; k < outs.length; k++) {
     outs[k].onmousedown = (function (nid, port) {
       return function (ev) {
@@ -5503,7 +5547,7 @@ function buildNodeDom(inner, g, n) {
       };
     })(n.nid, parseInt(outs[k].getAttribute('data-out'), 10)), { passive: false });
   }
-  var ins = el.querySelectorAll('[data-in]');
+  var ins = el.querySelectorAll('.port.in[data-in]');
   for (var m = 0; m < ins.length; m++) {
     ins[m].onmouseup = (function (nid, port) {
       return function (ev) {
@@ -5536,6 +5580,10 @@ function portPos(nid, port, isOut) {
            y: el.offsetTop + dot.offsetTop + dot.offsetHeight / 2 };
 }
 function updateLinks(tempTo) {
+  // **그리기 전에 컴파일한다.** back 플래그는 graphCompile 이 세우므로, 더러운
+  // 그래프를 그대로 그리면 '되먹임 점선' 이 한 편집 전 상태로 나온다 —
+  // 방금 만든 되먹임 배선이 표시가 안 났다.
+  if (curCtrl && curCtrl.graph && curCtrl.graph.dirty) graphCompile(curCtrl.graph);
   var svg = document.getElementById('links');
   if (!svg || !curCtrl) return;
   var g = curCtrl.graph;
@@ -5569,7 +5617,13 @@ function updateLive() {
     var n = g.nodes[i];
     for (var p = 0; p < n.out.length; p++) {
       var el = document.querySelector('[data-pv="' + n.nid + ':' + p + '"]');
-      if (el) el.textContent = fmt(n.out[p], 1);
+      if (el) {
+        // 값은 늘 현재값을 보여준다(거짓말하지 않는다). 펄스형 신호는 그것만으로는
+        // 영원히 0 이므로 누적 발화 횟수를 옆에 붙인다.
+        var txt = fmt(n.out[p], 1);
+        if (n.fires && n.fires[p] > 0) txt += ' ↑' + n.fires[p];
+        el.textContent = txt;
+      }
     }
   }
   // 활성 배선 강조
@@ -5580,7 +5634,19 @@ function updateLive() {
     var nid = parseInt(host.getAttribute('data-nid'), 10);
     var nn = graphNode(g, nid);
     var port = parseInt(dots[k].getAttribute('data-out'), 10);
-    if (nn && truthy(nn.out[port])) dots[k].classList.add('on'); else dots[k].classList.remove('on');
+    // **1틱 펄스는 값 표본으로 못 잡는다** — 폭 16.7ms 에 표본 주기 140ms 다.
+    // 그래서 값이 아니라 '지난 갱신 이후 몇 번 올라갔는가' 로도 켠다.
+    var lit = false;
+    if (nn) {
+      lit = truthy(nn.out[port]);
+      if (!lit && nn.fires) {
+        if (!nn._uiFires) nn._uiFires = [];
+        var seenN = nn._uiFires[port] || 0;
+        if (nn.fires[port] > seenN) lit = true;
+        nn._uiFires[port] = nn.fires[port];
+      }
+    }
+    if (lit) dots[k].classList.add('on'); else dots[k].classList.remove('on');
   }
   // 출력 노드의 해석 줄 — 값이 바뀌면 문장도 바뀐다
   var means = document.querySelectorAll('[data-mean]');
@@ -6200,6 +6266,21 @@ window.__GAME = {
     var n = graphNode(e.graph, nid); if (!n) return false;
     n.x = x; n.y = y; e.graph.dirty = true; return true;
   },
+  // 펄스 누적 발화 횟수 (값 표본으로는 1틱 신호를 못 잡는다)
+  beltClear: function (id) {
+    var e = entities[id]; if (!e || !e.cells) return false;
+    for (var i = 0; i < e.cells.length; i++) { e.cells[i].lanes[0].length = 0; e.cells[i].lanes[1].length = 0; }
+    return true;
+  },
+  gFires: function (ctrlId, nid, port) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return null;
+    var n = graphNode(e.graph, nid); if (!n || !n.fires) return 0;
+    return n.fires[port || 0] || 0;
+  },
+  setEnabled: function (id, on) {
+    var e = entities[id]; if (!e) return false;
+    e.playerEnabled = !!on; e.enabled = !!on; return true;
+  },
   gPos: function (ctrlId, nid) {
     var e = entities[ctrlId]; if (!e || !e.graph) return null;
     var n = graphNode(e.graph, nid); if (!n) return null;
@@ -6548,6 +6629,8 @@ window.__GAME = {
     clearTool: function () { selectTool(null); return tool; },
     renderGraph: function () { renderGraph(); return true; },
     updateLive: function () { updateLive(); return true; },
+    panGraph: function (dx, dy) { gpan.x += dx; gpan.y += dy; applyPan(); return { x: gpan.x, y: gpan.y }; },
+    graphPan: function () { return { x: gpan.x, y: gpan.y, z: gpan.z }; },
     curDir: function () { return toolDir; },
     logicOpen: function () { return logicOpen; },
     selectedId: function () { return selected; },

@@ -1382,6 +1382,85 @@
         '전주 없는 곳의 제어기 → 망연결=' + G.gOut(offCtl, offN, 4) + ' · net=' +
         G.ent(offCtl).net + ' (0 이어야 "전기 없음" 과 구별된다)');
 
+      // (8) **1틱 펄스는 값 표본으로 못 잡는다 — 발화 횟수로 남겨야 한다.**
+      //     타이머는 발화한 틱에만 1이고 다음 틱(16.7ms)에 0이다. 편집기 표본은
+      //     140ms 라 주기 5초면 잡을 확률이 0.33% 다. 그래서 값이 아니라 누적
+      //     상승 횟수를 세어 두고, 편집기가 그 숫자로 LED 를 켠다.
+      labSetup();
+      var puC = G.place('controller', 44, 66, 0);
+      var puT = G.gAdd(puC, 'timer', 0, 0); G.gCfg(puC, puT, 'period', 1);
+      G.run(1);
+      var f0 = G.gFires(puC, puT, 0);
+      G.run(5);                                   // 5초 = 주기 5회
+      var f1 = G.gFires(puC, puT, 0);
+      var vNow = G.gOut(puC, puT, 0);
+      chk('ctrl.pulseCountedNotSampled',
+        f1 - f0 >= 4 && f1 - f0 <= 6,
+        '주기 1초 타이머를 5초 구동 → 누적 발화 ' + f0 + ' → ' + f1 +
+        ' (5회 안팎이어야) · 그 순간 값은 ' + vNow +
+        ' (값만 보면 거의 늘 0 이라 안 도는 것처럼 보인다)');
+
+      // 음성 대조군 — 안 도는 노드는 발화가 0 이어야 한다.
+      // 아무거나 세는 계수기라면 이것도 늘어난다.
+      var puK = G.gAdd(puC, 'const', 0, 200); G.gCfg(puC, puK, 'value', 0);
+      G.run(3);
+      chk('ctrl.idleNodeNeverFires', G.gFires(puC, puK, 0) === 0,
+        '값 0 인 상수 노드 3초 → 누적 발화 ' + G.gFires(puC, puK, 0) + ' (0이어야)');
+
+      // (9) **정지는 정지다** — 꺼진 채광기가 버퍼를 벨트로 계속 밀어내면 안 된다.
+      labSetup();
+      var mSpot = G.oreSpot('iron-ore');
+      var mMin = mSpot ? G.place('miner', mSpot.x, mSpot.y, 1) : null;
+      chk('ctrl.minerRigBuilt', !!mMin, '채광기 배치 id=' + mMin + ' @' +
+        (mSpot ? mSpot.x + ',' + mSpot.y : '?'));
+      // **벨트를 나중에 놓는다.** 벨트가 처음부터 있으면 캔 것이 곧바로 흘러가서
+      // 출력 버퍼가 비어 버리고, 그러면 '정지한 채광기가 버퍼를 밀어내는가' 를
+      // 시험할 재료 자체가 없다(그래서 돌연변이가 MISS 로 빠져나갔다).
+      G.run(20);                                  // 벨트 없이 버퍼를 가득 채운다
+      var bufFilled = mMin ? G.ent(mMin).out : {};
+      var bufTotal = 0; for (var bk in bufFilled) bufTotal += bufFilled[bk];
+      chk('ctrl.minerBufferFilled', bufTotal > 0,
+        '벨트 없이 20초 → 채광기 출력 버퍼 ' + bufTotal + '개 (0이면 시험 재료가 없다)');
+      var mBelt = null;
+      if (mMin) {
+        var me = G.ent(mMin);
+        mBelt = G.place('belt', me.tx + me.w, me.ty, 1);
+      }
+      // 오라클은 **벨트 위 아이템 수**다. beltDelivered 는 벨트→벨트 인계만 세므로
+      // 한 칸짜리 벨트에서는 영원히 0 이고, 그러면 이 시험이 아무것도 안 본다.
+      function beltCount() {
+        var b = mBelt ? G.ent(mBelt) : null;
+        if (!b || !b.beltItems) return -1;
+        var t = 0; for (var i = 0; i < b.beltItems.length; i++) t += b.beltItems[i];
+        return t;
+      }
+      G.run(6);                                   // 벨트로 내보낸다
+      var onCount = beltCount();
+      chk('ctrl.minerFeedsBeltWhenOn', onCount > 0,
+        '가동 중 벨트 위 아이템 ' + onCount + '개 (0이면 이 시험이 조건을 못 만든 것)');
+      // 이제 정지시킨다. 벨트를 비워 두고 다시 재야 '계속 밀어내는가' 를 본다.
+      G.setEnabled(mMin, false);
+      G.beltClear(mBelt);
+      G.run(6);
+      var offCount = beltCount();
+      chk('ctrl.stoppedMinerStopsFeeding', offCount === 0,
+        '정지시키고 벨트를 비운 뒤 6초 → 벨트 위 아이템 ' + offCount +
+        '개 (0이 아니면 정지가 정지가 아니다)');
+
+      // (10) 참/거짓 문턱이 0.5 라는 것을 코드가 스스로 말해야 한다.
+      //      주석과 실제가 어긋나 있었다(주석은 '0 초과').
+      labSetup();
+      var thC = G.place('controller', 44, 70, 0);
+      var thK = G.gAdd(thC, 'const', 0, 0);
+      var thL = G.gAdd(thC, 'lamp', 300, 0); G.gCfg(thC, thL, 'label', '문턱시험');
+      G.gLink(thC, thK, 0, thL, 0);
+      G.gCfg(thC, thK, 'value', 0.4); G.run(1);
+      var at04 = G.state().alarms.indexOf('문턱시험') >= 0;
+      G.gCfg(thC, thK, 'value', 0.5); G.run(1);
+      var at05 = G.state().alarms.indexOf('문턱시험') >= 0;
+      chk('ctrl.truthThresholdIsHalf', at04 === false && at05 === true,
+        '0.4 → 참=' + at04 + ' · 0.5 → 참=' + at05 + ' (문턱은 0.5 이상이다)');
+
       // ================= 9. 결정론 =======================================
       function scenarioHash(seed) {
         G.reset(seed); G.giveAll(99999); G.clearEnemies(); G.powerCheat(true);
