@@ -490,6 +490,56 @@
         '" (경고 없음=' + (onTxt.indexOf('전력망 밖') < 0) + ')');
       G.ui.closeLogic();
 
+      // --- 18. 출력 노드가 '지금 하는 일'을 말한다 --------------------------
+      // 사용자가 "재고 과다면 정지" 로 짠 회로가 오히려 기계를 돌렸다. 원인은
+      // [기계 가동/정지]의 입력 포트가 **가동**이라 참=돌려라 이기 때문이다.
+      // 나도 심화 튜토리얼 4단계에서 같은 실수를 했다 — 두 사람이 같은 자리에서
+      // 걸렸으므로 이름 탓이다. 노드가 스스로 뜻을 말하게 해서 그 자리에서 보이게 한다.
+      G.reset(424242); G.clearEntities(); G.ui.closeHelp(); G.powerCheat(true);
+      G.giveAll(9999);
+      var mc = G.place('controller', 60, 60, 0);
+      var mChest = G.place('chest', 64, 60, 0);
+      var mAsm = G.place('assembler', 68, 60, 0);
+      G.fillChest(mChest, 'iron-plate', 300);
+      var qCh = G.gAdd(mc, 'chest', 20, 20);  G.gCfg(mc, qCh, 'ent', mChest);
+      var qK = G.gAdd(mc, 'const', 20, 200);  G.gCfg(mc, qK, 'value', 200);
+      var qC = G.gAdd(mc, 'cmp', 260, 20);    G.gCfg(mc, qC, 'op', '>');
+      var qE = G.gAdd(mc, 'enable', 520, 20);
+      G.gLink(mc, qCh, 0, qC, 0); G.gLink(mc, qK, 0, qC, 1); G.gLink(mc, qC, 0, qE, 0);
+      G.run(1);
+      G.ui.openLogic(mc);
+      G.ui.renderGraph();
+
+      // 대상이 비었을 때: '아무 일도 하지 않는다' 라고 말해야 한다
+      var meanEl = document.querySelector('[data-mean="' + qE + '"]');
+      G.ui.updateLive();
+      var noTargetTxt = meanEl ? meanEl.textContent : '';
+      chk('ui.outputNodeWarnsNoTarget',
+        !!meanEl && noTargetTxt.indexOf('대상이 비어 있다') >= 0 && meanEl.classList.contains('bad'),
+        '대상 미지정 [기계 가동/정지] → "' + noTargetTxt + '"');
+
+      // 대상을 물리면: 참일 때 **돌린다** 고 말해야 한다 (사용자가 기대한 '멈춘다' 가 아니다)
+      G.gCfg(mc, qE, 'ent', mAsm);
+      G.run(1); G.ui.renderGraph(); G.ui.updateLive();
+      var meanEl2 = document.querySelector('[data-mean="' + qE + '"]');
+      var invTxt = meanEl2 ? meanEl2.textContent : '';
+      chk('ui.outputNodeSaysItRuns',
+        invTxt.indexOf('참') >= 0 && invTxt.indexOf('돌린다') >= 0 && invTxt.indexOf('#' + mAsm) >= 0,
+        '재고 300 > 200 (참) 인 배선 → "' + invTxt + '" · 실제 기계 가동=' +
+        G.ent(mAsm).enabled + ' (문장과 세계가 일치해야 한다)');
+
+      // 음성 대조군 — 부등호를 뒤집으면 문장도 '멈춘다' 로 바뀌어야 한다.
+      // 늘 같은 문장이면 아무것도 알려주지 않는 장식이다.
+      G.gCfg(mc, qC, 'op', '<');
+      G.run(1); G.ui.updateLive();
+      var meanEl3 = document.querySelector('[data-mean="' + qE + '"]');
+      var fixTxt = meanEl3 ? meanEl3.textContent : '';
+      chk('ui.outputNodeFollowsTheValue',
+        fixTxt.indexOf('거짓') >= 0 && fixTxt.indexOf('멈춘다') >= 0 &&
+        G.ent(mAsm).enabled === false,
+        '부등호를 < 로 뒤집자 → "' + fixTxt + '" · 실제 기계 가동=' + G.ent(mAsm).enabled);
+      G.ui.closeLogic();
+
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', G.ui.nodeCount() < 0, '노드 수가 음수일 리 없다', true);

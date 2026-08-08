@@ -388,6 +388,7 @@ window.__GAME = {
     return {
       id: e.id, type: e.type, tx: e.tx, ty: e.ty, w: e.w, h: e.h, dir: e.dir, hp: e.hp, maxHp: e.maxHp,
       enabled: e.enabled, playerEnabled: e.playerEnabled, logicForced: !!e.logicForced,
+      logicConflict: e.logicConflict || null,
       powerSat: e.powerSat, net: e.net, working: !!e.working, stallT: e.stallT,
       inv: JSON.parse(JSON.stringify(e.inv)), out: JSON.parse(JSON.stringify(e.out)),
       recipe: e.recipe, progress: e.progress,
@@ -421,6 +422,20 @@ window.__GAME = {
     return graphLink(e.graph, fn, fp, tn, tp);
   },
   // 노드의 화면상 위치 (터치 드래그가 실제로 옮겼는지 보려면 좌표가 필요하다)
+  // 노드의 대상 목록 필터 (게이트가 '고를 수 있는 건물' 을 검정한다)
+  // 컴파일 전 그래프에서 readIn 이 안전한지 검정하기 위한 훅
+  readInProbe: function (ctrlId, nid, port) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return null;
+    var n = graphNode(e.graph, nid); if (!n) return null;
+    try { return readIn(e.graph, n, port || 0); } catch (err) { return 'THREW:' + err.message; }
+  },
+  nodeTargets: function (kind) {
+    var d = NODE_DEFS[kind]; if (!d) return null;
+    for (var i = 0; i < d.cfg.length; i++) {
+      if (d.cfg[i].t === 'ent') return d.cfg[i].filter || Object.keys(BUILDINGS);
+    }
+    return null;
+  },
   gPos: function (ctrlId, nid) {
     var e = entities[ctrlId]; if (!e || !e.graph) return null;
     var n = graphNode(e.graph, nid); if (!n) return null;
@@ -758,6 +773,7 @@ window.__GAME = {
     // 먼저 손을 비워야 한다. tool(undefined) 로도 되지만 의도가 안 드러난다.
     clearTool: function () { selectTool(null); return tool; },
     renderGraph: function () { renderGraph(); return true; },
+    updateLive: function () { updateLive(); return true; },
     curDir: function () { return toolDir; },
     logicOpen: function () { return logicOpen; },
     selectedId: function () { return selected; },

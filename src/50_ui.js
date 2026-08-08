@@ -658,10 +658,18 @@ function refreshInsp() {
         (stockTakeCount(e) < 1 ? ' disabled' : '') + '>보유 자재로 가져오기</button>');
     }
     c.push('<div style="display:flex;gap:6px;margin-top:9px">' +
-      '<button id="tglBtn">' + (e.playerEnabled === false ? '가동' : '정지') + '</button>' +
+      // 제어기가 가동 축을 지배 중이면 이 버튼은 **지금 아무 효과가 없다.**
+      // 예전엔 라벨만 뒤집히고 기계는 계속 돌아서 버튼이 거짓말을 했다.
+      '<button id="tglBtn"' + (e.fEnable ? ' title="제어기가 지배 중 — 지배가 풀린 뒤에 적용된다"' : '') + '>' +
+      (e.playerEnabled === false ? '가동' : '정지') + (e.fEnable ? ' (지배중)' : '') + '</button>' +
       '<button class="danger" id="delBtn">철거</button></div>');
     if (e.logicForced) {
       c.push('<div class="ok" style="font-size:11px;margin-top:5px">⛓ 제어기 지배 중 — 수동 조작은 지배가 풀린 뒤 적용된다</div>');
+    }
+    // 두 제어기가 같은 축을 다투면 한쪽이 조용히 무시된다. 그걸 말해 준다.
+    if (e.logicConflict) {
+      c.push('<div class="bad" style="font-size:11px;margin-top:5px;font-weight:600">⚠ ' +
+             e.logicConflict + '</div>');
     }
     b.innerHTML = '<div id="inspStat"></div>' + c.join('');
     bindInspControls(e);

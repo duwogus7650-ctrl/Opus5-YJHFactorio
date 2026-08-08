@@ -1203,6 +1203,100 @@
         ' ' + advReset.step + ' → 복원 ' + advLoaded.track + ' ' + advLoaded.step +
         ' (' + advLoaded.id + ')');
 
+      // ================= 8e. 제어기 — 말이 안 되던 것들 =====================
+      // 사용자가 "회로가 이상하게 작동한다"고 했고, 파 보니 셋이 나왔다.
+      labSetup();
+
+      // (1) [기계 가동/정지] 는 enabled 를 **실제로 보는** 건물만 고를 수 있어야 한다.
+      //     예전엔 벽·전주·상자·벨트도 고를 수 있었는데 그것들은 enabled 를 읽지 않아
+      //     배선해도 아무 일도 안 났다. 고를 수 있으면 고른다 — 그리고 왜 안 되는지 모른다.
+      var enFilter = G.nodeTargets('enable');
+      chk('ctrl.enableTargetsOnlyResponsive',
+        !!enFilter && enFilter.indexOf('wall') < 0 && enFilter.indexOf('pole') < 0 &&
+        enFilter.indexOf('belt') < 0 && enFilter.indexOf('chest') < 0 &&
+        enFilter.indexOf('assembler') >= 0 && enFilter.indexOf('turret') >= 0,
+        '[기계 가동/정지] 대상 목록 = [' + (enFilter || []).join(',') +
+        '] (벽·전주·벨트·상자는 enabled 를 안 보므로 빠져야 한다)');
+
+      // (2) 제어기 둘이 같은 축을 다투면 그 사실을 기록해야 한다.
+      //     나중에 평가된 쪽이 조용히 이겨서, 한쪽 회로가 통째로 무시당한 것처럼 보였다.
+      var kA = G.place('controller', 44, 44, 0);
+      var kB = G.place('controller', 47, 44, 0);
+      var kM = G.place('assembler', 50, 44, 0);
+      var ca = G.gAdd(kA, 'const', 0, 0); G.gCfg(kA, ca, 'value', 1);
+      var ea2 = G.gAdd(kA, 'enable', 200, 0); G.gCfg(kA, ea2, 'ent', kM);
+      G.gLink(kA, ca, 0, ea2, 0);
+      var cb = G.gAdd(kB, 'const', 0, 0); G.gCfg(kB, cb, 'value', 0);
+      var eb2 = G.gAdd(kB, 'enable', 200, 0); G.gCfg(kB, eb2, 'ent', kM);
+      G.gLink(kB, cb, 0, eb2, 0);
+      G.run(1);
+      var conf = G.ent(kM).logicConflict;
+      chk('ctrl.conflictIsReported',
+        !!conf && conf.indexOf('#' + kA) >= 0 && conf.indexOf('#' + kB) >= 0,
+        '제어기 ' + kA + '(켜라) vs ' + kB + '(꺼라) → 기록 "' + conf + '"');
+
+      // 음성 대조군 — 제어기가 하나면 충돌 경고가 뜨면 안 된다.
+      // 늘 뜨는 경고는 경고가 아니라 배경이다.
+      G.remove(kB);
+      G.run(1);
+      chk('ctrl.noConflictWhenSingle',
+        !G.ent(kM).logicConflict && G.ent(kM).enabled === true,
+        '제어기 하나만 남기자 → 충돌 기록 ' + (G.ent(kM).logicConflict || '없음') +
+        ' · 기계 가동=' + G.ent(kM).enabled);
+
+      // --- 감사에서 나온 것들 (독립 에이전트 4개가 찾고 헤드리스로 재현) ---
+
+      // (3) **입력이 안 물린 출력 노드는 대상을 지배하지 않는다.**
+      //     예전에는 노드를 놓고 대상만 고른 순간 기계가 즉시 멈췄다 — 배선을
+      //     하나도 안 했는데도. "회로가 이상하게 작동한다" 의 가장 유력한 정체다.
+      labSetup();
+      var uC = G.place('controller', 44, 50, 0);
+      var uM = G.place('assembler', 48, 50, 0);
+      var uE = G.gAdd(uC, 'enable', 200, 0); G.gCfg(uC, uE, 'ent', uM);
+      G.run(1);
+      var unwired = G.ent(uM);
+      chk('ctrl.unwiredOutputDoesNotSeize',
+        unwired.enabled === true && unwired.logicForced === false,
+        '배선 없는 [기계 가동/정지](대상만 지정) → 기계 가동=' + unwired.enabled +
+        ' · 지배중=' + unwired.logicForced + ' (지배하면 배선도 안 했는데 멈춘다)');
+
+      // 음성 대조군 — 배선을 하면 그때는 지배해야 한다. 안 하면 위 검사가
+      // "출력 노드가 아예 안 먹는다" 를 통과시킨 것이다.
+      var uK = G.gAdd(uC, 'const', 0, 0); G.gCfg(uC, uK, 'value', 0);
+      G.gLink(uC, uK, 0, uE, 0);
+      G.run(1);
+      var wired = G.ent(uM);
+      chk('ctrl.wiredOutputDoesSeize',
+        wired.enabled === false && wired.logicForced === true,
+        '상수 0 을 물린 뒤 → 기계 가동=' + wired.enabled + ' · 지배중=' + wired.logicForced);
+
+      // (4) 램프·수치표시의 기본 이름이 같으면 HUD 가 중복을 지워 두 번째가 사라진다.
+      labSetup();
+      var dC = G.place('controller', 44, 54, 0);
+      var d1 = G.gAdd(dC, 'display', 0, 0);
+      var d2 = G.gAdd(dC, 'display', 0, 200);
+      var dk = G.gAdd(dC, 'const', 300, 100); G.gCfg(dC, dk, 'value', 7);
+      G.gLink(dC, dk, 0, d1, 0); G.gLink(dC, dk, 0, d2, 0);
+      G.run(1);
+      var disp = G.state().displays;
+      var names = disp.map(function (x) { return x.label; });
+      chk('ctrl.displaysGetDistinctNames',
+        disp.length === 2 && names[0] !== names[1],
+        '이름을 안 적은 [수치 표시] 2개 → 화면 항목 ' + disp.length + '개 · 이름 [' +
+        names.join(', ') + '] (같으면 HUD 가 중복을 지워 하나만 남는다)');
+
+      // (5) 한 번도 평가되지 않은 그래프에서도 값을 읽을 수 있어야 한다.
+      //     g.inLinks 는 graphCompile 이 만드는데, 편집기의 해석 줄은 그 전에도
+      //     읽는다 — 방어가 없으면 TypeError 로 편집기가 영구히 얼어붙는다.
+      labSetup();
+      var zC = G.place('controller', 44, 58, 0);
+      G.gAdd(zC, 'enable', 0, 0);
+      var readOk = G.readInProbe(zC, 1, 0);
+      chk('ctrl.readBeforeCompileIsSafe',
+        readOk === 0,
+        '컴파일 전 그래프에서 입력 읽기 → ' + readOk +
+        ' (예외가 나면 편집기의 실시간 갱신이 통째로 멈춘다)');
+
       // ================= 9. 결정론 =======================================
       function scenarioHash(seed) {
         G.reset(seed); G.giveAll(99999); G.clearEnemies(); G.powerCheat(true);

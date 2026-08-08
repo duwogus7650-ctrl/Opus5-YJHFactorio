@@ -109,6 +109,59 @@ function updateCycleInfo(g) {
     : txt;
 }
 
+// --- 출력 노드의 "지금 무슨 일을 하는가" -------------------------------------
+// 이 게임에서 가장 자주 걸리는 함정: [기계 가동/정지]의 입력 포트는 **가동** 이다.
+// 신호가 참이면 "돌려라" 다. 그래서 '재고 과다' 같은 조건을 그대로 물리면
+// "재고 과다일 때 돌려라" 가 되어 의도와 정반대가 된다. 나도, 사용자도 똑같이
+// 여기서 틀렸다 — 두 사람이 같은 자리에서 걸렸으면 이름 탓이다.
+// 그래서 노드가 **지금 실제로 하는 일**을 스스로 말하게 한다. 배선하는 순간
+// 뜻이 뒤집혔는지 보인다. 게이트·필터·사격허가도 같은 함정이 있어 같이 다룬다.
+function entName(id) {
+  var e = entities[id];
+  if (!e) return null;
+  return BUILDINGS[e.type].name + ' #' + e.id;
+}
+function outputMeaning(g, n) {
+  var d = NODE_DEFS[n.kind];
+  if (d.cat !== 'out') return null;
+  var fed = !!g.inLinks && !!g.inLinks[n.nid + ':0'];
+  var v = readIn(g, n, 0);
+  var on = truthy(v);
+  var who = (n.kind === 'lamp' || n.kind === 'display') ? null : entName(n.cfg.ent);
+
+  // 대상이 없으면 이 노드는 장식이다. 이것이 "배선했는데 아무 반응이 없다" 의 정체다.
+  if (n.kind !== 'lamp' && n.kind !== 'display' && !who) {
+    return { bad: true, text: '대상이 비어 있다 — 배선해도 아무 일도 하지 않는다' };
+  }
+  if (!fed) {
+    return { bad: true, text: '입력이 안 물렸다 — 늘 ' +
+      (n.kind === 'enable' ? '멈춤' : n.kind === 'gate' ? '닫힘' :
+       n.kind === 'fire' ? '사격 금지' : n.kind === 'filter' ? '0일 때 품목' : '꺼짐') + ' 으로 본다' };
+  }
+  var now = on ? '참' : '거짓';
+  switch (n.kind) {
+    case 'enable':
+      return { bad: false, text: '지금 ' + now + ' → ' + who + ' 를 ' +
+                                 (on ? '돌린다' : '멈춘다') };
+    case 'gate':
+      return { bad: false, text: '지금 ' + now + ' → ' + who + ' 가 ' +
+                                 (on ? '열린다' : '닫힌다') };
+    case 'fire':
+      return { bad: false, text: '지금 ' + now + ' → ' + who + ' ' +
+                                 (on ? '사격 허가' : '사격 금지') };
+    case 'filter': {
+      var pick = on ? n.cfg.b : n.cfg.a;
+      return { bad: false, text: '지금 ' + now + ' → ' + who + ' 가 ' +
+        (pick ? ITEMS[pick].name + ' 만 집는다' : '아무거나 집는다') };
+    }
+    case 'lamp':
+      return { bad: false, text: '지금 ' + now + ' → 경보 ' + (on ? '켜짐' : '꺼짐') };
+    case 'display':
+      return { bad: false, text: '지금 값 ' + fmt(v, 2) };
+  }
+  return null;
+}
+
 function buildNodeDom(inner, g, n) {
   var d = NODE_DEFS[n.kind];
   var el = document.createElement('div');
@@ -204,6 +257,13 @@ function buildNodeDom(inner, g, n) {
   }
   ports.appendChild(cin); ports.appendChild(cout);
   bodyEl.appendChild(ports);
+  // 출력 노드는 자기가 지금 하는 일을 한 줄로 말한다 (updateLive 가 매 140ms 갱신)
+  if (d.cat === 'out') {
+    var mrow = document.createElement('div');
+    mrow.className = 'nmean';
+    mrow.setAttribute('data-mean', String(n.nid));
+    bodyEl.appendChild(mrow);
+  }
   el.appendChild(bodyEl);
   inner.appendChild(el);
 
@@ -374,6 +434,16 @@ function updateLive() {
     var nn = graphNode(g, nid);
     var port = parseInt(dots[k].getAttribute('data-out'), 10);
     if (nn && truthy(nn.out[port])) dots[k].classList.add('on'); else dots[k].classList.remove('on');
+  }
+  // 출력 노드의 해석 줄 — 값이 바뀌면 문장도 바뀐다
+  var means = document.querySelectorAll('[data-mean]');
+  for (var m = 0; m < means.length; m++) {
+    var mn = graphNode(g, parseInt(means[m].getAttribute('data-mean'), 10));
+    if (!mn) continue;
+    var info = outputMeaning(g, mn);
+    if (!info) { means[m].textContent = ''; continue; }
+    means[m].textContent = info.text;
+    means[m].classList.toggle('bad', !!info.bad);
   }
   updateCycleInfo(g);
 }

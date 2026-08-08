@@ -23,7 +23,8 @@ var NODE_DEFS = {
                cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['chest'] },
                      { k: 'item', t: 'item', label: '품목' }] },
   'machine': { label: '기계 상태', cat: 'in', ins: [], outs: ['가동', '정체', '진행%'],
-               cfg: [{ k: 'ent', t: 'ent', label: '대상' }] },
+               cfg: [{ k: 'ent', t: 'ent', label: '대상',
+                       filter: ['miner', 'furnace', 'assembler', 'lab', 'generator', 'turret', 'inserter'] }] },
   'power':   { label: '전력 만족도', cat: 'in', ins: [], outs: ['만족%', '공급kW', '수요kW'],
                cfg: [] },
   'timer':   { label: '타이머', cat: 'in', ins: [], outs: ['펄스', '위상%'],
@@ -61,8 +62,13 @@ var NODE_DEFS = {
                tech: 'logic-ctrl' },
 
   // ---- 출력 ----
+  // 대상 목록을 **실제로 enabled 를 보는 건물**로 좁힌다. 예전에는 벽·전주·상자·
+  // 벨트까지 고를 수 있었는데, 그것들은 enabled 를 읽지 않아 배선해도 아무 일도
+  // 일어나지 않았다. 고를 수 있으면 고른다 — 그리고 왜 안 되는지 알 수 없다.
+  // (벨트를 멈추려면 [벨트 게이트] 를 쓴다.)
   'enable':  { label: '기계 가동/정지', cat: 'out', ins: ['가동'], outs: [],
-               cfg: [{ k: 'ent', t: 'ent', label: '대상' }] },
+               cfg: [{ k: 'ent', t: 'ent', label: '대상',
+                       filter: ['miner', 'furnace', 'assembler', 'lab', 'generator', 'turret', 'inserter'] }] },
   'gate':    { label: '벨트 게이트', cat: 'out', ins: ['열림'], outs: [],
                cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['belt', 'splitter'] }], tech: 'logic-ctrl' },
   'filter':  { label: '인서터 필터', cat: 'out', ins: ['선택'], outs: [],
@@ -72,9 +78,9 @@ var NODE_DEFS = {
   'fire':    { label: '터렛 사격허가', cat: 'out', ins: ['허가'], outs: [],
                cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['turret'] }], tech: 'defense-ai' },
   'lamp':    { label: '경보 램프', cat: 'out', ins: ['점등'], outs: [],
-               cfg: [{ k: 'label', t: 'text', label: '문구', def: '경보' }] },
+               cfg: [{ k: 'label', t: 'text', label: '문구', def: '' }] },
   'display': { label: '수치 표시', cat: 'out', ins: ['값'], outs: [],
-               cfg: [{ k: 'label', t: 'text', label: '이름', def: '값' }] }
+               cfg: [{ k: 'label', t: 'text', label: '이름', def: '' }] }
 };
 var NODE_KINDS = Object.keys(NODE_DEFS);
 
@@ -182,7 +188,18 @@ function dropLogicRefs(entId) {
 var alarms = [];        // 이번 틱에 켜진 램프 문구
 var displays = [];      // { label, value }
 
+// 이 입력 포트에 배선이 실제로 물려 있는가. 값이 0 인 것과 아예 안 물린 것은
+// 다르다 — 출력 노드가 그 둘을 구별하지 않아 '안 물림'을 '정지 명령'으로 읽었다.
+function inputFed(g, n, port) {
+  return !!(g.inLinks && g.inLinks[n.nid + ':' + port]);
+}
+
 function readIn(g, n, port) {
+  // **컴파일 전 그래프에서 부를 수 있다.** inLinks 는 graphCompile 이 만드는데,
+  // 편집기의 해석 줄(updateLive)은 제어기가 아직 한 번도 평가되지 않은 상태에서도
+  // 이 함수를 부른다 — 그때 g.inLinks 가 undefined 라 TypeError 로 죽고,
+  // 그 예외가 updateLive 전체를 멈춰 편집기가 영구히 얼어붙는다.
+  if (!g.inLinks) return 0;
   var lk = g.inLinks[n.nid + ':' + port];
   if (!lk) return 0;
   var src = g.byId[lk.fn];
@@ -348,46 +365,77 @@ function evalNode(g, n, dt, ctrl) {
     }
 
     case 'enable': {
+      // **입력이 안 물렸으면 지배하지 않는다.** readIn 이 0 을 돌려주므로 예전에는
+      // 노드를 놓고 대상만 고른 순간 기계가 즉시 멈췄다 — 배선을 하나도 안 했는데
+      // 말이다. 아직 아무 말도 하지 않는 노드가 세계를 붙잡으면 안 된다.
+      if (!inputFed(g, n, 0)) break;
       var te = entities[n.cfg.ent];
       // 자기 자신은 끌 수 없다 — 끄는 순간 평가가 멈추고 지배가 풀려 다시 켜지는 발진이 된다.
       if (te && ctrl && te.id === ctrl.id) break;
-      if (te) { te.enabled = truthy(readIn(g, n, 0)); te.logicForced = true; te.fEnable = true; }
+      if (te) {
+        noteAxisWriter(te, '가동', ctrl);
+        te.enabled = truthy(readIn(g, n, 0)); te.logicForced = true; te.fEnable = true;
+      }
       break;
     }
     case 'gate': {
+      if (!inputFed(g, n, 0)) break;
       var ge = entities[n.cfg.ent];
       if (ge && ge.cells) {
         var open = truthy(readIn(g, n, 0));
+        noteAxisWriter(ge, '게이트', ctrl);
         for (var gc = 0; gc < ge.cells.length; gc++) ge.cells[gc].gate = open;
         ge.logicForced = true; ge.fGate = true;
       }
       break;
     }
     case 'filter': {
+      if (!inputFed(g, n, 0)) break;
       var fe = entities[n.cfg.ent];
       if (fe && fe.type === 'inserter') {
+        noteAxisWriter(fe, '필터', ctrl);
         fe.filter = truthy(readIn(g, n, 0)) ? (n.cfg.b || null) : (n.cfg.a || null);
         fe.logicForced = true; fe.fFilter = true;
       }
       break;
     }
     case 'fire': {
+      if (!inputFed(g, n, 0)) break;
       var tu = entities[n.cfg.ent];
-      if (tu && tu.type === 'turret') { tu.fireOk = truthy(readIn(g, n, 0)); tu.logicForced = true; tu.fFire = true; }
+      if (tu && tu.type === 'turret') {
+        noteAxisWriter(tu, '사격허가', ctrl);
+        tu.fireOk = truthy(readIn(g, n, 0)); tu.logicForced = true; tu.fFire = true;
+      }
       break;
     }
     case 'lamp': {
-      if (truthy(readIn(g, n, 0))) alarms.push(String(n.cfg.label || '경보'));
+      // HUD 는 이름으로 중복을 지운다 — 기본 이름이 같으면 두 번째부터 화면에서
+      // 사라진다. 이름을 안 적었으면 노드 번호로 구분한다.
+      if (truthy(readIn(g, n, 0))) alarms.push(String(n.cfg.label || ('경보 #' + n.nid)));
       break;
     }
     case 'display': {
-      displays.push({ label: String(n.cfg.label || '값'), value: readIn(g, n, 0) });
+      displays.push({ label: String(n.cfg.label || ('값 #' + n.nid)), value: readIn(g, n, 0) });
       break;
     }
   }
 }
 
 // 제어기 하나 평가
+// 같은 틱에 같은 축을 두 제어기가 쓰면 나중에 평가된 쪽이 이긴다. 그 자체는
+// 결정적이지만 플레이어에게는 설명 불가능한 현상이라(한쪽 회로가 통째로 무시된
+// 것처럼 보인다) 사실을 기록해 인스펙터에 드러낸다.
+function noteAxisWriter(target, axis, ctrl) {
+  if (!target || !ctrl) return;
+  var prev = target.axisBy && target.axisBy[axis];
+  if (prev && prev !== ctrl.id) {
+    target.logicConflict = axis + ': 제어기 #' + prev + ' 와 #' + ctrl.id +
+                           ' 가 동시에 지배 — 나중에 평가된 #' + ctrl.id + ' 가 이긴다';
+  }
+  if (!target.axisBy) target.axisBy = {};
+  target.axisBy[axis] = ctrl.id;
+}
+
 function stepController(e, dt) {
   var g = e.graph;
   if (!g) return;
@@ -413,6 +461,9 @@ function stepLogic(dt) {
   displays.length = 0;
   forEachEntity(function (e) {
     e.logicForced = false; e.fEnable = false; e.fGate = false; e.fFilter = false; e.fFire = false;
+    // 이번 틱에 이 축을 쓴 제어기가 누구인지 기억한다. 둘이 겹치면 나중에 평가된
+    // 쪽이 조용히 이겨서, 한쪽 회로가 통째로 무시당하는 것처럼 보인다.
+    e.axisBy = null; e.logicConflict = null;
   });
   forEachEntity(function (e) {
     if (e.type === 'controller') guard('controller#' + e.id, function () { stepController(e, dt); });

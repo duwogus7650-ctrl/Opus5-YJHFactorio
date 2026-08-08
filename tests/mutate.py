@@ -310,6 +310,66 @@ MUTATIONS = [
      b'offGrid = true;',
      ['ui.onGridControllerQuiet'], 'uismoke.js'),
 
+    # ---- 제어기: 사용자가 걸린 함정들 ----
+    # [기계 가동/정지] 는 입력이 참이면 '돌려라' 다. 사용자도 나도 여기서 틀렸다.
+    # 그래서 노드가 지금 하는 일을 스스로 말하게 했다. 그 문장이 값을 안 따라가면
+    # 아무것도 알려주지 않는 장식이다.
+    #
+    # 주의: 앵커는 **ASCII 조각만** 쓴다. b"" 리터럴에 한국어를 넣으면 이 파일이
+    # 아예 파싱되지 않는다 (한 번 그렇게 깨뜨렸다).
+    ('출력 노드 해석 줄이 값을 안 따라간다', '55_logicui.js',
+     b'  var on = truthy(v);',
+     b'  var on = true;',
+     ['ui.outputNodeFollowsTheValue'], 'uismoke.js'),
+
+    ('대상이 비어도 경고하지 않는다', '55_logicui.js',
+     b"  if (n.kind !== 'lamp' && n.kind !== 'display' && !who) {",
+     b'  if (false) {',
+     ['ui.outputNodeWarnsNoTarget'], 'uismoke.js'),
+
+    # 뒤에 오는 노드 이름('gate')까지 붙여야 유일해진다 — 같은 filter 배열이
+    # 'machine' 노드에도 쓰이기 때문이다.
+    ('[기계 가동/정지] 가 반응하지 않는 건물까지 고르게 한다', '35_logic.js',
+     b"'inserter'] }] },\n  'gate'",
+     b"'inserter', 'wall', 'pole'] }] },\n  'gate'",
+     ['ctrl.enableTargetsOnlyResponsive']),
+
+    ('제어기 충돌을 기록하지 않는다', '35_logic.js',
+     b'    target.logicConflict = axis',
+     b'    target.__dropped = axis',
+     ['ctrl.conflictIsReported']),
+
+    # 늘 충돌이라고 하면 경고가 아니라 배경이다
+    ('제어기가 하나여도 충돌이라고 한다', '35_logic.js',
+     b'  if (prev && prev !== ctrl.id) {',
+     b'  if (true) {',
+     ['ctrl.noConflictWhenSingle']),
+
+    # ---- 감사에서 나온 것들 ----
+    # 배선 없는 출력 노드가 대상을 붙잡고 0(정지)을 강제하던 것. 노드를 놓고
+    # 대상만 고른 순간 기계가 멈췄다 — 사용자가 겪은 증상의 유력 후보다.
+    ('배선 없는 출력 노드가 다시 대상을 지배한다', '35_logic.js',
+     b'      if (!inputFed(g, n, 0)) break;\n      var te = entities[n.cfg.ent];',
+     b'      var te = entities[n.cfg.ent];',
+     ['ctrl.unwiredOutputDoesNotSeize']),
+
+    # 반대로 아예 안 먹으면 그것도 결함이다 (음성 대조군 쪽)
+    ('배선을 해도 출력 노드가 지배하지 않는다', '35_logic.js',
+     b'  return !!(g.inLinks && g.inLinks[n.nid',
+     b'  return false && !!(g.inLinks && g.inLinks[n.nid',
+     ['ctrl.wiredOutputDoesSeize']),
+
+    # HUD 가 이름으로 중복을 지우므로 기본 이름이 같으면 두 번째가 사라진다
+    ('램프·표시의 기본 이름이 다시 겹친다', '35_logic.js',
+     b"('\xea\xb0\x92 #' + n.nid)",
+     b"'\xea\xb0\x92'",
+     ['ctrl.displaysGetDistinctNames']),
+
+    ('컴파일 전 그래프에서 입력을 읽으면 던진다', '35_logic.js',
+     b'  if (!g.inLinks) return 0;',
+     b'  if (false) return 0;',
+     ['ctrl.readBeforeCompileIsSafe']),
+
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
     ('캔버스가 터치를 아예 안 받는다', '50_ui.js',
      b"  canvas.addEventListener('touchstart', function (ev) {",
