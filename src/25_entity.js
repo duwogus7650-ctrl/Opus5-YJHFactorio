@@ -156,7 +156,18 @@ function removeEntity(id, refund) {
     // 안에 들어 있던 것도 돌려준다 — 안 그러면 철거가 아이템 소각기가 된다
     for (var a in e.inv) inventory[a] = (inventory[a] || 0) + e.inv[a];
     for (var b in e.out) inventory[b] = (inventory[b] || 0) + e.out[b];
-    if (e.type === 'turret' && e.ammo) inventory['ammo'] = (inventory['ammo'] || 0) + e.ammo;
+    // e.ammo 는 **발** 단위다 (탄창 1개 = SPEC.turretShotsPerAmmo 발). 발 개수를
+    // 그대로 탄창 개수로 돌려주면 철거가 10배 복사기가 된다. 자투리 발은 못 돌려준다.
+    if (e.type === 'turret' && e.ammo > 0) {
+      var mags = Math.floor(e.ammo / SPEC.turretShotsPerAmmo);
+      if (mags > 0) inventory['ammo'] = (inventory['ammo'] || 0) + mags;
+    }
+    // 발전기의 석탄은 e.inv 가 아니라 e.fuel(에너지)에 녹아 있다. 여기서 안 돌려주면
+    // 바로 위 주석이 막으려던 그것 — 철거가 아이템 소각기 — 이 발전기에만 남는다.
+    if (e.type === 'generator' && e.fuel > 0) {
+      var coals = Math.floor(e.fuel / SPEC.coalEnergy);
+      if (coals > 0) inventory['coal'] = (inventory['coal'] || 0) + coals;
+    }
     if (e.held) inventory[e.held] = (inventory[e.held] || 0) + 1;   // 손에 쥔 것도 (안 그러면 소멸)
     if (e.cells) {
       for (var ci = 0; ci < e.cells.length; ci++) {
@@ -243,8 +254,20 @@ function takeOutputToStock(e) {
 function putFromStock(e) {
   if (!e || !PUT_TYPES[e.type]) return 0;
   var moved = 0, guard = 0;
-  for (var i = 0; i < ITEM_IDS.length; i++) {
-    var k = ITEM_IDS[i];
+  // **굽던 것의 재료를 먼저 시도한다.** 레시피가 풀린 용광로는 ITEM_IDS 선언 순서로
+  // 처음 받아들여지는 광석에 굳는데(giveTo), 그 순서는 플레이어가 볼 수 없다 —
+  // 철을 굽던 용광로에 [보유 자재 넣기]를 눌렀더니 구리를 굽기 시작하는 것이
+  // 그래서 일어났다. 굽던 광석이 재고에 없을 때만 예전처럼 아무거나 받는다.
+  var scan = ITEM_IDS;
+  if (e.type === 'furnace' && !e.recipe && e.lastRecipe && RECIPES[e.lastRecipe]) {
+    var pref = [];
+    for (var pk in RECIPES[e.lastRecipe].inp) pref.push(pk);
+    if (pref.length && (inventory[pref[0]] || 0) > 0) {
+      scan = pref.concat(ITEM_IDS);
+    }
+  }
+  for (var i = 0; i < scan.length; i++) {
+    var k = scan[i];
     // canAccept 가 기계의 버퍼 한도를 이미 알고 있으므로 여기서 다시 세지 않는다.
     // guard 는 무한루프 방어일 뿐이고 정상 경로에서는 한도가 먼저 걸린다.
     while ((inventory[k] || 0) > 0 && canAccept(e, k) && guard++ < 20000) {
@@ -351,6 +374,9 @@ function stepCrafter(e, dt, speed) {
   // 그쪽으로 갈아탄다. 안 놓으면 철을 굽던 용광로가 영원히 구리를 거부한다.
   if (e.type === 'furnace' && e.recipe && e.progress === 0 &&
       invTotal(e.inv) === 0 && invTotal(e.out) === 0) {
+    // 무엇을 굽고 있었는지는 남긴다. 레시피를 놓는 이유는 "다른 광석을 넣으면
+    // 갈아탈 수 있게" 이지 "아무거나 먼저 온 것으로 바꾸려고" 가 아니다.
+    e.lastRecipe = e.recipe;
     e.recipe = null;
   }
   var rec = e.recipe ? RECIPES[e.recipe] : null;

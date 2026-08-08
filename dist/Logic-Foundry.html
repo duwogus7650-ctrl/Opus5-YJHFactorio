@@ -115,6 +115,17 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 .craftbtn:hover{border-color:var(--edge)}
 .craftbtn:active{box-shadow:inset 0 2px 4px rgba(0,0,0,.3)}
 .craftbtn.no{opacity:.42;cursor:not-allowed}
+/* 손 조립 대기열 — 시간이 든다는 사실이 보여야 한다. 안 보이면 '눌러도 아무 일이
+   없다'로 읽힌다. 진행 막대는 지금 만드는 것 하나에만 붙는다. */
+#craftQueue:empty{display:none}
+#craftQueue{padding:5px 8px 0}
+.qrow{display:flex;justify-content:space-between;align-items:center;gap:6px;
+  padding:3px 7px;margin:2px 0;border:1px solid var(--rule);background:var(--face-lo);
+  font-size:11px;position:relative;overflow:hidden;cursor:pointer}
+.qrow .qbar{position:absolute;left:0;top:0;bottom:0;background:rgba(44,84,112,.32);z-index:0}
+.qrow span{position:relative;z-index:1}
+.qrow:hover{border-color:var(--stop)}
+.qrow .qx{color:var(--ink-2);font-family:var(--mono)}
 #craftList{max-height:200px;overflow-y:auto;padding:5px 8px;scrollbar-width:thin}
 /* 지도는 판에 박힌 창이다 */
 #mini{position:relative;width:100%;height:178px;display:block;background:var(--well);
@@ -386,7 +397,8 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
     <div id="invList"></div>
   </div>
   <div class="panel">
-    <h3>Handcraft 손 조립 <span style="float:right;color:var(--ink-3)">클릭 = 1개</span></h3>
+    <h3>Handcraft 손 조립 <span style="float:right;color:var(--ink-3)">클릭 = 대기열 1개</span></h3>
+    <div id="craftQueue"></div>
     <div id="craftList"></div>
   </div>
   <div class="panel" style="flex:1;display:flex;flex-direction:column;min-height:0">
@@ -664,7 +676,7 @@ var RECIPE_IDS = Object.keys(RECIPES);
 var BUILDINGS = {
   'belt':      { hotkey: '1', name: '벨트', w: 1, h: 1, cost: { 'belt-item': 1 }, rot: true,
                  desc: '아이템을 2레인으로 나른다. 합 15개/s (레인당 7.5).' },
-  'splitter':  { name: '분배기', w: 2, h: 1, cost: { 'belt-item': 4, 'circuit': 2 }, rot: true, tech: 'logistics',
+  'splitter':  { name: '분배기', w: 2, h: 1, cost: { 'belt-item': 4, 'circuit': 2, 'steel': 2 }, rot: true, tech: 'steel',
                  desc: '입력을 두 갈래로 균등 분배. 우선순위 지정 가능.' },
   'inserter':  { hotkey: '2', name: '인서터', w: 1, h: 1, cost: { 'inserter-item': 1 }, rot: true, power: 13,
                  desc: '뒤에서 집어 앞에 놓는다. 0.83개/s. 제어기로 켜고 끌 수 있다.' },
@@ -725,17 +737,21 @@ var SPEC = {
 // cost 는 연구팩 개수. needs 는 선행 기술.
 var TECHS = {
   'logistics':  { name: '물류학', cost: { 'sci-red': 20 }, needs: [],
-                  unlock: ['분배기', '녹색 연구팩 레시피'],
-                  desc: '분배기와 녹색 연구팩을 연다.' },
+                  unlock: ['녹색 연구팩 레시피'],
+                  desc: '녹색 연구팩을 연다 — 여기서부터 완성품이 연구 재료가 된다.' },
   'military':   { name: '군수',   cost: { 'sci-red': 20 }, needs: [],
                   unlock: ['기관총 터렛', '벽', '탄창 레시피'],
                   desc: '방어 시설. 적의 습격은 오염을 따라온다.' },
   'logic-mem':  { name: '논리 II — 기억소자', cost: { 'sci-red': 40 }, needs: ['logistics'],
                   unlock: ['SR 래치', '카운터', '샘플홀드', '엣지검출'],
                   desc: '제어기에 상태를 가진 노드가 추가된다. 여기서부터 진짜 프로그래밍.' },
+  // 강철은 **쓸 데가 있어야 한다.** 예전엔 레시피만 있고 소비처가 한 곳도 없어서,
+  // 적팩 50개를 들여 "철판 5개를 못 쓰는 물건 1개로 바꾸는 기능"을 여는 연구였다.
+  // 분배기를 여기로 옮겨 붙였다 — belt-2·automation-2 의 선행이라 어차피 모두
+  // 연구하는 길목이고, 분배기는 없어도 죽지 않는 편의 장비라 늦춰도 초반이 안 무너진다.
   'steel':      { name: '강철 제련', cost: { 'sci-red': 50 }, needs: ['logistics'],
-                  unlock: ['강철 레시피'],
-                  desc: '철판 5개를 강철 1개로.' },
+                  unlock: ['강철 레시피', '분배기'],
+                  desc: '철판 5개를 강철 1개로. 분배기가 강철을 먹는다.' },
   'logic-ctrl': { name: '논리 III — 공정 제어', cost: { 'sci-red': 50, 'sci-green': 50 }, needs: ['logic-mem'],
                   unlock: ['인서터 필터 출력', '벨트 게이트', 'PID 노드', '부하 차단'],
                   desc: '제어기가 라인을 실시간으로 갈아탈 수 있게 된다.' },
@@ -1132,7 +1148,16 @@ function outputTarget(cell, lane) {
 function splitterOutput(e, cell, lane) {
   // 두 셀 각각의 앞 타일이 출구다. rr 로 번갈아 내보내되, 한쪽이 막히면 다른 쪽.
   var order = [e.rr, 1 - e.rr];
-  if (e.outPrio === 0 || e.outPrio === 1) order = [e.outPrio, 1 - e.outPrio];
+  if (e.outPrio === 0 || e.outPrio === 1) {
+    // **cells[0] 은 언제나 좌표가 작은 쪽**이지 '왼쪽'이 아니다 (25_entity.js:116).
+    // 이 집의 규약에서 왼쪽은 진행방향 기준이다 (레인 0 = dirCCW, 45_render.js:300).
+    //   북(0): 왼쪽=서=cells[0] · 동(1): 왼쪽=북=cells[0]
+    //   남(2): 왼쪽=동=cells[1] · 서(3): 왼쪽=남=cells[1]
+    // 그래서 남·서향 분배기는 UI 에서 [왼쪽]을 고르면 오른쪽으로 나갔다.
+    var L = (e.dir === 0 || e.dir === 1) ? 0 : 1;
+    var first = (e.outPrio === 0) ? L : (1 - L);
+    order = [first, 1 - first];
+  }
   for (var k = 0; k < 2; k++) {
     var ci = order[k];
     var oc = e.cells[ci];
@@ -1462,7 +1487,18 @@ function removeEntity(id, refund) {
     // 안에 들어 있던 것도 돌려준다 — 안 그러면 철거가 아이템 소각기가 된다
     for (var a in e.inv) inventory[a] = (inventory[a] || 0) + e.inv[a];
     for (var b in e.out) inventory[b] = (inventory[b] || 0) + e.out[b];
-    if (e.type === 'turret' && e.ammo) inventory['ammo'] = (inventory['ammo'] || 0) + e.ammo;
+    // e.ammo 는 **발** 단위다 (탄창 1개 = SPEC.turretShotsPerAmmo 발). 발 개수를
+    // 그대로 탄창 개수로 돌려주면 철거가 10배 복사기가 된다. 자투리 발은 못 돌려준다.
+    if (e.type === 'turret' && e.ammo > 0) {
+      var mags = Math.floor(e.ammo / SPEC.turretShotsPerAmmo);
+      if (mags > 0) inventory['ammo'] = (inventory['ammo'] || 0) + mags;
+    }
+    // 발전기의 석탄은 e.inv 가 아니라 e.fuel(에너지)에 녹아 있다. 여기서 안 돌려주면
+    // 바로 위 주석이 막으려던 그것 — 철거가 아이템 소각기 — 이 발전기에만 남는다.
+    if (e.type === 'generator' && e.fuel > 0) {
+      var coals = Math.floor(e.fuel / SPEC.coalEnergy);
+      if (coals > 0) inventory['coal'] = (inventory['coal'] || 0) + coals;
+    }
     if (e.held) inventory[e.held] = (inventory[e.held] || 0) + 1;   // 손에 쥔 것도 (안 그러면 소멸)
     if (e.cells) {
       for (var ci = 0; ci < e.cells.length; ci++) {
@@ -1549,8 +1585,20 @@ function takeOutputToStock(e) {
 function putFromStock(e) {
   if (!e || !PUT_TYPES[e.type]) return 0;
   var moved = 0, guard = 0;
-  for (var i = 0; i < ITEM_IDS.length; i++) {
-    var k = ITEM_IDS[i];
+  // **굽던 것의 재료를 먼저 시도한다.** 레시피가 풀린 용광로는 ITEM_IDS 선언 순서로
+  // 처음 받아들여지는 광석에 굳는데(giveTo), 그 순서는 플레이어가 볼 수 없다 —
+  // 철을 굽던 용광로에 [보유 자재 넣기]를 눌렀더니 구리를 굽기 시작하는 것이
+  // 그래서 일어났다. 굽던 광석이 재고에 없을 때만 예전처럼 아무거나 받는다.
+  var scan = ITEM_IDS;
+  if (e.type === 'furnace' && !e.recipe && e.lastRecipe && RECIPES[e.lastRecipe]) {
+    var pref = [];
+    for (var pk in RECIPES[e.lastRecipe].inp) pref.push(pk);
+    if (pref.length && (inventory[pref[0]] || 0) > 0) {
+      scan = pref.concat(ITEM_IDS);
+    }
+  }
+  for (var i = 0; i < scan.length; i++) {
+    var k = scan[i];
     // canAccept 가 기계의 버퍼 한도를 이미 알고 있으므로 여기서 다시 세지 않는다.
     // guard 는 무한루프 방어일 뿐이고 정상 경로에서는 한도가 먼저 걸린다.
     while ((inventory[k] || 0) > 0 && canAccept(e, k) && guard++ < 20000) {
@@ -1657,6 +1705,9 @@ function stepCrafter(e, dt, speed) {
   // 그쪽으로 갈아탄다. 안 놓으면 철을 굽던 용광로가 영원히 구리를 거부한다.
   if (e.type === 'furnace' && e.recipe && e.progress === 0 &&
       invTotal(e.inv) === 0 && invTotal(e.out) === 0) {
+    // 무엇을 굽고 있었는지는 남긴다. 레시피를 놓는 이유는 "다른 광석을 넣으면
+    // 갈아탈 수 있게" 이지 "아무거나 먼저 온 것으로 바꾸려고" 가 아니다.
+    e.lastRecipe = e.recipe;
     e.recipe = null;
   }
   var rec = e.recipe ? RECIPES[e.recipe] : null;
@@ -2224,6 +2275,18 @@ function graphCompile(g) {
     color[nid] = 2;
     order.push(nid);
   }
+  // **후위순회를 숲 전체에서 한 번에 뒤집는다 (reverse post-order).** 이것만이
+  // 그래프 전체의 올바른 위상순서다 — 즉 어떤 노드도 자기 입력보다 먼저 돌지 않는다.
+  //
+  // 두 번 손댔다가 두 번 다 되돌렸으니 다시 건드리지 말 것:
+  //   · 나무마다 따로 뒤집기 → 두 나무가 공유하는 노드가 입력보다 먼저 돌아
+  //     샘플홀드가 옛 샘플로 갱신됐다 (node.hold RED).
+  //   · 진입을 좌표 역순으로 → 순환 회로는 진입점이 하나뿐이라 좌표를 옮겨도
+  //     순서가 안 바뀌었다 (ctrl.orderFollowsLayout RED).
+  //
+  // 한 회로 안에서는 "왼쪽 위가 먼저"가 성립한다(진입점이 먼저 나온다). 서로 이어지지
+  // 않은 회로 **사이의** 순서는 DFS 구조가 정하며 좌표대로가 아니다 — 도움말은
+  // 그 사실대로 쓴다. 같은 대상을 두 회로가 잡으면 순서에 기대지 말고 충돌 경고를 볼 것.
   for (var s = 0; s < roots.length; s++) if (!color[roots[s].nid]) dfs(roots[s].nid);
   order.reverse();
   g.order = order;
@@ -2783,6 +2846,9 @@ function stepTurrets(dt) {
     // 가장 가까운 적
     var best = null, bd = SPEC.turretRange;
     for (var i = 0; i < enemies.length; i++) {
+      // 이미 이 틱에 다른 터렛이 죽인 적은 건너뛴다. 시체는 다음 틱에 치워지므로
+      // 이 검사가 없으면 터렛 14기가 15hp 소형 하나를 함께 쏴 13발을 버린다.
+      if (enemies[i].hp <= 0) continue;
       var d = dist(enemies[i].x, enemies[i].y, cx, cy);
       if (d < bd) { bd = d; best = enemies[i]; }
     }
@@ -2805,8 +2871,7 @@ function stepTurrets(dt) {
     while (e.shotT >= 0.1 && e.ammo > 0) { e.shotT -= 0.1; e.ammo--; shots++; }
     if (shots > 0) {
       victim.hp -= shots * 5;
-      turretFx.push({ x1: cx, y1: cy, x2: victim.x !== undefined ? victim.x : victim.x, y2: victim.y, t: 0.06 });
-      if (victim.hp <= 0 && bestNest === victim) victim.hp = 0;
+      turretFx.push({ x1: cx, y1: cy, x2: victim.x, y2: victim.y, t: 0.06 });
     }
     e.target = victim;
   });
@@ -3571,6 +3636,11 @@ var inventory = {};
 var techDone = {};
 var currentResearch = null;
 var researchProgress = 0;
+// **연구를 갈아타도 먹인 연구팩은 남는다.** 예전에는 갈아타는 순간 진행이 0 이 됐다 —
+// 49/50 까지 간 연구를 놔두고 다른 걸 누르면 적팩 49 + 녹팩 49 가 경고 한 줄 없이
+// 사라졌다. 클릭 한 번에 되돌릴 수 없는 손실이 나는 자리는 게임에 있으면 안 된다.
+// 연구별로 따로 세어 두면 갈아탔다 돌아와도 이어서 한다.
+var researchProgressBy = {};
 
 function researchFrac() {
   if (!currentResearch) return 0;
@@ -3592,9 +3662,12 @@ function techAvailable(tid) {
 }
 function startResearch(tid) {
   if (!techAvailable(tid)) return false;
-  currentResearch = tid; researchProgress = 0;
+  if (currentResearch) researchProgressBy[currentResearch] = researchProgress;   // 하던 것 보관
+  currentResearch = tid;
+  researchProgress = researchProgressBy[tid] || 0;                              // 하던 데서 이어간다
   markPowerDirty();
-  toast('연구 시작: ' + TECHS[tid].name, 'good');
+  toast('연구 시작: ' + TECHS[tid].name +
+        (researchProgress > 0 ? ' (' + Math.round(researchProgress) + '개까지 이어서)' : ''), 'good');
   renderTech();
   return true;
 }
@@ -3602,6 +3675,7 @@ function finishResearch() {
   var tid = currentResearch;
   if (!tid) return;
   techDone[tid] = true;
+  delete researchProgressBy[tid];
   currentResearch = null; researchProgress = 0;
   if (tid === 'belt-2') beltSpeedMul = 2;
   if (tid === 'automation-2') { machineSpeedMul = 1.5; machinePowerMul = 0.8; }
@@ -3619,15 +3693,45 @@ function canHandCraft(rid) {
   for (var k in r.inp) if ((inventory[k] || 0) < r.inp[k]) return false;
   return true;
 }
+// **손 조립에는 시간이 든다.** 예전에는 클릭 한 번에 즉시 완성이었다 — 조립기가
+// 같은 것을 6.67초에 하나 만드는 동안 손으로는 초당 몇 개든 나왔고, 그러면
+// "자동화할 이유"가 게임에서 사라진다. 이 장르의 전제 자체가 무너지는 자리다.
+// 규약(Factorio 와 같다): 재료는 대기열에 넣는 즉시 빠지고, 완성품은 시간이 지나야
+// 나온다. 대기열은 하나씩 순서대로 처리하므로 손은 언제나 "조립기 1대"가 최대다.
+// 여러 대로 늘리려면 진짜 기계를 세워야 한다.
+var handQueue = [];              // [{ rid, left }] — [0] 이 지금 만드는 것
+var HAND_QUEUE_MAX = 100;
+var handCraftCount = 0;          // **완성** 개수 (대기열에 넣은 수가 아니다)
+
 function handCraft(rid) {
   if (!canHandCraft(rid)) { toast('재료가 부족하다', 'bad'); return false; }
+  if (handQueue.length >= HAND_QUEUE_MAX) { toast('조립 대기열이 가득 찼다', 'bad'); return false; }
   var r = RECIPES[rid];
   for (var k in r.inp) inventory[k] -= r.inp[k];
-  for (var o in r.out) inventory[o] = (inventory[o] || 0) + r.out[o];
-  handCraftCount++;
+  handQueue.push({ rid: rid, left: r.time });
   return true;
 }
-var handCraftCount = 0;
+// 취소하면 재료를 돌려준다 — 안 그러면 잘못 누른 클릭이 아이템 소각이 된다
+function handCancel(i) {
+  if (i < 0 || i >= handQueue.length) return false;
+  var job = handQueue.splice(i, 1)[0], r = RECIPES[job.rid];
+  for (var k in r.inp) inventory[k] = (inventory[k] || 0) + r.inp[k];
+  return true;
+}
+function stepHandCraft(dt) {
+  var guard = 0;
+  while (handQueue.length > 0 && dt > 1e-9 && guard++ < 2000) {
+    var job = handQueue[0];
+    var use = Math.min(dt, job.left);
+    job.left -= use; dt -= use;
+    if (job.left > 1e-9) break;
+    handQueue.shift();
+    var r = RECIPES[job.rid];
+    for (var o in r.out) inventory[o] = (inventory[o] || 0) + r.out[o];
+    handCraftCount++;
+    prodStats.byRecipe[job.rid] = (prodStats.byRecipe[job.rid] || 0) + 1;
+  }
+}
 
 // --- 토스트 ------------------------------------------------------------------
 function toast(msg, kind) {
@@ -4068,6 +4172,48 @@ function renderInv() {
   host.innerHTML = html.join('') || '<div class="irow"><span class="n">비어 있음</span></div>';
 }
 
+// 대기열은 매 프레임 다시 그린다 (진행 막대가 움직여야 하므로). 항목이 없으면
+// :empty 로 통째로 숨는다 — 빈 상자가 패널을 밀어 올리지 않게.
+var craftQueueSig = '';
+function renderCraftQueue() {
+  var host = document.getElementById('craftQueue');
+  if (!host) return;
+  if (handQueue.length === 0) {
+    if (craftQueueSig !== '') { host.innerHTML = ''; craftQueueSig = ''; }
+    return;
+  }
+  // 매 프레임 innerHTML 을 새로 짜면 클릭 바인딩까지 60번/s 다시 건다. 줄 구성이
+  // 그대로면 진행 막대 폭만 고친다 — 그래야 막대가 부드럽게 움직인다.
+  var sig = handQueue.length + '|' + handQueue[0].rid;
+  if (sig === craftQueueSig) {
+    var bar = host.querySelector('.qbar');
+    var rt = RECIPES[handQueue[0].rid].time;
+    if (bar) bar.style.width = Math.round((1 - handQueue[0].left / rt) * 100) + '%';
+    var lab = host.querySelector('.qrow .qx');
+    if (lab) lab.textContent = handQueue[0].left.toFixed(1) + 's';
+    return;
+  }
+  craftQueueSig = sig;
+  var html = [];
+  for (var i = 0; i < handQueue.length && i < 12; i++) {
+    var job = handQueue[i], r = RECIPES[job.rid];
+    var name = ITEMS[Object.keys(r.out)[0]].name;
+    var pct = i === 0 ? Math.round((1 - job.left / r.time) * 100) : 0;
+    html.push('<div class="qrow" data-i="' + i + '" title="클릭하면 취소하고 재료를 돌려받는다">' +
+      '<i class="qbar" style="width:' + pct + '%"></i>' +
+      '<span>' + name + '</span>' +
+      '<span class="qx">' + (i === 0 ? job.left.toFixed(1) + 's' : '대기') + '</span></div>');
+  }
+  if (handQueue.length > 12) html.push('<div class="qrow"><span>… 외 ' + (handQueue.length - 12) + '개</span></div>');
+  host.innerHTML = html.join('');
+  var rows = host.querySelectorAll('.qrow[data-i]');
+  for (var j = 0; j < rows.length; j++) {
+    rows[j].onclick = (function (i) {
+      return function () { if (handCancel(i)) { renderInv(); renderCraftList(); renderBuildList(); } };
+    })(parseInt(rows[j].getAttribute('data-i'), 10));
+  }
+}
+
 function renderCraftList() {
   var host = document.getElementById('craftList');
   if (!host) return;
@@ -4348,7 +4494,14 @@ function renderTech() {
     var done = !!techDone[tid], avail = techAvailable(tid);
     var cls = done ? 'done' : (avail ? '' : 'locked');
     var cost = Object.keys(T.cost).map(function (k) { return T.cost[k] + '× ' + ITEMS[k].name.replace(' 연구팩', ''); }).join(' + ');
-    var prog = (currentResearch === tid) ? ' — 진행 ' + Math.round(researchFrac() * 100) + '%' : '';
+    // 갈아탄 연구의 진행도도 보여준다. 안 보이면 "0으로 날아갔나" 싶어 못 갈아탄다 —
+    // 안전한데 안전해 보이지 않는 것은 안전하지 않은 것과 같다.
+    var prog = '';
+    if (currentResearch === tid) prog = ' — 진행 ' + Math.round(researchFrac() * 100) + '%';
+    else if (!done && (researchProgressBy[tid] || 0) > 0) {
+      prog = ' — <span class="dim">중단 ' +
+        Math.round((researchProgressBy[tid] / techCycles(tid)) * 100) + '% (이어서 진행됨)</span>';
+    }
     h.push('<div class="trow ' + cls + '"><div class="tn"><b>' + T.name + '</b>' + prog +
       '<div class="td">' + T.desc + ' <span class="lnk">해제: ' + T.unlock.join(', ') + '</span>' +
       (T.needs.length ? ' <span class="dim">· 선행: ' + T.needs.map(function (n) { return TECHS[n].name; }).join(', ') + '</span>' : '') +
@@ -4398,8 +4551,12 @@ function fillHelp() {
     '<p><b>참/거짓 판정은 0.5 이상이 참이다.</b> 0 초과가 아니다 — 0.4 는 거짓으로 읽힌다.',
     '사칙 <code>1÷4=0.25</code>, PID 출력 0.3 처럼 소수를 내는 노드를 참/거짓 자리에 바로 물리면',
     '여기 걸린다. <code>비교 &gt; 0</code> 을 한 단 끼우면 된다.</p>',
-    '<p><b>평가 순서는 노드의 화면상 위치가 정한다</b>(왼쪽 위부터). 만든 순서가 아니라 보이는 배치가',
-    '규칙이므로, 같은 그림의 회로는 언제나 같게 돈다. 순환에서 어느 배선이 1틱 지연이 될지도 이 순서가 정한다.</p>',
+    '<p><b>평가 순서는 배선이 정한다 — 입력이 언제나 먼저 돈다.</b> 만든 순서는 상관없고,',
+    '같은 그림의 회로는 언제나 같게 돈다. 한 회로 안에서는 <b>왼쪽 위 노드가 시작점</b>이 되고,',
+    '순환에서 어느 배선이 1틱 지연이 될지도 그 시작점이 정한다.</p>',
+    '<p><b>서로 이어지지 않은 두 회로 사이의 순서는 배치로 정해지지 않는다.</b>',
+    '그래서 두 회로가 <b>같은 기계</b>를 잡으면 어느 쪽이 이길지 위치로 예측하지 마라 —',
+    '그때는 위쪽에 <b class="bad">충돌</b> 경고가 뜬다. 순서에 기대는 대신 충돌을 없애는 것이 답이다.</p>',
     '<p><b>타이머·엣지 검출은 1틱(약 17ms)짜리 펄스</b>다. 편집기 값창은 0.14초마다 표본을 뜨므로',
     '그 순간 값은 거의 늘 0 으로 보인다. 그래서 값 옆에 <b>↑n</b> 으로 지금까지 올라간 횟수를 함께 적는다 —',
     '그 숫자가 늘고 있으면 정상 동작이다.</p>',
@@ -4793,7 +4950,8 @@ var TUTORIAL_STEPS = [
     why: '연구가 새 건물과 제어기 노드를 연다.',
     how: [
       '<b>적색 연구팩 = 구리판 1 + 톱니 1</b>',
-      '우측 <b>[손 조립]</b>에서 클릭하면 하나씩 바로 만들어진다',
+      '우측 <b>[손 조립]</b>에서 클릭하면 대기열에 하나 걸린다 — <b>손도 시간이 걸린다</b>',
+      '손은 한 번에 하나씩만 만든다. 여러 대로 늘리려면 조립기를 세워야 한다',
       '조립기로 자동화한다면 재료가 <b>조립기 안에</b> 있어야 한다 — 인서터로 넣거나 조립기를 클릭해 <b>[보유 자재 넣기]</b>',
       '<b>9 연구소</b>를 놓고 인서터로 연구팩을 넣는다',
       '<b>T</b>를 눌러 무엇을 연구할지 고른다'
@@ -4809,7 +4967,7 @@ var TUTORIAL_STEPS = [
       '<b>제어기 = 회로기판 5 + 철판 5</b>',
       '<b>회로기판 = 철판 1 + 구리선 3</b>',
       '<b>구리선 = 구리판 1</b> → 2개가 나온다',
-      '셋 다 우측 <b>[손 조립]</b>에서 클릭으로 만든다 (구리선을 먼저 여러 개)',
+      '셋 다 우측 <b>[손 조립]</b>에서 클릭으로 예약한다 (구리선을 먼저 여러 개)',
       '<b>0 제어기</b>를 놓고 <b>좌클릭</b>하면 노드 편집기가 열린다'
     ],
     need: '재료가 모자라면 배치할 때 무엇이 몇 개 필요한지, 어디서 얻는지 알려준다',
@@ -5457,6 +5615,10 @@ function buildNodeDom(inner, g, n) {
       n.x = Math.max(0, ox + (e2.clientX - sx) / gpan.z);
       n.y = Math.max(0, oy + (e2.clientY - sy) / gpan.z);
       el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+      // **좌표가 곧 평가 순서다.** dirty 를 안 세우면 옮겨도 순서가 그대로라,
+      // 도움말이 약속한 "보이는 배치가 규칙"이 거짓이 된다 — 되먹임 점선도
+      // 옛 순서 그대로 남는다. 이 파일에서 dirty 를 쓰는 곳은 여기뿐이었다(읽기만).
+      g.dirty = true;
       updateLinks();
     }
     function up() { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); }
@@ -5474,6 +5636,7 @@ function buildNodeDom(inner, g, n) {
       n.x = Math.max(0, ox + (t.clientX - sx) / gpan.z);
       n.y = Math.max(0, oy + (t.clientY - sy) / gpan.z);
       el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+      g.dirty = true;                 // 마우스 경로와 같은 이유 (좌표 = 평가 순서)
       updateLinks();
     }
     function tup() {
@@ -5813,8 +5976,9 @@ function newGame(seed) {
   worldSeed = (seed === undefined || seed === null) ? worldSeed : (seed >>> 0);
   entities = {}; entOrder = []; nextEntId = 1;
   inventory = {}; techDone = {}; currentResearch = null; researchProgress = 0;
+  researchProgressBy = {};
   beltSpeedMul = 1; machineSpeedMul = 1; machinePowerMul = 1; powerCheatOn = false;
-  gameTime = 0; accumulator = 0; handCraftCount = 0;
+  gameTime = 0; accumulator = 0; handCraftCount = 0; handQueue.length = 0;
   enemies.length = 0; corpses.length = 0; turretFx.length = 0;
   resetEvolution();          // 진화도는 증분 누적이라 기준점까지 같이 되돌려야 한다
   waveStats.spawned = 0; waveStats.killed = 0; waveStats.buildingsLost = 0;
@@ -5847,7 +6011,8 @@ function newGame(seed) {
 
 function refreshAllUI() {
   if (typeof document === 'undefined' || !document.getElementById('buildList')) return;
-  renderBuildList(); renderInv(); renderCraftList(); renderTech(); renderTop(); renderTutorial();
+  renderBuildList(); renderInv(); renderCraftList(); renderCraftQueue();
+  renderTech(); renderTop(); renderTutorial();
 }
 
 // --- 한 틱 -------------------------------------------------------------------
@@ -5869,6 +6034,7 @@ function tick(dt) {
   stepLogic(dt);
   stepPower(dt);
   stepEntities(dt);
+  stepHandCraft(dt);      // 손 조립도 시간이 든다 — 기계와 같은 틱에 진행한다
   stepBelts(dt);
   stepPollution(dt);
   absorbByTrees(dt);
@@ -5908,6 +6074,9 @@ function frame(now) {
     guard('advance', function () { advance(elapsed * gameSpeed); });
   }
   guard('render', render);
+  // 손 조립 대기열은 매 프레임 — 0.2초 주기로 그리면 0.5초짜리 레시피의 진행
+  // 막대가 두 칸만 움직여 "멈춘 것"처럼 보인다. 줄이 그대로면 폭만 고치므로 싸다.
+  guard('cqueue', renderCraftQueue);
 
   uiTimer += elapsed;
   if (uiTimer > 0.2) {
@@ -5941,6 +6110,7 @@ function serializeEntity(e) {
             pe: e.playerEnabled, pf: e.playerFilter, inv: e.inv, out: e.out,
             rec: e.recipe, prog: e.progress };
   if (e.type === 'generator') o.fuel = e.fuel;
+  if (e.type === 'furnace' && e.lastRecipe) o.lrec = e.lastRecipe;   // 굽던 것의 기억
   if (e.type === 'turret') o.ammo = e.ammo;
   if (e.type === 'splitter') o.prio = e.outPrio;
   if (e.type === 'lab') o.res = e.researching;
@@ -5969,6 +6139,10 @@ function saveGame() {
   var data = {
     v: VERSION, seed: worldSeed, t: gameTime,
     inv: inventory, tech: techDone, res: currentResearch, resP: researchProgress,
+    resBy: researchProgressBy,      // 갈아탄 연구의 진행도 — 없으면 불러올 때 도로 0이 된다
+    // 손 조립 대기열도 저장한다. 재료는 예약할 때 이미 빠졌으므로, 안 담으면
+    // 저장 한 번이 만들던 것을 통째로 태운다 (되돌릴 방법이 없다).
+    hand: handQueue.map(function (j) { return [j.rid, j.left]; }),
     ore: b64enc(new Uint8Array(world.oreAmt.buffer.slice(0))),
     oreT: b64enc(world.ore),
     tree: b64enc(world.tree),
@@ -6012,6 +6186,14 @@ function loadGame(raw) {
     gameTime = data.t || 0;
     inventory = data.inv || {}; techDone = data.tech || {};
     currentResearch = data.res || null; researchProgress = data.resP || 0;
+    researchProgressBy = data.resBy || {};   // 예전 저장본엔 없다 — 빈 채로 두면 그만이다
+    handQueue.length = 0;
+    if (Array.isArray(data.hand)) {
+      for (var hj = 0; hj < data.hand.length; hj++) {
+        var hrow = data.hand[hj];
+        if (RECIPES[hrow[0]]) handQueue.push({ rid: hrow[0], left: +hrow[1] || 0 });
+      }
+    }
     if (techDone['belt-2']) beltSpeedMul = 2;
     if (techDone['automation-2']) { machineSpeedMul = 1.5; machinePowerMul = 0.8; }
 
@@ -6047,6 +6229,7 @@ function loadGame(raw) {
       e.hp = o.hp; e.playerEnabled = o.pe !== false; e.playerFilter = o.pf || null;
       e.filter = e.playerFilter;
       e.inv = o.inv || {}; e.out = o.out || {}; e.recipe = o.rec || null; e.progress = o.prog || 0;
+      if (o.lrec) e.lastRecipe = o.lrec;
       if (o.fuel !== undefined) e.fuel = o.fuel;
       if (o.ammo !== undefined) e.ammo = o.ammo;
       if (o.prio !== undefined) e.outPrio = o.prio;
@@ -6171,11 +6354,22 @@ window.__GAME = {
     for (var i = 0; i < ITEM_IDS.length; i++) inventory[ITEM_IDS[i]] = n;
     return invTotal(inventory);
   },
+  // **place 는 free 다** — 비용도 기술도 광맥도 안 본다. 계통 하나만 떼어 재는
+  // 시험에는 그게 맞지만, 그걸로 "자력 완주"를 주장하면 거짓이 된다: 광맥 없는
+  // 땅에 채광기를 세워 놓고 아무것도 안 캐는 것을 눈치채지 못했다(실측).
   place: function (type, tx, ty, dir) {
     var e = placeEntity(type, tx, ty, dir === undefined ? 1 : dir, true);
     return e ? e.id : null;
   },
-  remove: function (id) { return removeEntity(id, false); },
+  // build 는 **플레이어와 같은 길**로 짓는다 — 재료를 내고, 기술을 요구하고,
+  // 채광기는 광맥 위에만 선다. 완주 주행은 이쪽만 써야 한다.
+  build: function (type, tx, ty, dir) {
+    var e = placeEntity(type, tx, ty, dir === undefined ? 1 : dir, false);
+    return e ? e.id : null;
+  },
+  // refund 를 생략하면 환급 없이 지운다(기존 호출부 그대로). 환급 경로는 플레이어의
+  // 철거 버튼이 쓰는 것과 같은 코드라 시험으로 잴 수 있어야 한다.
+  remove: function (id, refund) { return removeEntity(id, refund === true); },
   ent: function (id) {
     var e = entities[id];
     if (!e) return null;
@@ -6231,6 +6425,11 @@ window.__GAME = {
   nodeAvailable: function (kind) { return nodeAvailable(kind); },
   techIds: function () { return TECH_IDS.slice(); },
   buildingTypes: function () { return Object.keys(BUILDINGS); },
+  buildingInfo: function (t) {
+    var B = BUILDINGS[t];
+    if (!B) return null;
+    return { cost: B.cost, tech: B.tech || null, w: B.w, h: B.h, power: B.power || 0 };
+  },
   recipeIds: function () { return Object.keys(RECIPES); },
   recipeInfo: function (rid) {
     var r = RECIPES[rid]; if (!r) return null;
@@ -6271,6 +6470,16 @@ window.__GAME = {
     var e = entities[id]; if (!e || !e.cells) return false;
     for (var i = 0; i < e.cells.length; i++) { e.cells[i].lanes[0].length = 0; e.cells[i].lanes[1].length = 0; }
     return true;
+  },
+  // 이 제어기 그래프에 실제로 놓인 노드 종류 (완주 판정이 '다 써 봤는가'를 본다)
+  gKinds: function (ctrlId) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return null;
+    var seen = {}, r = [];
+    for (var i = 0; i < e.graph.nodes.length; i++) {
+      var k = e.graph.nodes[i].kind;
+      if (!seen[k]) { seen[k] = 1; r.push(k); }
+    }
+    return r;
   },
   gFires: function (ctrlId, nid, port) {
     var e = entities[ctrlId]; if (!e || !e.graph) return null;
@@ -6321,6 +6530,7 @@ window.__GAME = {
     return false;
   },
   setResearch: function (tid) { return startResearch(tid); },
+  addResearch: function (n) { addResearchProgress(n); return researchProgress; },
 
   spawnEnemyAt: function (x, y, tier) {
     var spec = ENEMY_TIERS[tier || 0];
@@ -6651,6 +6861,7 @@ window.__GAME = {
     graphRemoveNode(e.graph, nid); return true;
   },
   handCraft: function (rid) { return handCraft(rid); },
+  handCancel: function (i) { return handCancel(i); },
 
   save: function () { return saveGame(); },
   load: function (raw) { return loadGame(raw); },
@@ -6676,6 +6887,8 @@ window.__GAME = {
                   frac: researchFrac(), done: Object.keys(techDone) },
       beltDelivered: beltStats.delivered,
       handCrafts: handCraftCount,
+      handQueue: handQueue.length,
+      handQueueHead: handQueue.length ? { rid: handQueue[0].rid, left: handQueue[0].left } : null,
       alarms: alarms.slice(), displays: displays.slice(),
       mult: { belt: beltSpeedMul, machine: machineSpeedMul, power: machinePowerMul },
       rngDraws: RNG.draws()

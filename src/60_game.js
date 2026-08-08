@@ -19,8 +19,9 @@ function newGame(seed) {
   worldSeed = (seed === undefined || seed === null) ? worldSeed : (seed >>> 0);
   entities = {}; entOrder = []; nextEntId = 1;
   inventory = {}; techDone = {}; currentResearch = null; researchProgress = 0;
+  researchProgressBy = {};
   beltSpeedMul = 1; machineSpeedMul = 1; machinePowerMul = 1; powerCheatOn = false;
-  gameTime = 0; accumulator = 0; handCraftCount = 0;
+  gameTime = 0; accumulator = 0; handCraftCount = 0; handQueue.length = 0;
   enemies.length = 0; corpses.length = 0; turretFx.length = 0;
   resetEvolution();          // 진화도는 증분 누적이라 기준점까지 같이 되돌려야 한다
   waveStats.spawned = 0; waveStats.killed = 0; waveStats.buildingsLost = 0;
@@ -53,7 +54,8 @@ function newGame(seed) {
 
 function refreshAllUI() {
   if (typeof document === 'undefined' || !document.getElementById('buildList')) return;
-  renderBuildList(); renderInv(); renderCraftList(); renderTech(); renderTop(); renderTutorial();
+  renderBuildList(); renderInv(); renderCraftList(); renderCraftQueue();
+  renderTech(); renderTop(); renderTutorial();
 }
 
 // --- 한 틱 -------------------------------------------------------------------
@@ -75,6 +77,7 @@ function tick(dt) {
   stepLogic(dt);
   stepPower(dt);
   stepEntities(dt);
+  stepHandCraft(dt);      // 손 조립도 시간이 든다 — 기계와 같은 틱에 진행한다
   stepBelts(dt);
   stepPollution(dt);
   absorbByTrees(dt);
@@ -114,6 +117,9 @@ function frame(now) {
     guard('advance', function () { advance(elapsed * gameSpeed); });
   }
   guard('render', render);
+  // 손 조립 대기열은 매 프레임 — 0.2초 주기로 그리면 0.5초짜리 레시피의 진행
+  // 막대가 두 칸만 움직여 "멈춘 것"처럼 보인다. 줄이 그대로면 폭만 고치므로 싸다.
+  guard('cqueue', renderCraftQueue);
 
   uiTimer += elapsed;
   if (uiTimer > 0.2) {
@@ -147,6 +153,7 @@ function serializeEntity(e) {
             pe: e.playerEnabled, pf: e.playerFilter, inv: e.inv, out: e.out,
             rec: e.recipe, prog: e.progress };
   if (e.type === 'generator') o.fuel = e.fuel;
+  if (e.type === 'furnace' && e.lastRecipe) o.lrec = e.lastRecipe;   // 굽던 것의 기억
   if (e.type === 'turret') o.ammo = e.ammo;
   if (e.type === 'splitter') o.prio = e.outPrio;
   if (e.type === 'lab') o.res = e.researching;
@@ -175,6 +182,10 @@ function saveGame() {
   var data = {
     v: VERSION, seed: worldSeed, t: gameTime,
     inv: inventory, tech: techDone, res: currentResearch, resP: researchProgress,
+    resBy: researchProgressBy,      // 갈아탄 연구의 진행도 — 없으면 불러올 때 도로 0이 된다
+    // 손 조립 대기열도 저장한다. 재료는 예약할 때 이미 빠졌으므로, 안 담으면
+    // 저장 한 번이 만들던 것을 통째로 태운다 (되돌릴 방법이 없다).
+    hand: handQueue.map(function (j) { return [j.rid, j.left]; }),
     ore: b64enc(new Uint8Array(world.oreAmt.buffer.slice(0))),
     oreT: b64enc(world.ore),
     tree: b64enc(world.tree),
@@ -218,6 +229,14 @@ function loadGame(raw) {
     gameTime = data.t || 0;
     inventory = data.inv || {}; techDone = data.tech || {};
     currentResearch = data.res || null; researchProgress = data.resP || 0;
+    researchProgressBy = data.resBy || {};   // 예전 저장본엔 없다 — 빈 채로 두면 그만이다
+    handQueue.length = 0;
+    if (Array.isArray(data.hand)) {
+      for (var hj = 0; hj < data.hand.length; hj++) {
+        var hrow = data.hand[hj];
+        if (RECIPES[hrow[0]]) handQueue.push({ rid: hrow[0], left: +hrow[1] || 0 });
+      }
+    }
     if (techDone['belt-2']) beltSpeedMul = 2;
     if (techDone['automation-2']) { machineSpeedMul = 1.5; machinePowerMul = 0.8; }
 
@@ -253,6 +272,7 @@ function loadGame(raw) {
       e.hp = o.hp; e.playerEnabled = o.pe !== false; e.playerFilter = o.pf || null;
       e.filter = e.playerFilter;
       e.inv = o.inv || {}; e.out = o.out || {}; e.recipe = o.rec || null; e.progress = o.prog || 0;
+      if (o.lrec) e.lastRecipe = o.lrec;
       if (o.fuel !== undefined) e.fuel = o.fuel;
       if (o.ammo !== undefined) e.ammo = o.ammo;
       if (o.prio !== undefined) e.outPrio = o.prio;
@@ -377,11 +397,22 @@ window.__GAME = {
     for (var i = 0; i < ITEM_IDS.length; i++) inventory[ITEM_IDS[i]] = n;
     return invTotal(inventory);
   },
+  // **place 는 free 다** — 비용도 기술도 광맥도 안 본다. 계통 하나만 떼어 재는
+  // 시험에는 그게 맞지만, 그걸로 "자력 완주"를 주장하면 거짓이 된다: 광맥 없는
+  // 땅에 채광기를 세워 놓고 아무것도 안 캐는 것을 눈치채지 못했다(실측).
   place: function (type, tx, ty, dir) {
     var e = placeEntity(type, tx, ty, dir === undefined ? 1 : dir, true);
     return e ? e.id : null;
   },
-  remove: function (id) { return removeEntity(id, false); },
+  // build 는 **플레이어와 같은 길**로 짓는다 — 재료를 내고, 기술을 요구하고,
+  // 채광기는 광맥 위에만 선다. 완주 주행은 이쪽만 써야 한다.
+  build: function (type, tx, ty, dir) {
+    var e = placeEntity(type, tx, ty, dir === undefined ? 1 : dir, false);
+    return e ? e.id : null;
+  },
+  // refund 를 생략하면 환급 없이 지운다(기존 호출부 그대로). 환급 경로는 플레이어의
+  // 철거 버튼이 쓰는 것과 같은 코드라 시험으로 잴 수 있어야 한다.
+  remove: function (id, refund) { return removeEntity(id, refund === true); },
   ent: function (id) {
     var e = entities[id];
     if (!e) return null;
@@ -437,6 +468,11 @@ window.__GAME = {
   nodeAvailable: function (kind) { return nodeAvailable(kind); },
   techIds: function () { return TECH_IDS.slice(); },
   buildingTypes: function () { return Object.keys(BUILDINGS); },
+  buildingInfo: function (t) {
+    var B = BUILDINGS[t];
+    if (!B) return null;
+    return { cost: B.cost, tech: B.tech || null, w: B.w, h: B.h, power: B.power || 0 };
+  },
   recipeIds: function () { return Object.keys(RECIPES); },
   recipeInfo: function (rid) {
     var r = RECIPES[rid]; if (!r) return null;
@@ -477,6 +513,16 @@ window.__GAME = {
     var e = entities[id]; if (!e || !e.cells) return false;
     for (var i = 0; i < e.cells.length; i++) { e.cells[i].lanes[0].length = 0; e.cells[i].lanes[1].length = 0; }
     return true;
+  },
+  // 이 제어기 그래프에 실제로 놓인 노드 종류 (완주 판정이 '다 써 봤는가'를 본다)
+  gKinds: function (ctrlId) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return null;
+    var seen = {}, r = [];
+    for (var i = 0; i < e.graph.nodes.length; i++) {
+      var k = e.graph.nodes[i].kind;
+      if (!seen[k]) { seen[k] = 1; r.push(k); }
+    }
+    return r;
   },
   gFires: function (ctrlId, nid, port) {
     var e = entities[ctrlId]; if (!e || !e.graph) return null;
@@ -527,6 +573,7 @@ window.__GAME = {
     return false;
   },
   setResearch: function (tid) { return startResearch(tid); },
+  addResearch: function (n) { addResearchProgress(n); return researchProgress; },
 
   spawnEnemyAt: function (x, y, tier) {
     var spec = ENEMY_TIERS[tier || 0];
@@ -857,6 +904,7 @@ window.__GAME = {
     graphRemoveNode(e.graph, nid); return true;
   },
   handCraft: function (rid) { return handCraft(rid); },
+  handCancel: function (i) { return handCancel(i); },
 
   save: function () { return saveGame(); },
   load: function (raw) { return loadGame(raw); },
@@ -882,6 +930,8 @@ window.__GAME = {
                   frac: researchFrac(), done: Object.keys(techDone) },
       beltDelivered: beltStats.delivered,
       handCrafts: handCraftCount,
+      handQueue: handQueue.length,
+      handQueueHead: handQueue.length ? { rid: handQueue[0].rid, left: handQueue[0].left } : null,
       alarms: alarms.slice(), displays: displays.slice(),
       mult: { belt: beltSpeedMul, machine: machineSpeedMul, power: machinePowerMul },
       rngDraws: RNG.draws()

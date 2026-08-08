@@ -377,6 +377,12 @@
           for (var k in info.inp) G.setInv(k, 999);
           var before = G.state().inventory[rid] || 0;
           G.handCraft(rid);
+          // 손 조립은 **시간이 든다**. 넣자마자 나오면 그건 고장이다 — 즉시 완성이면
+          // 조립기를 세울 이유가 없어져 이 장르의 전제가 무너진다. 음성 대조군으로
+          // "레시피 시간의 절반이 지난 시점엔 아직 안 나왔다"를 함께 잰다.
+          G.run(info.time * 0.5);
+          if ((G.state().inventory[rid] || 0) > before) craftFail.push(rid + '(손조립이 즉시 완성됨)');
+          G.run(info.time * 0.6 + 0.2);
           if ((G.state().inventory[rid] || 0) <= before) craftFail.push(rid + '(손조립)');
         } else if (info.cat === 'smelt') {
           var fz = G.place('furnace', 44 + ri * 3, 70, 0);
@@ -387,6 +393,37 @@
           if ((G.ent(fz).out[rid] || 0) < 1) craftFail.push(rid + '(제련)');
         }
       }
+      // 만들 수 있는 것에는 **쓸 데가 있어야 한다.** 강철은 레시피와 아이템만 있고
+      // 소비처가 한 곳도 없었다 — 적팩 50개짜리 연구가 "철판을 버리는 기능"을 열었다.
+      // 최종재(연구팩)와 원광은 예외다. 나머지는 어딘가의 입력이어야 한다.
+      // 면제는 **소비처를 밝힌 것만** 넣는다. "쓰는 데가 있겠지" 로 비우면
+      // 이 게이트는 아무것도 못 잡는다 (강철이 정확히 그렇게 빠져 있었다).
+      var SINK_EXEMPT = {
+        'sci-red': '연구소가 먹는다', 'sci-green': '연구소가 먹는다',
+        'coal': '발전기가 태운다', 'ammo': '터렛이 쏜다',
+        'iron-ore': '용광로 입력', 'copper-ore': '용광로 입력', 'stone': '용광로 입력'
+      };
+      var consumed = {};
+      var allRec = G.recipeIds();
+      for (var cr = 0; cr < allRec.length; cr++) {
+        var inpMap = G.recipeInfo(allRec[cr]).inp;
+        for (var ik in inpMap) consumed[ik] = 1;
+      }
+      var bts = G.buildingTypes();
+      for (var bt = 0; bt < bts.length; bt++) {
+        var bcost = G.buildingInfo(bts[bt]).cost;
+        for (var bk in bcost) consumed[bk] = 1;
+      }
+      var deadEnds = [];
+      for (var pr = 0; pr < allRec.length; pr++) {
+        var outMap = G.recipeInfo(allRec[pr]).out;
+        for (var ok2 in outMap) if (!consumed[ok2] && !SINK_EXEMPT[ok2]) deadEnds.push(ok2);
+      }
+      chk('sweep.noDeadEndItems', deadEnds.length === 0,
+        '만들 수 있는데 아무 데도 안 쓰이는 품목 ' + deadEnds.length + '종' +
+        (deadEnds.length ? ': ' + deadEnds.join(', ') + ' — 만들 이유가 없는 것을 연구로 열어 주고 있다'
+                         : ' (연구팩·원광은 제외)'));
+
       chk('sweep.everyRecipeProducible', craftFail.length === 0,
         '레시피 ' + recipes.length + '종 → 실패 ' + craftFail.length +
         (craftFail.length ? ': ' + craftFail.join(', ') : ''));

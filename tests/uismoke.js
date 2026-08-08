@@ -285,7 +285,8 @@
       }
       var mapBefore = keyMap();
       var lockedBefore = !!document.querySelector('#buildList .bitem[data-b="splitter"].locked');
-      G.research('logistics'); G.research('military');   // 분배기·터렛·벽이 열린다
+      // 분배기는 강철 연구가 연다(강철에 소비처를 주려고 옮겼다). 터렛·벽은 군수.
+      G.research('logistics'); G.research('steel'); G.research('military');
       G.ui.refresh();
       var mapAfter = keyMap();
       var same = JSON.stringify(mapBefore) === JSON.stringify(mapAfter);
@@ -588,6 +589,40 @@
         G.gInfo(edC).cycles >= 1 && dashed >= 1,
         '되먹임 배선을 만든 직후 → 컴파일러가 센 되먹임 ' + G.gInfo(edC).cycles +
         '개 · 화면의 점선 ' + dashed + '개 (0이면 한 편집 뒤처진 것)');
+
+      // (b2) **노드를 끌면 평가 순서가 다시 계산돼야 한다.**
+      // 좌표가 곧 평가 순서인데(graphCompile), 끌기 핸들러가 graph.dirty 를 안 세워서
+      // 옮겨도 옛 순서 그대로 돌았다. 도움말이 "보이는 배치가 규칙"이라고 약속한
+      // 바로 그것이 거짓이었다. 실제 마우스 경로로 끌어서 잰다.
+      var dragC = G.place('controller', 62, 62, 0);
+      G.ui.openLogic(dragC);
+      var dA = G.gAdd(dragC, 'math', 40, 40);
+      var dB = G.gAdd(dragC, 'math', 300, 40);
+      var dC = G.gAdd(dragC, 'math', 560, 40);
+      G.gLink(dragC, dA, 0, dB, 0); G.gLink(dragC, dB, 0, dC, 0); G.gLink(dragC, dC, 0, dA, 1);
+      G.ui.renderGraph();
+      G.run(0.05);
+      var ordBefore = G.gInfo(dragC).order.join(',');
+      // dC 의 머리를 잡아 좌상단으로 끈다 (실제 mousedown → mousemove → mouseup)
+      var nodeEl = document.querySelector('#graphInner .node[data-nid="' + dC + '"]');
+      var headEl = nodeEl ? nodeEl.querySelector('.nhead') || nodeEl.firstElementChild : null;
+      var dragOk = false;
+      if (headEl) {
+        var hr = headEl.getBoundingClientRect();
+        headEl.dispatchEvent(new MouseEvent('mousedown',
+          { clientX: hr.left + 5, clientY: hr.top + 5, bubbles: true, cancelable: true }));
+        window.dispatchEvent(new MouseEvent('mousemove',
+          { clientX: hr.left - 600, clientY: hr.top - 20, bubbles: true, cancelable: true }));
+        window.dispatchEvent(new MouseEvent('mouseup',
+          { clientX: hr.left - 600, clientY: hr.top - 20, bubbles: true, cancelable: true }));
+        dragOk = true;
+      }
+      G.run(0.05);
+      var ordAfter = G.gInfo(dragC).order.join(',');
+      chk('ui.dragRecompilesOrder',
+        dragOk && ordBefore !== ordAfter,
+        '노드를 좌상단으로 끌기 → 평가순서 [' + ordBefore + '] → [' + ordAfter +
+        '] (같으면 끌기가 재컴파일을 안 걸어 배치가 규칙이라는 말이 거짓이 된다)');
 
       // (c) **다른 제어기를 열면 화면이 처음으로 돌아가야 한다.**
       //     예전에는 이전 위치가 남아 노드가 있는데도 빈 화면만 보였다.

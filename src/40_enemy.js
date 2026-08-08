@@ -217,6 +217,9 @@ function stepTurrets(dt) {
     // 가장 가까운 적
     var best = null, bd = SPEC.turretRange;
     for (var i = 0; i < enemies.length; i++) {
+      // 이미 이 틱에 다른 터렛이 죽인 적은 건너뛴다. 시체는 다음 틱에 치워지므로
+      // 이 검사가 없으면 터렛 14기가 15hp 소형 하나를 함께 쏴 13발을 버린다.
+      if (enemies[i].hp <= 0) continue;
       var d = dist(enemies[i].x, enemies[i].y, cx, cy);
       if (d < bd) { bd = d; best = enemies[i]; }
     }
@@ -239,8 +242,7 @@ function stepTurrets(dt) {
     while (e.shotT >= 0.1 && e.ammo > 0) { e.shotT -= 0.1; e.ammo--; shots++; }
     if (shots > 0) {
       victim.hp -= shots * 5;
-      turretFx.push({ x1: cx, y1: cy, x2: victim.x !== undefined ? victim.x : victim.x, y2: victim.y, t: 0.06 });
-      if (victim.hp <= 0 && bestNest === victim) victim.hp = 0;
+      turretFx.push({ x1: cx, y1: cy, x2: victim.x, y2: victim.y, t: 0.06 });
     }
     e.target = victim;
   });

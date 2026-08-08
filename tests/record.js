@@ -18,7 +18,9 @@ const OUTDIR = process.argv[4] || path.join(__dirname, '..', 'dist', 'video');
 
 const ROOT = path.join(__dirname, '..');
 const DIST = path.join(ROOT, 'dist', 'Logic-Foundry.html');
-const DRV = path.join(ROOT, 'tests', 'play.js');
+// 어떤 드라이버를 녹화할지 갈아끼운다 — 소크(play.js) 와 완주(clear.js) 를 같은
+// 러너로 남기려고. 판정은 여전히 #testout 이 하고, 여기는 그림만 만든다.
+const DRV = path.join(ROOT, 'tests', process.env.LF_REC_DRIVER || 'play.js');
 
 (async () => {
   let pw;
@@ -51,7 +53,9 @@ const DRV = path.join(ROOT, 'tests', 'play.js');
   page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
 
   const t0 = Date.now();
-  await page.goto('file:///' + file.replace(/\\/g, '/') + '?speed=' + SPEED + '&mins=' + MINS,
+  // cine=1 — 전투가 붙으면 1배속으로 떨어뜨려 사람이 볼 수 있게 한다. 측정 주행에는
+  // 절대 켜지 않는다 (전투가 상시가 되면 실시간으로 기어 타임아웃에 죽는다).
+  await page.goto('file:///' + file.replace(/\\/g, '/') + '?speed=' + SPEED + '&mins=' + MINS + '&cine=1',
                   { waitUntil: 'load', timeout: 60000 });
   console.error('녹화 시작 — 배속 ' + SPEED + 'x, 게임 ' + MINS + '분');
 

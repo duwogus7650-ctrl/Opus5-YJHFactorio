@@ -6,6 +6,11 @@ var inventory = {};
 var techDone = {};
 var currentResearch = null;
 var researchProgress = 0;
+// **연구를 갈아타도 먹인 연구팩은 남는다.** 예전에는 갈아타는 순간 진행이 0 이 됐다 —
+// 49/50 까지 간 연구를 놔두고 다른 걸 누르면 적팩 49 + 녹팩 49 가 경고 한 줄 없이
+// 사라졌다. 클릭 한 번에 되돌릴 수 없는 손실이 나는 자리는 게임에 있으면 안 된다.
+// 연구별로 따로 세어 두면 갈아탔다 돌아와도 이어서 한다.
+var researchProgressBy = {};
 
 function researchFrac() {
   if (!currentResearch) return 0;
@@ -27,9 +32,12 @@ function techAvailable(tid) {
 }
 function startResearch(tid) {
   if (!techAvailable(tid)) return false;
-  currentResearch = tid; researchProgress = 0;
+  if (currentResearch) researchProgressBy[currentResearch] = researchProgress;   // 하던 것 보관
+  currentResearch = tid;
+  researchProgress = researchProgressBy[tid] || 0;                              // 하던 데서 이어간다
   markPowerDirty();
-  toast('연구 시작: ' + TECHS[tid].name, 'good');
+  toast('연구 시작: ' + TECHS[tid].name +
+        (researchProgress > 0 ? ' (' + Math.round(researchProgress) + '개까지 이어서)' : ''), 'good');
   renderTech();
   return true;
 }
@@ -37,6 +45,7 @@ function finishResearch() {
   var tid = currentResearch;
   if (!tid) return;
   techDone[tid] = true;
+  delete researchProgressBy[tid];
   currentResearch = null; researchProgress = 0;
   if (tid === 'belt-2') beltSpeedMul = 2;
   if (tid === 'automation-2') { machineSpeedMul = 1.5; machinePowerMul = 0.8; }
@@ -54,15 +63,45 @@ function canHandCraft(rid) {
   for (var k in r.inp) if ((inventory[k] || 0) < r.inp[k]) return false;
   return true;
 }
+// **손 조립에는 시간이 든다.** 예전에는 클릭 한 번에 즉시 완성이었다 — 조립기가
+// 같은 것을 6.67초에 하나 만드는 동안 손으로는 초당 몇 개든 나왔고, 그러면
+// "자동화할 이유"가 게임에서 사라진다. 이 장르의 전제 자체가 무너지는 자리다.
+// 규약(Factorio 와 같다): 재료는 대기열에 넣는 즉시 빠지고, 완성품은 시간이 지나야
+// 나온다. 대기열은 하나씩 순서대로 처리하므로 손은 언제나 "조립기 1대"가 최대다.
+// 여러 대로 늘리려면 진짜 기계를 세워야 한다.
+var handQueue = [];              // [{ rid, left }] — [0] 이 지금 만드는 것
+var HAND_QUEUE_MAX = 100;
+var handCraftCount = 0;          // **완성** 개수 (대기열에 넣은 수가 아니다)
+
 function handCraft(rid) {
   if (!canHandCraft(rid)) { toast('재료가 부족하다', 'bad'); return false; }
+  if (handQueue.length >= HAND_QUEUE_MAX) { toast('조립 대기열이 가득 찼다', 'bad'); return false; }
   var r = RECIPES[rid];
   for (var k in r.inp) inventory[k] -= r.inp[k];
-  for (var o in r.out) inventory[o] = (inventory[o] || 0) + r.out[o];
-  handCraftCount++;
+  handQueue.push({ rid: rid, left: r.time });
   return true;
 }
-var handCraftCount = 0;
+// 취소하면 재료를 돌려준다 — 안 그러면 잘못 누른 클릭이 아이템 소각이 된다
+function handCancel(i) {
+  if (i < 0 || i >= handQueue.length) return false;
+  var job = handQueue.splice(i, 1)[0], r = RECIPES[job.rid];
+  for (var k in r.inp) inventory[k] = (inventory[k] || 0) + r.inp[k];
+  return true;
+}
+function stepHandCraft(dt) {
+  var guard = 0;
+  while (handQueue.length > 0 && dt > 1e-9 && guard++ < 2000) {
+    var job = handQueue[0];
+    var use = Math.min(dt, job.left);
+    job.left -= use; dt -= use;
+    if (job.left > 1e-9) break;
+    handQueue.shift();
+    var r = RECIPES[job.rid];
+    for (var o in r.out) inventory[o] = (inventory[o] || 0) + r.out[o];
+    handCraftCount++;
+    prodStats.byRecipe[job.rid] = (prodStats.byRecipe[job.rid] || 0) + 1;
+  }
+}
 
 // --- 토스트 ------------------------------------------------------------------
 function toast(msg, kind) {
@@ -503,6 +542,48 @@ function renderInv() {
   host.innerHTML = html.join('') || '<div class="irow"><span class="n">비어 있음</span></div>';
 }
 
+// 대기열은 매 프레임 다시 그린다 (진행 막대가 움직여야 하므로). 항목이 없으면
+// :empty 로 통째로 숨는다 — 빈 상자가 패널을 밀어 올리지 않게.
+var craftQueueSig = '';
+function renderCraftQueue() {
+  var host = document.getElementById('craftQueue');
+  if (!host) return;
+  if (handQueue.length === 0) {
+    if (craftQueueSig !== '') { host.innerHTML = ''; craftQueueSig = ''; }
+    return;
+  }
+  // 매 프레임 innerHTML 을 새로 짜면 클릭 바인딩까지 60번/s 다시 건다. 줄 구성이
+  // 그대로면 진행 막대 폭만 고친다 — 그래야 막대가 부드럽게 움직인다.
+  var sig = handQueue.length + '|' + handQueue[0].rid;
+  if (sig === craftQueueSig) {
+    var bar = host.querySelector('.qbar');
+    var rt = RECIPES[handQueue[0].rid].time;
+    if (bar) bar.style.width = Math.round((1 - handQueue[0].left / rt) * 100) + '%';
+    var lab = host.querySelector('.qrow .qx');
+    if (lab) lab.textContent = handQueue[0].left.toFixed(1) + 's';
+    return;
+  }
+  craftQueueSig = sig;
+  var html = [];
+  for (var i = 0; i < handQueue.length && i < 12; i++) {
+    var job = handQueue[i], r = RECIPES[job.rid];
+    var name = ITEMS[Object.keys(r.out)[0]].name;
+    var pct = i === 0 ? Math.round((1 - job.left / r.time) * 100) : 0;
+    html.push('<div class="qrow" data-i="' + i + '" title="클릭하면 취소하고 재료를 돌려받는다">' +
+      '<i class="qbar" style="width:' + pct + '%"></i>' +
+      '<span>' + name + '</span>' +
+      '<span class="qx">' + (i === 0 ? job.left.toFixed(1) + 's' : '대기') + '</span></div>');
+  }
+  if (handQueue.length > 12) html.push('<div class="qrow"><span>… 외 ' + (handQueue.length - 12) + '개</span></div>');
+  host.innerHTML = html.join('');
+  var rows = host.querySelectorAll('.qrow[data-i]');
+  for (var j = 0; j < rows.length; j++) {
+    rows[j].onclick = (function (i) {
+      return function () { if (handCancel(i)) { renderInv(); renderCraftList(); renderBuildList(); } };
+    })(parseInt(rows[j].getAttribute('data-i'), 10));
+  }
+}
+
 function renderCraftList() {
   var host = document.getElementById('craftList');
   if (!host) return;
@@ -783,7 +864,14 @@ function renderTech() {
     var done = !!techDone[tid], avail = techAvailable(tid);
     var cls = done ? 'done' : (avail ? '' : 'locked');
     var cost = Object.keys(T.cost).map(function (k) { return T.cost[k] + '× ' + ITEMS[k].name.replace(' 연구팩', ''); }).join(' + ');
-    var prog = (currentResearch === tid) ? ' — 진행 ' + Math.round(researchFrac() * 100) + '%' : '';
+    // 갈아탄 연구의 진행도도 보여준다. 안 보이면 "0으로 날아갔나" 싶어 못 갈아탄다 —
+    // 안전한데 안전해 보이지 않는 것은 안전하지 않은 것과 같다.
+    var prog = '';
+    if (currentResearch === tid) prog = ' — 진행 ' + Math.round(researchFrac() * 100) + '%';
+    else if (!done && (researchProgressBy[tid] || 0) > 0) {
+      prog = ' — <span class="dim">중단 ' +
+        Math.round((researchProgressBy[tid] / techCycles(tid)) * 100) + '% (이어서 진행됨)</span>';
+    }
     h.push('<div class="trow ' + cls + '"><div class="tn"><b>' + T.name + '</b>' + prog +
       '<div class="td">' + T.desc + ' <span class="lnk">해제: ' + T.unlock.join(', ') + '</span>' +
       (T.needs.length ? ' <span class="dim">· 선행: ' + T.needs.map(function (n) { return TECHS[n].name; }).join(', ') + '</span>' : '') +
@@ -833,8 +921,12 @@ function fillHelp() {
     '<p><b>참/거짓 판정은 0.5 이상이 참이다.</b> 0 초과가 아니다 — 0.4 는 거짓으로 읽힌다.',
     '사칙 <code>1÷4=0.25</code>, PID 출력 0.3 처럼 소수를 내는 노드를 참/거짓 자리에 바로 물리면',
     '여기 걸린다. <code>비교 &gt; 0</code> 을 한 단 끼우면 된다.</p>',
-    '<p><b>평가 순서는 노드의 화면상 위치가 정한다</b>(왼쪽 위부터). 만든 순서가 아니라 보이는 배치가',
-    '규칙이므로, 같은 그림의 회로는 언제나 같게 돈다. 순환에서 어느 배선이 1틱 지연이 될지도 이 순서가 정한다.</p>',
+    '<p><b>평가 순서는 배선이 정한다 — 입력이 언제나 먼저 돈다.</b> 만든 순서는 상관없고,',
+    '같은 그림의 회로는 언제나 같게 돈다. 한 회로 안에서는 <b>왼쪽 위 노드가 시작점</b>이 되고,',
+    '순환에서 어느 배선이 1틱 지연이 될지도 그 시작점이 정한다.</p>',
+    '<p><b>서로 이어지지 않은 두 회로 사이의 순서는 배치로 정해지지 않는다.</b>',
+    '그래서 두 회로가 <b>같은 기계</b>를 잡으면 어느 쪽이 이길지 위치로 예측하지 마라 —',
+    '그때는 위쪽에 <b class="bad">충돌</b> 경고가 뜬다. 순서에 기대는 대신 충돌을 없애는 것이 답이다.</p>',
     '<p><b>타이머·엣지 검출은 1틱(약 17ms)짜리 펄스</b>다. 편집기 값창은 0.14초마다 표본을 뜨므로',
     '그 순간 값은 거의 늘 0 으로 보인다. 그래서 값 옆에 <b>↑n</b> 으로 지금까지 올라간 횟수를 함께 적는다 —',
     '그 숫자가 늘고 있으면 정상 동작이다.</p>',

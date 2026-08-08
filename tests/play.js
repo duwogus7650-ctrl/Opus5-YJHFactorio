@@ -292,8 +292,11 @@
 
   // 손 조립 — 우선순위대로. 탄약이 제일 급하다(습격이 300초부터 온다).
   function craft() {
-    var inv = G.state().inventory;
-    var t = G.state().t;
+    var st0 = G.state();
+    var inv = st0.inventory;
+    var t = st0.t;
+    // 손 조립은 시간이 든다 — 대기열이 밀려 있으면 더 넣지 않는다 (재료만 태운다)
+    if (st0.handQueue >= 6) return;
     function n(k) { return inv[k] || 0; }
     function make(rid, times) {
       for (var i = 0; i < times; i++) { if (!G.handCraft(rid)) return i; inv = G.state().inventory; }

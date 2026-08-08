@@ -1005,6 +1005,60 @@
         tutSaved === 2 && tutAfterReset === 0 && tutLoaded === 2,
         '저장 시 단계 ' + tutSaved + ' → 리셋 ' + tutAfterReset + ' → 복원 ' + tutLoaded);
 
+      // 저장이 만들던 것을 태우면 안 된다 — 재료는 예약할 때 이미 빠졌다
+      G.reset(6119); G.clearEntities(); G.setInv('iron-plate', 100);
+      G.handCraft('gear'); G.handCraft('gear');
+      var svH = G.save();
+      G.reset(6119); G.load(svH);
+      var qAfterLoad = G.state().handQueue;
+      var gearBase = G.state().inventory['gear'] || 0;       // 시작 재고가 있다
+      G.run(G.recipeInfo('gear').time * 2 + 0.2);
+      var gearsBack = (G.state().inventory['gear'] || 0) - gearBase;
+      chk('hand.queueSurvivesSave', qAfterLoad === 2 && gearsBack === 2,
+        '2개 예약 후 저장→복원 → 대기열 ' + qAfterLoad + '개(2여야) · 기다린 뒤 톱니 ' +
+        gearsBack + '개 (2여야 · 0이면 저장이 만들던 것을 태운다)');
+
+      // --- 연구를 갈아타도 먹인 연구팩은 남는다 ------------------------------
+      // 예전엔 갈아타는 순간 진행이 0 이 됐다. 49/50 까지 간 연구를 두고 다른 걸
+      // 누르면 적팩 49 + 녹팩 49 가 경고 없이 증발했다 — 되돌릴 수 없는 손실이
+      // 클릭 한 번에 나는 자리는 게임에 있으면 안 된다.
+      G.reset(6120); G.clearEntities(); G.clearEnemies();
+      G.setResearch('military');
+      G.addResearch(12);
+      var pA = G.state().research.progress;
+      G.setResearch('logistics');                 // 갈아탄다
+      var pB = G.state().research.progress;
+      G.addResearch(3);
+      G.setResearch('military');                  // 돌아온다
+      var pC = G.state().research.progress;
+      chk('research.switchKeepsProgress', pA === 12 && pB === 0 && pC === 12,
+        '군수 12개 투입 → ' + pA + ' · 물류학으로 전환 → ' + pB +
+        '(새 연구라 0) · 군수로 복귀 → ' + pC + ' (12여야 · 0이면 먹인 팩이 증발한다)');
+      // 저장/복원에서도 살아남아야 한다 — 안 그러면 저장 한 번이 같은 손실을 낸다
+      var svR = G.save();
+      G.reset(6120); G.load(svR);
+      var pD = G.state().research.progress;
+      G.setResearch('logistics');
+      var pE = G.state().research.progress;
+      chk('research.switchProgressSurvivesSave', pD === 12 && pE === 3,
+        '저장→복원 후 군수 ' + pD + '(12여야) · 물류학으로 전환 ' + pE +
+        ' (3이어야 · 0이면 저장이 진행도를 버린 것)');
+
+      // --- 안내한 방법으로 하면 실제로 통과해야 한다 ------------------------
+      // 'assemble' 단계는 "톱니는 우측 [손 조립]에서도 만든다"고 안내하는데,
+      // 판정은 prodStats.byRecipe 를 보고 손 조립은 그 통계를 건드리지 않았다.
+      // 즉 **안내대로 해도 다음 단계로 못 넘어갔다.** 안내와 판정이 갈리면
+      // 플레이어는 자기가 뭘 잘못했는지 알 방법이 없다.
+      G.reset(5150); G.clearEntities(); G.clearEnemies();
+      G.tutorialReset(true); G.setInv('iron-plate', 100);
+      var gearBefore = G.tutorialCheckById('assemble');
+      G.handCraft('gear');
+      G.run(G.recipeInfo('gear').time + 0.2);
+      var gearAfter = G.tutorialCheckById('assemble');
+      chk('tut.handCraftSatisfiesAssemble', gearBefore === false && gearAfter === true,
+        '손 조립 전 판정=' + gearBefore + '(false여야) → 톱니 1개 손 조립 후 ' + gearAfter +
+        ' (true여야 · false면 안내가 시키는 대로 해도 단계가 안 넘어간다)');
+
       // ================= 8d. 심화 과정 (부하 차단 · 방어) ==================
       // 심화 단계는 "노드를 놓았는가"가 아니라 **신호가 목적지까지 흐르는가**로 판정한다.
       // 놓기만 한 노드는 아무것도 안 하므로, 그걸 통과시키면 게이트가 거짓말을 한다.
@@ -1460,6 +1514,243 @@
       var at05 = G.state().alarms.indexOf('문턱시험') >= 0;
       chk('ctrl.truthThresholdIsHalf', at04 === false && at05 === true,
         '0.4 → 참=' + at04 + ' · 0.5 → 참=' + at05 + ' (문턱은 0.5 이상이다)');
+
+      // --- 평가 순서의 진짜 계약: 입력이 먼저 돈다 --------------------------
+      // 이게 깨지면 노드는 **직전 틱 값**으로 계산한다. 되먹임(1틱 지연)은 의도된
+      // 것이지만, 되먹임이 아닌 배선까지 한 틱 밀리면 회로가 조용히 틀린 답을 낸다.
+      // 실제로 이 파일의 다른 게이트들은 그 붕괴를 못 잡았다 — 순서를 나무별로
+      // 뒤집는 변경이 통과됐고, fullplay 의 node.hold 하나만 우연히 걸렸다.
+      G.reset(6220); G.clearEntities(); G.clearEnemies();
+      G.research('logic-mem');          // 샘플홀드는 이 연구가 열어 준다
+      var oc = G.place('controller', 40, 40, 0);
+      // 일부러 여러 갈래로 흩어 놓는다. 서로 다른 DFS 진입점에서 만나는 노드가
+      // 있어야 "숲을 나눠 뒤집으면 깨진다"는 상황이 실제로 만들어진다.
+      var vA = G.gAdd(oc, 'const', 10, 400);  G.gCfg(oc, vA, 'value', 7);
+      var vB = G.gAdd(oc, 'const', 10, 10);   G.gCfg(oc, vB, 'value', 5);
+      var mm = G.gAdd(oc, 'math', 300, 200);  G.gCfg(oc, mm, 'op', '+');
+      G.gLink(oc, vA, 0, mm, 0); G.gLink(oc, vB, 0, mm, 1);
+      var hh = G.gAdd(oc, 'hold', 600, 300);
+      var sg = G.gAdd(oc, 'const', 10, 800);  G.gCfg(oc, sg, 'value', 1);
+      G.gLink(oc, mm, 0, hh, 0); G.gLink(oc, sg, 0, hh, 1);
+      var dsp = G.gAdd(oc, 'display', 900, 300); G.gCfg(oc, dsp, 'label', '합');
+      G.gLink(oc, hh, 0, dsp, 0);
+      G.run(0.05);
+      var oinfo = G.gInfo(oc), pos = {};
+      for (var oi = 0; oi < oinfo.order.length; oi++) pos[oinfo.order[oi]] = oi;
+      // 되먹임(back)이 아닌 모든 배선에서 source 가 target 보다 앞서야 한다
+      var links = [[vA, mm], [vB, mm], [mm, hh], [sg, hh], [hh, dsp]];
+      var bad = [];
+      for (var li = 0; li < links.length; li++) {
+        if (!(pos[links[li][0]] < pos[links[li][1]])) bad.push(links[li].join('->'));
+      }
+      chk('ctrl.inputsEvaluateBeforeOutputs', bad.length === 0 && oinfo.cycles === 0,
+        '전방 배선 ' + links.length + '개 중 순서가 뒤집힌 것 ' + bad.length + '건' +
+        (bad.length ? ': ' + bad.join(',') : '') + ' · 되먹임 ' + oinfo.cycles +
+        '개(0이어야) · 순서 [' + oinfo.order.join(',') + ']');
+      // 값으로도 확인한다 — 순서가 깨지면 합이 한 틱 늦게 도착한다
+      var dv = G.state().displays;
+      chk('ctrl.valueArrivesSameTick',
+        dv.length === 1 && dv[0].value === 12,
+        '상수 7 + 5 → 샘플홀드 → 표시 = ' + (dv.length ? dv[0].value : 'none') +
+        ' (12여야 · 0이면 한 틱 늦게 도착한 것)');
+
+      // --- 분배기 [출력우선] 의 왼쪽/오른쪽은 진행방향 기준이다 ---------------
+      // cells[0] 은 언제나 좌표가 작은 쪽이라, 남·서향에서는 UI 의 [왼쪽]이
+      // 오른쪽으로 나갔다. 이 집의 규약(레인 0 = dirCCW)과 어긋난 채로 있었다.
+      // 네 방향을 전부 잰다 — 북·동만 재면 원래 코드도 통과한다(음성 대조군).
+      var sideFail = [];
+      for (var sd = 0; sd < 4; sd++) {
+        G.reset(7500 + sd); G.clearEntities(); G.clearEnemies();
+        G.giveAll(9999); G.research('logistics'); G.research('steel');
+        var spx = 50, spy = 50;
+        var spid = G.build('splitter', spx, spy, sd);
+        if (!spid) { sideFail.push('dir' + sd + ' 배치실패'); continue; }
+        var cc = G.cellCoords(spid);
+        // 진행방향 기준 왼쪽 = dirCCW(sd) 방향에 있는 셀
+        var ccwD = (sd + 3) & 3;
+        var DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
+        var mid = [(cc[0][0] + cc[1][0]) / 2, (cc[0][1] + cc[1][1]) / 2];
+        var leftCell = ((cc[0][0] - mid[0]) * DX[ccwD] + (cc[0][1] - mid[1]) * DY[ccwD]) > 0 ? 0 : 1;
+        // 두 출구 앞에 벨트를 깔고, [왼쪽] 우선으로 하나 흘려 어디로 나가는지 본다
+        for (var q = 0; q < 2; q++) {
+          G.build('belt', cc[q][0] + DX[sd], cc[q][1] + DY[sd], sd);
+        }
+        G.setSplitterPrio(spid, 0);                     // 0 = 왼쪽
+        G.beltPut(spid, 'coal', 0.5);
+        G.run(2.0);
+        var lb = G.entAtTile(cc[leftCell][0] + DX[sd], cc[leftCell][1] + DY[sd]);
+        var rb = G.entAtTile(cc[1 - leftCell][0] + DX[sd], cc[1 - leftCell][1] + DY[sd]);
+        function beltN(bid) { var be = bid ? G.ent(bid) : null;
+          if (!be || !be.beltItems) return -1;
+          var t = 0; for (var z = 0; z < be.beltItems.length; z++) t += be.beltItems[z];
+          return t; }
+        var lCount = beltN(lb), rCount = beltN(rb);
+        if (!(lCount > 0 && rCount === 0)) {
+          sideFail.push('dir' + sd + ' 왼쪽=' + lCount + ' 오른쪽=' + rCount);
+        }
+      }
+      chk('splitter.prioIsTravelRelative', sideFail.length === 0,
+        '4방향 [왼쪽] 우선 → 어긋난 방향 ' + sideFail.length + '개' +
+        (sideFail.length ? ': ' + sideFail.join(' | ') : ' (남·서에서 반대로 나가던 자리)'));
+
+      // --- 용광로는 굽던 것을 기억한다 ---------------------------------------
+      G.reset(7600); G.clearEntities(); G.clearEnemies(); G.giveAll(0); G.powerCheat(true);
+      G.setInv('brick', 5); G.setInv('iron-plate', 5);
+      var fz2 = G.build('furnace', 40, 40, 0);
+      // **구리로 시험한다.** 철광석은 ITEM_IDS 의 첫 항목이라, 철로 시험하면
+      // 고치기 전(선언 순서로 결정)에도 똑같이 iron-plate 가 나와 구별이 안 된다.
+      // 돌연변이 검정에서 이 게이트만 SURVIVED 로 살아남아 드러난 자리다.
+      G.setInv('copper-ore', 1);  // **정확히 1개** — 남으면 용광로가 안 비어 해제가 안 된다
+      G.putFromStock(fz2);
+      G.run(4.0);
+      G.takeOutputToStock(fz2);                          // 출력을 걷으면 완전히 빈다
+      G.run(0.05);
+      var relRec = G.ent(fz2).recipe;
+      G.setInv('iron-ore', 10); G.setInv('copper-ore', 10);
+      G.putFromStock(fz2);
+      var backRec = G.ent(fz2).recipe;
+      chk('furnace.remembersLastRecipe', relRec === null && backRec === 'copper-plate',
+        '비면 레시피 해제=' + relRec + '(null이어야) → 철·구리가 같이 있을 때 다시 급광하면 ' +
+        backRec + ' (copper-plate 여야 · 예전엔 ITEM_IDS 선언 순서가 정해 철이 이겼다)');
+      // 음성 대조군 — 굽던 광석이 없으면 예전처럼 다른 광석으로 갈아탄다.
+      // 이게 안 되면 "철을 굽던 용광로가 구리를 영원히 거부한다" 로 되돌아간다.
+      G.reset(7601); G.clearEntities(); G.giveAll(0); G.powerCheat(true);
+      G.setInv('brick', 5); G.setInv('iron-plate', 5);
+      var fz3 = G.build('furnace', 40, 40, 0);
+      G.setInv('copper-ore', 1); G.putFromStock(fz3); G.run(4.0);
+      G.takeOutputToStock(fz3); G.run(0.05);
+      G.setInv('copper-ore', 0); G.setInv('iron-ore', 10);
+      G.putFromStock(fz3);
+      chk('furnace.stillSwitchesWhenOldOreGone', G.ent(fz3).recipe === 'iron-plate',
+        '굽던 구리광석이 없고 철광석만 있을 때 → ' + G.ent(fz3).recipe +
+        ' (iron-plate 여야 · 아니면 갈아타기 자체가 막힌 것)');
+
+      // ================= 8.3 짓는 길은 두 가지이고 서로 달라야 한다 =========
+      // G.place 는 free 경로(비용·기술·광맥 무시)라 계통 하나만 떼어 잴 때 쓴다.
+      // G.build 는 플레이어와 같은 길이다. 완주 주행이 place 를 쓰고 있었고,
+      // 그래서 **광맥 없는 땅에 채광기를 세워 놓고** 아무것도 안 캐는 것을 40분
+      // 동안 눈치채지 못했다. 두 경로가 실제로 다른지 여기서 못박는다.
+      G.reset(7411); G.clearEntities(); G.clearEnemies(); G.giveAll(0);
+      var bareX = 20, bareY = 20;                       // 광맥이 없는 빈 땅
+      chk('build.needsMaterials',
+        G.build('furnace', bareX, bareY, 0) === null && G.place('furnace', bareX, bareY, 0) !== null,
+        '재고 0에서 build=거절 · place=허용 (place 가 거절하면 free 경로가 아니다)');
+
+      G.reset(7412); G.clearEntities(); G.giveAll(9999);
+      chk('build.minerNeedsOre',
+        G.build('miner', bareX, bareY, 0) === null,
+        '광맥 없는 땅에 채광기 build → 거절 (' + G.whyPlace('miner', bareX, bareY, 0) + ')');
+      var sp4 = G.oreSpot('iron-ore');          // **이 시드의** 광맥이어야 한다
+      var onOre = sp4 ? G.build('miner', sp4.x, sp4.y, 0) : null;
+      chk('build.minerOnOreWorks', !!onOre,
+        '광맥 위 채광기 build → id=' + onOre + ' (조건 발생 확인)');
+
+      G.reset(7413); G.clearEntities(); G.giveAll(9999);
+      chk('build.needsTech',
+        G.build('turret', 30, 30, 0) === null,
+        '군수 연구 전 터렛 build → 거절 (재료는 충분한데도)');
+      G.research('military');
+      chk('build.techUnlocksBuild', G.build('turret', 30, 30, 0) !== null,
+        '군수 연구 후 터렛 build → 성공 (조건 발생 확인)');
+
+      G.reset(7414); G.clearEntities(); G.giveAll(0); G.setInv('brick', 5); G.setInv('iron-plate', 5);
+      var beforeB = G.state().inventory['brick'];
+      G.build('furnace', 30, 30, 0);
+      chk('build.chargesCost', G.state().inventory['brick'] === beforeB - 5,
+        '용광로 build → 벽돌 ' + beforeB + ' → ' + G.state().inventory['brick'] + ' (5 차감돼야)');
+
+      // ================= 8.4 철거 환급은 단위를 지킨다 =====================
+      // 터렛의 e.ammo 는 **발** 단위(탄창 1개 = 10발)인데 환급은 그 숫자를 그대로
+      // 탄창으로 돌려줬다 — 철거가 10배 복사기였다. 발전기는 반대로 e.fuel 이
+      // e.inv 밖에 있어 석탄이 통째로 사라졌다. 같은 뿌리(단위 불일치)의 양면이다.
+      G.reset(7311); G.clearEntities(); G.clearEnemies();
+      G.setInv('ammo', 0); G.giveAll(0); G.setInv('ammo', 5);
+      G.research('military');
+      var tu = G.place('turret', 40, 40, 0);
+      G.putFromStock(tu);
+      var shotsIn = G.ent(tu).ammo, ammoLeft = G.state().inventory['ammo'] || 0;
+      G.remove(tu, true);
+      var backAmmo = G.state().inventory['ammo'] || 0;
+      chk('turret.ammoRefundKeepsUnit', shotsIn === 50 && ammoLeft === 0 && backAmmo === 5,
+        '탄창 5개 투입 → 터렛 ' + shotsIn + '발(50이어야) · 철거 환급 ' + backAmmo +
+        '개 (5여야 · 50이면 발을 탄창으로 돌려줘 10배 복사)');
+
+      G.reset(7312); G.clearEntities(); G.giveAll(0); G.setInv('coal', 6);
+      var gn = G.place('generator', 40, 40, 0);
+      G.putFromStock(gn);
+      var fuelIn = G.ent(gn).fuel, coalLeft = G.state().inventory['coal'] || 0;
+      G.remove(gn, true);
+      var backCoal = G.state().inventory['coal'] || 0;
+      chk('generator.coalRefunded', coalLeft === 0 && fuelIn > 0 && backCoal === 6,
+        '석탄 6개 투입 → 연료 ' + fuelIn + 'kJ · 철거 환급 ' + backCoal +
+        '개 (6이어야 · 0이면 철거가 연료 소각기)');
+
+      // 같은 틱에 여러 터렛이 이미 죽은 적을 계속 쏘면 탄약을 그만큼 버린다.
+      // 소형 15hp = 3발이면 죽는다. 터렛 8기가 각자 쏘면 8발이 나간다.
+      G.reset(7313); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.research('military');
+      G.powerCheat(true);
+      var tus = [];
+      for (var tq = 0; tq < 8; tq++) {
+        var tid = G.place('turret', 36 + tq * 3, 44, 0);
+        if (tid) { G.setInv('ammo', 999); G.putFromStock(tid); tus.push(tid); }
+      }
+      var ammoBefore = 0;
+      for (var ta = 0; ta < tus.length; ta++) ammoBefore += G.ent(tus[ta]).ammo;
+      G.spawnEnemyAt(48, 44, 0);                    // 소형 1마리 = 15hp = 3발
+      G.run(1.0);
+      var ammoAfter = 0;
+      for (var tb = 0; tb < tus.length; tb++) ammoAfter += G.ent(tus[tb]).ammo;
+      var spent = ammoBefore - ammoAfter, killed = G.state().waves.killed;
+      // **오라클은 정확히 3발이다** — 15hp ÷ 5dmg. 처음엔 상한을 8발로 뒀는데,
+      // 고치기 전 동작(터렛 8기가 각 1발 = 8발)도 그 상한을 통과해 버려서 이 게이트가
+      // 자기 버그를 못 잡았다(돌연변이 SURVIVED). 여유를 준 상한은 게이트가 아니다.
+      chk('turret.noOverkillWaste', killed === 1 && spent === 3,
+        '터렛 ' + tus.length + '기 · 소형 1마리 → 격추 ' + killed +
+        ' · 소모 ' + spent + '발 (오라클 3발 = 15hp ÷ 5dmg · ' + tus.length +
+        '발이면 터렛마다 한 발씩 쏴 이미 죽은 적에 낭비한 것)');
+
+      // ================= 8.5 손 조립은 시간이 든다 =========================
+      // 이 장르의 전제는 "손으로는 느리니까 기계를 세운다" 이다. 손 조립이 즉시
+      // 완성이면 조립기가 장식이 된다 — 실제로 그랬고, 손이 조립기보다 30배 빨랐다.
+      // 그래서 **음성 대조군**(아직 안 나왔어야 하는 시점)을 반드시 함께 잰다.
+      G.reset(9182); G.clearEntities(); G.setInv('iron-plate', 200);
+      var gearT = G.recipeInfo('gear').time;            // 0.5s
+      var g0 = G.state().inventory['gear'] || 0;
+      var qOk = G.handCraft('gear');
+      var ironAfterQueue = G.state().inventory['iron-plate'];
+      chk('hand.materialsTakenOnQueue', qOk === true && ironAfterQueue === 200 - 2,
+        '대기열에 넣는 즉시 재료 차감: 철판 200 → ' + ironAfterQueue + ' (198이어야) · 대기열 ' +
+        G.state().handQueue + '개');
+      G.run(gearT * 0.5);
+      var midN = G.state().inventory['gear'] || 0;
+      G.run(gearT * 0.6 + 0.1);
+      var endN = G.state().inventory['gear'] || 0;
+      chk('hand.takesTime', midN === g0 && endN === g0 + 1,
+        '톱니 ' + gearT + 's: 절반 시점 ' + midN + '개(안 늘어야) → 완료 후 ' + endN +
+        '개 (+1이어야). 절반 시점에 이미 늘어 있으면 즉시 완성이라는 뜻이다');
+
+      // 손은 언제나 "조립기 1대"가 한계여야 한다 — 병렬로 처리되면 안 된다
+      var b0 = G.state().inventory['gear'] || 0;
+      for (var hq = 0; hq < 5; hq++) G.handCraft('gear');
+      G.run(gearT * 2 + 0.05);                          // 2개 분량만 지났다
+      var got2 = (G.state().inventory['gear'] || 0) - b0;
+      chk('hand.oneAtATime', got2 === 2,
+        '5개 예약 후 ' + (gearT * 2).toFixed(1) + 's 경과 → ' + got2 +
+        '개 완성 (오라클 2개 = 순차 처리). 5개면 병렬이라 손이 무한 공장이 된다 · 남은 대기열 ' +
+        G.state().handQueue);
+
+      // 취소는 재료를 돌려준다 — 안 그러면 잘못 누른 클릭이 아이템 소각이 된다
+      G.reset(9183); G.clearEntities(); G.setInv('iron-plate', 50);
+      G.handCraft('gear');
+      var beforeCancel = G.state().inventory['iron-plate'];
+      var cOk = G.handCancel(0);
+      var afterCancel = G.state().inventory['iron-plate'];
+      chk('hand.cancelRefunds', cOk === true && beforeCancel === 48 && afterCancel === 50 &&
+          G.state().handQueue === 0,
+        '예약 후 철판 ' + beforeCancel + ' → 취소 후 ' + afterCancel +
+        ' (48 → 50 이어야) · 대기열 ' + G.state().handQueue + '개');
+      chk('hand.cancelRejectsBadIndex', G.handCancel(7) === false,
+        '없는 항목 취소 → false (true 면 빈 대기열에서도 재료가 나온다)');
 
       // ================= 9. 결정론 =======================================
       function scenarioHash(seed) {

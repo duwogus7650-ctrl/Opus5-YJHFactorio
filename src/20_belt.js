@@ -74,7 +74,16 @@ function outputTarget(cell, lane) {
 function splitterOutput(e, cell, lane) {
   // 두 셀 각각의 앞 타일이 출구다. rr 로 번갈아 내보내되, 한쪽이 막히면 다른 쪽.
   var order = [e.rr, 1 - e.rr];
-  if (e.outPrio === 0 || e.outPrio === 1) order = [e.outPrio, 1 - e.outPrio];
+  if (e.outPrio === 0 || e.outPrio === 1) {
+    // **cells[0] 은 언제나 좌표가 작은 쪽**이지 '왼쪽'이 아니다 (25_entity.js:116).
+    // 이 집의 규약에서 왼쪽은 진행방향 기준이다 (레인 0 = dirCCW, 45_render.js:300).
+    //   북(0): 왼쪽=서=cells[0] · 동(1): 왼쪽=북=cells[0]
+    //   남(2): 왼쪽=동=cells[1] · 서(3): 왼쪽=남=cells[1]
+    // 그래서 남·서향 분배기는 UI 에서 [왼쪽]을 고르면 오른쪽으로 나갔다.
+    var L = (e.dir === 0 || e.dir === 1) ? 0 : 1;
+    var first = (e.outPrio === 0) ? L : (1 - L);
+    order = [first, 1 - first];
+  }
   for (var k = 0; k < 2; k++) {
     var ci = order[k];
     var oc = e.cells[ci];

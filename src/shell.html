@@ -115,6 +115,17 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 .craftbtn:hover{border-color:var(--edge)}
 .craftbtn:active{box-shadow:inset 0 2px 4px rgba(0,0,0,.3)}
 .craftbtn.no{opacity:.42;cursor:not-allowed}
+/* 손 조립 대기열 — 시간이 든다는 사실이 보여야 한다. 안 보이면 '눌러도 아무 일이
+   없다'로 읽힌다. 진행 막대는 지금 만드는 것 하나에만 붙는다. */
+#craftQueue:empty{display:none}
+#craftQueue{padding:5px 8px 0}
+.qrow{display:flex;justify-content:space-between;align-items:center;gap:6px;
+  padding:3px 7px;margin:2px 0;border:1px solid var(--rule);background:var(--face-lo);
+  font-size:11px;position:relative;overflow:hidden;cursor:pointer}
+.qrow .qbar{position:absolute;left:0;top:0;bottom:0;background:rgba(44,84,112,.32);z-index:0}
+.qrow span{position:relative;z-index:1}
+.qrow:hover{border-color:var(--stop)}
+.qrow .qx{color:var(--ink-2);font-family:var(--mono)}
 #craftList{max-height:200px;overflow-y:auto;padding:5px 8px;scrollbar-width:thin}
 /* 지도는 판에 박힌 창이다 */
 #mini{position:relative;width:100%;height:178px;display:block;background:var(--well);
@@ -386,7 +397,8 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
     <div id="invList"></div>
   </div>
   <div class="panel">
-    <h3>Handcraft 손 조립 <span style="float:right;color:var(--ink-3)">클릭 = 1개</span></h3>
+    <h3>Handcraft 손 조립 <span style="float:right;color:var(--ink-3)">클릭 = 대기열 1개</span></h3>
+    <div id="craftQueue"></div>
     <div id="craftList"></div>
   </div>
   <div class="panel" style="flex:1;display:flex;flex-direction:column;min-height:0">

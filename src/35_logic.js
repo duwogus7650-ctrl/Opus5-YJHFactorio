@@ -187,6 +187,18 @@ function graphCompile(g) {
     color[nid] = 2;
     order.push(nid);
   }
+  // **후위순회를 숲 전체에서 한 번에 뒤집는다 (reverse post-order).** 이것만이
+  // 그래프 전체의 올바른 위상순서다 — 즉 어떤 노드도 자기 입력보다 먼저 돌지 않는다.
+  //
+  // 두 번 손댔다가 두 번 다 되돌렸으니 다시 건드리지 말 것:
+  //   · 나무마다 따로 뒤집기 → 두 나무가 공유하는 노드가 입력보다 먼저 돌아
+  //     샘플홀드가 옛 샘플로 갱신됐다 (node.hold RED).
+  //   · 진입을 좌표 역순으로 → 순환 회로는 진입점이 하나뿐이라 좌표를 옮겨도
+  //     순서가 안 바뀌었다 (ctrl.orderFollowsLayout RED).
+  //
+  // 한 회로 안에서는 "왼쪽 위가 먼저"가 성립한다(진입점이 먼저 나온다). 서로 이어지지
+  // 않은 회로 **사이의** 순서는 DFS 구조가 정하며 좌표대로가 아니다 — 도움말은
+  // 그 사실대로 쓴다. 같은 대상을 두 회로가 잡으면 순서에 기대지 말고 충돌 경고를 볼 것.
   for (var s = 0; s < roots.length; s++) if (!color[roots[s].nid]) dfs(roots[s].nid);
   order.reverse();
   g.order = order;

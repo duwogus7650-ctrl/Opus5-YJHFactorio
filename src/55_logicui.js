@@ -286,6 +286,10 @@ function buildNodeDom(inner, g, n) {
       n.x = Math.max(0, ox + (e2.clientX - sx) / gpan.z);
       n.y = Math.max(0, oy + (e2.clientY - sy) / gpan.z);
       el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+      // **좌표가 곧 평가 순서다.** dirty 를 안 세우면 옮겨도 순서가 그대로라,
+      // 도움말이 약속한 "보이는 배치가 규칙"이 거짓이 된다 — 되먹임 점선도
+      // 옛 순서 그대로 남는다. 이 파일에서 dirty 를 쓰는 곳은 여기뿐이었다(읽기만).
+      g.dirty = true;
       updateLinks();
     }
     function up() { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); }
@@ -303,6 +307,7 @@ function buildNodeDom(inner, g, n) {
       n.x = Math.max(0, ox + (t.clientX - sx) / gpan.z);
       n.y = Math.max(0, oy + (t.clientY - sy) / gpan.z);
       el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+      g.dirty = true;                 // 마우스 경로와 같은 이유 (좌표 = 평가 순서)
       updateLinks();
     }
     function tup() {

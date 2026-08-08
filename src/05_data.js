@@ -67,7 +67,7 @@ var RECIPE_IDS = Object.keys(RECIPES);
 var BUILDINGS = {
   'belt':      { hotkey: '1', name: '벨트', w: 1, h: 1, cost: { 'belt-item': 1 }, rot: true,
                  desc: '아이템을 2레인으로 나른다. 합 15개/s (레인당 7.5).' },
-  'splitter':  { name: '분배기', w: 2, h: 1, cost: { 'belt-item': 4, 'circuit': 2 }, rot: true, tech: 'logistics',
+  'splitter':  { name: '분배기', w: 2, h: 1, cost: { 'belt-item': 4, 'circuit': 2, 'steel': 2 }, rot: true, tech: 'steel',
                  desc: '입력을 두 갈래로 균등 분배. 우선순위 지정 가능.' },
   'inserter':  { hotkey: '2', name: '인서터', w: 1, h: 1, cost: { 'inserter-item': 1 }, rot: true, power: 13,
                  desc: '뒤에서 집어 앞에 놓는다. 0.83개/s. 제어기로 켜고 끌 수 있다.' },
@@ -128,17 +128,21 @@ var SPEC = {
 // cost 는 연구팩 개수. needs 는 선행 기술.
 var TECHS = {
   'logistics':  { name: '물류학', cost: { 'sci-red': 20 }, needs: [],
-                  unlock: ['분배기', '녹색 연구팩 레시피'],
-                  desc: '분배기와 녹색 연구팩을 연다.' },
+                  unlock: ['녹색 연구팩 레시피'],
+                  desc: '녹색 연구팩을 연다 — 여기서부터 완성품이 연구 재료가 된다.' },
   'military':   { name: '군수',   cost: { 'sci-red': 20 }, needs: [],
                   unlock: ['기관총 터렛', '벽', '탄창 레시피'],
                   desc: '방어 시설. 적의 습격은 오염을 따라온다.' },
   'logic-mem':  { name: '논리 II — 기억소자', cost: { 'sci-red': 40 }, needs: ['logistics'],
                   unlock: ['SR 래치', '카운터', '샘플홀드', '엣지검출'],
                   desc: '제어기에 상태를 가진 노드가 추가된다. 여기서부터 진짜 프로그래밍.' },
+  // 강철은 **쓸 데가 있어야 한다.** 예전엔 레시피만 있고 소비처가 한 곳도 없어서,
+  // 적팩 50개를 들여 "철판 5개를 못 쓰는 물건 1개로 바꾸는 기능"을 여는 연구였다.
+  // 분배기를 여기로 옮겨 붙였다 — belt-2·automation-2 의 선행이라 어차피 모두
+  // 연구하는 길목이고, 분배기는 없어도 죽지 않는 편의 장비라 늦춰도 초반이 안 무너진다.
   'steel':      { name: '강철 제련', cost: { 'sci-red': 50 }, needs: ['logistics'],
-                  unlock: ['강철 레시피'],
-                  desc: '철판 5개를 강철 1개로.' },
+                  unlock: ['강철 레시피', '분배기'],
+                  desc: '철판 5개를 강철 1개로. 분배기가 강철을 먹는다.' },
   'logic-ctrl': { name: '논리 III — 공정 제어', cost: { 'sci-red': 50, 'sci-green': 50 }, needs: ['logic-mem'],
                   unlock: ['인서터 필터 출력', '벨트 게이트', 'PID 노드', '부하 차단'],
                   desc: '제어기가 라인을 실시간으로 갈아탈 수 있게 된다.' },
