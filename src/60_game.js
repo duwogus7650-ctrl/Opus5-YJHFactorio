@@ -589,6 +589,12 @@ window.__GAME = {
   entIds: function () {
     var r = []; forEachEntity(function (e) { r.push([e.id, e.type]); }); return r;
   },
+  // 살아 있는 적의 좌표 — 녹화에서 카메라가 전투를 따라가려면 필요하다.
+  enemyList: function () {
+    return enemies.map(function (e) {
+      return { x: e.x, y: e.y, hp: Math.round(e.hp), tier: e.tier };
+    });
+  },
   nestList: function () {
     return nests.map(function (n) { return { x: Math.round(n.x), y: Math.round(n.y), hp: Math.round(n.hp) }; });
   },

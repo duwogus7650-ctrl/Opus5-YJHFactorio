@@ -69,11 +69,40 @@ const DRV = path.join(ROOT, 'tests', 'play.js');
     } catch (e) { console.error('편집기 스크린샷 실패: ' + e.message); }
   })();
 
+  // 전투 장면을 실제로 프레임으로 남긴다. 영상에 들어갔는지 '그럴듯하다' 가 아니라
+  // 스크린샷으로 확인하기 위한 것이다 — 지난 녹화는 습격 13회를 겪고도 전투가
+  // 화면에 거의 안 잡혔다(카메라가 공장만 보고 있었다).
+  let combatShots = 0;
+  (async () => {
+    for (let k = 0; k < 4; k++) {
+      try {
+        await page.waitForFunction(
+          () => window.__ENGAGED === true,
+          null, { timeout: 900000, polling: 100 });
+        // **지체 없이 찍는다.** 1.2초를 기다렸더니 그 사이 터렛이 다 죽여서
+        // 빈 들판 사진만 남았다 (3배속이면 게임 시간으로 3.6초다).
+        // **연사로 찍는다.** 한 장으로는 교전이 실제로 화면에 있었는지 알기 어렵다
+        // (지난 판은 즉시 캡처인데도 이미 시체만 남아 있었다). 연속 프레임이면
+        // 영상의 그 구간에 무엇이 담겼는지 그대로 드러난다.
+        for (let b = 0; b < 5; b++) {
+          await page.screenshot({ path: path.join(OUTDIR, 'shot-combat' + (k + 1) + '-' + (b + 1) + '.png') });
+          await page.waitForTimeout(350);
+        }
+        combatShots++;
+        console.error('전투 연사 ' + (k + 1) + ' (5장) 저장');
+        await page.waitForFunction(
+          () => window.__ENGAGED !== true,
+          null, { timeout: 900000, polling: 300 });
+      } catch (e) { break; }
+    }
+  })();
+
   await page.waitForFunction(
     () => {
       const el = document.getElementById('testout');
       return !!el && el.textContent.indexOf('@@JSON_END@@') >= 0;
     }, null, { timeout: 3600000, polling: 1000 });
+  console.error('전투 스크린샷 ' + combatShots + '장 확보');
 
   const payload = await page.evaluate(() => document.getElementById('testout').textContent);
   await page.screenshot({ path: path.join(OUTDIR, 'shot-final.png') });

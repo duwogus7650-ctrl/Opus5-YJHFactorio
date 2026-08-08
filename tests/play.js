@@ -219,7 +219,24 @@
       editorDemo(c);
       note('제어기: 전력 만족도 -> SR 래치 -> 연구소 가동/정지');
     } }
-  ];
+,
+
+    { t: 1620, name: '★ 대규모 습격 — 방어선 성능 시험', fn: function () {
+      // **일부러 일으키는 습격이다.** 자연 발생 습격은 터렛 6기(합계 300dps) 앞에서
+      // 1초도 못 버텨 영상에 남지 않는다 — 즉시 캡처로도 시체만 찍혔다.
+      // 방어선이 실제로 얼마나 버티는지 보려면 이 정도 규모가 필요하다.
+      G.setSpeed(1);
+      var n = 0;
+      for (var i = 0; i < 30; i++) {
+        var x = 70 + (i % 15) * 1.6;
+        var y = 52 - Math.floor(i / 15) * 3;
+        var tier = (i % 5 === 0) ? 1 : 0;          // 5마리 중 1마리는 중형(75hp)
+        if (G.spawnEnemyAt(x, y, tier)) n++;
+      }
+      out.measured.stagedAssault = n;
+      G.setCamera(80, 60, 1.0);
+      note('대규모 습격 ' + n + '마리 (연출 아님 — 실제 전투 판정)');
+    } }  ];
 
   // --- 물류: 수확하고, 만들고, 먹인다 -----------------------------------
   // 벨트는 광석을 용광로까지 나른다. 그 위쪽(판 -> 부품 -> 연구팩 -> 연구소,
@@ -340,6 +357,7 @@
     })();
   }
 
+  var inCombat = false, engaged = false;
   var stageI = 0, lastPoll = -1, lastSnap = -1, peakEnemies = 0, worstSat = 1;
   function pump() {
     var st = G.state();
@@ -348,7 +366,7 @@
       var s = STAGES[stageI++];
       try { s.fn(); } catch (e) { out.fails.push('stage:' + s.name + ' ' + e.message); }
     }
-    if (t - lastPoll >= 2) {
+    if (t - lastPoll >= (G.state().enemies > 0 ? 0.3 : 2)) {
       lastPoll = t;
       logistics();
       // 30초마다 스냅샷. 전멸의 원인을 나중에 추측하지 않기 위해서다.
@@ -370,8 +388,45 @@
       // 발전기가 서기 전(0~60초)의 0% 를 최저값으로 잡으면 늘 '전력 붕괴' 가 된다.
       if (t >= 60 && st.power.sat < worstSat) worstSat = st.power.sat;
       // 습격이 오면 그쪽을 비춘다 (영상이 무슨 일인지 보여줘야 한다)
-      if (st.enemies > 0) look(80, 70, 0.8);
-      else if (stageI >= STAGES.length) look(81, 79, 0.75);
+      // **전투를 보여준다.** 12배속에서 습격은 눈 깜짝할 새 지나가고, 카메라가
+      // 공장만 보고 있으면 적이 죽는 장면이 영상에 아예 안 남는다.
+      // 적이 나타나면 배속을 늦추고 적 무리 쪽으로 붙는다.
+      if (st.enemies > 0) {
+        var el = G.enemyList(), cx = 0, cy = 0;
+        for (var q = 0; q < el.length; q++) { cx += el[q].x; cy += el[q].y; }
+        // **교전 중일 때만** 붙는다. 적은 둥지에서 나와 한참을 걸어오는데, 스폰
+        // 직후부터 따라가면 빈 들판을 걷는 장면만 길게 남는다(실제로 그랬다).
+        // 터렛 사거리(18타일) 안으로 들어왔을 때가 총알이 오가는 순간이다.
+        var near = 1e9, ids3 = G.entIds();
+        for (var w = 0; w < ids3.length; w++) {
+          if (ids3[w][1] !== 'turret') continue;
+          var tw = G.ent(ids3[w][0]);
+          for (var v = 0; v < el.length; v++) {
+            var dd = Math.hypot(el[v].x - (tw.tx + 1), el[v].y - (tw.ty + 1));
+            if (dd < near) near = dd;
+          }
+        }
+        // 사거리 18타일 **안**이어야 실제로 총알이 오간다. 24로 잡았더니 둥지가
+        // 터렛에서 22칸이라 스폰 지점부터 걸려서, 또 접근 장면만 찍혔다.
+        engaged = near < 16;
+        if (el.length && engaged) {
+          cx /= el.length; cy /= el.length;
+          // **적 무리를 화면 한복판에 둔다.** 처음엔 적과 가장 가까운 터렛의 중간을
+          // 봤는데, 스폰 지점이 멀면 중간점이 둘 다에서 멀어 빈 들판만 나왔다.
+          // 터렛 사거리가 18타일이라 적을 가운데 두면 쏘는 터렛도 화면에 들어온다.
+          G.setCamera(cx, cy, 1.2);
+        }
+        // 교전은 짧다 — 터렛 6기 x 50dps 면 소형(15hp)은 한순간에 죽는다. 그래서
+        // 교전 구간만 **등속(1배)**으로 떨군다. 구간이 짧아 영상 길이에 큰 영향이 없다.
+        if (engaged && !inCombat) { inCombat = true; G.setSpeed(1); }
+        if (!engaged && inCombat) { inCombat = false; G.setSpeed(SPEED); }
+        if (!engaged && stageI >= STAGES.length) look(81, 79, 0.75);
+      } else {
+        engaged = false;
+        if (inCombat) { inCombat = false; G.setSpeed(SPEED); }
+        if (stageI >= STAGES.length) look(81, 79, 0.75);
+      }
+      window.__ENGAGED = engaged;      // 녹화기가 교전 순간을 잡을 수 있게 노출
     }
     if (t >= END_T) { finish(); return; }
     setTimeout(pump, 60);
@@ -391,9 +446,11 @@
       killed: st.waves.killed, spawned: st.waves.spawned,
       worstPowerSat: +(worstSat * 100).toFixed(1),
       power: st.power, inventory: st.inventory,
-      research: st.research, prod: tut.prod, placeFails: out.fails.length,
-      ctrlNodes: prev.ctrlNodes || null
+      research: st.research, prod: tut.prod, placeFails: out.fails.length
     };
+    // **키를 하나씩 고르지 않는다.** 전에 ctrlNodes 만 옮겼다가 stagedAssault 를
+    // 또 잃었다 — 같은 실수를 두 번 했다. 앞서 넣어 둔 값은 전부 살린다.
+    for (var pk in prev) if (!(pk in out.measured)) out.measured[pk] = prev[pk];
 
     chk('soak.ranFullDuration', st.t >= END_T - 2,
       '게임 시각 ' + Math.round(st.t) + 's / 목표 ' + END_T + 's (' + Math.round(st.t / 60) + '분)');
@@ -452,6 +509,13 @@
     chk('factory.allMachinesPowered', unpowered.length === 0,
       '전력망 밖 기계 ' + unpowered.length + '대' +
       (unpowered.length ? ': ' + unpowered.slice(0, 8).join(', ') : ''));
+
+    // 일부러 일으킨 대규모 습격을 실제로 막아냈는가. '영상에 그럴듯하게 나왔다' 가
+    // 아니라 잃은 건물 수로 본다.
+    chk('defense.survivedStagedAssault',
+      (out.measured.stagedAssault || 0) >= 25 && st.waves.lost === 0,
+      '연출 습격 ' + (out.measured.stagedAssault || 0) + '마리 투입 · 최종 손실 ' +
+      st.waves.lost + '개 · 총 격추 ' + st.waves.killed + '마리');
 
     chk('selftest.mustFail', st.t < 0, '게임 시각이 음수일 리 없다', true);
     out.errors = G.errors();
