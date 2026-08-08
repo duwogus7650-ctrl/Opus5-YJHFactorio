@@ -355,9 +355,12 @@
       return;
     }
   }
-  function jIn(key, type, rc, dir, recipe) {
+  // rc2 = 예비 구역. 한 구역이 차면 실패로 세지 말고 옆 들판으로 밀어낸다 —
+  // 구역이 꽉 찬 것은 "지을 자리가 세상에 없다"가 아니라 "여기가 좁다"이다.
+  function jIn(key, type, rc, dir, recipe, rc2) {
     job(key, function () {
       var r = placeIn(type, rc, dir, recipe);
+      if (r === null && rc2) r = placeIn(type, rc2, dir, recipe);
       if (r === 'mat') return 'wait';
       if (r === 'tech' || r === 'nocover') return 'later';
       if (r === null) { out.fails.push(key + ' — ' + type + ' 구역에 자리 없음 [' + rc.slice(0, 4).join(',') + ']'); }
@@ -641,7 +644,7 @@
     jIn('furnace-fe#8', 'furnace', EAST_RC, 0, 'iron-plate');
     poleWave(PE);
     jMiner('copper#2', 'copper-ore', 75, 90);
-    jIn('furnace-cu#2', 'furnace', EAST_RC, 0, 'copper-plate');
+    jIn('furnace-cu#2', 'furnace', EAST_RC, 0, 'copper-plate', WEST_RC);
 
     // ── 4. 과학 라인 — 자재 소요에서 역산한 규모
     //   연구 8종 = 410 사이클. 적팩 410 · 녹팩 280 이 필요하고 그 재료는
@@ -675,7 +678,7 @@
     jIn('lab#2', 'lab', CORE_RC, 0);
     jTurrets(9, 14);
     jMiner('copper#3', 'copper-ore', 75, 90);
-    jIn('furnace-cu#3', 'furnace', EAST_RC, 0, 'copper-plate');
+    jIn('furnace-cu#3', 'furnace', EAST_RC, 0, 'copper-plate', WEST_RC);
     jIn('asm-red#3', 'assembler', EAST_RC, 0, 'sci-red');
     jIn('asm-green#3', 'assembler', EAST_RC, 0, 'sci-green');
     jIn('chest#2', 'chest', CORE_RC, 0);
@@ -690,7 +693,7 @@
     jMiner('iron#11', 'iron-ore', 89, 74);
     poleWave(gridRest());
     jIn('asm-gear#2', 'assembler', WEST_RC, 0, 'gear');
-    jIn('furnace-cu#4', 'furnace', EAST_RC, 0, 'copper-plate');
+    jIn('furnace-cu#4', 'furnace', EAST_RC, 0, 'copper-plate', WEST_RC);
     jIn('asm-green#4', 'assembler', WEST_RC, 0, 'sci-green');
     jIn('asm-red#4', 'assembler', WEST_RC, 0, 'sci-red');
 
@@ -785,7 +788,15 @@
     // 소비하는 톱니 조립기가 언제나 최소값이라 늘 먼저 받고, 4개가 필요해 3개를 쥔
     // 탄창 조립기는 두 번 다시 최소가 되지 못한다 (실측: 톱니 631 vs 탄창 19).
     machines.sort(function (a, b) { return a[1] - b[1]; });
-    for (var m = 0; m < machines.length; m++) G.putFromStock(machines[m][0]);
+    // **한 번에 조금씩, 여러 대에.** 버퍼는 품목당 50개라, 먼저 걸린 조립기 한 대가
+    // 귀한 중간재를 50개씩 가져가 주차하면 나머지가 통째로 굶는다. 녹색 연구팩 사슬이
+    // 정확히 그렇게 막혔다(인서터 157개가 조립기 버퍼에 흩어져 있었다).
+    // 재고가 넉넉하면(용광로의 광석처럼) 상한을 풀어 예전처럼 채운다.
+    for (var m = 0; m < machines.length; m++) {
+      var mid = machines[m][0], me2 = G.ent(mid);
+      var scarce = me2 && me2.type === 'assembler';
+      G.putFromStock(mid, scarce ? 10 : 0);
+    }
 
     // 터렛은 예비량을 남기고 상한까지만. 20기 x 20탄창 = 400개를 한 번에 빨아들이면
     // 재고 탄창이 영원히 0이 되고, 그걸 조건으로 쓰던 과학 갈래가 통째로 막힌다.
@@ -1095,8 +1106,14 @@
   function pump() {
     var st = G.state(), t = st.t;
     if (t - lastPoll >= (st.enemies > 0 ? 0.5 : 2)) {
+      // **물류 횟수를 흐른 게임 시간에 비례시킨다.** pump 는 벽시계 40ms 마다 도는데,
+      // 배속이 높으면 그 사이에 게임 시간이 더 흐른다 — 한 번만 돌리면 게임 시간당
+      // 물류가 줄어 공장이 굶는다. 실제로 같은 드라이버가 배속 12 에서 연구 7/8,
+      // 배속 60 에서 6/8 을 냈다. 측정이 배속 손잡이에 딸려 가면 안 된다.
+      var iters = Math.max(1, Math.min(8, Math.round((t - lastPoll) / 2)));
       lastPoll = t;
-      try { logistics(); } catch (e) { out.fails.push('logistics: ' + (e && e.message)); }
+      try { for (var it = 0; it < iters; it++) logistics(); }
+      catch (e) { out.fails.push('logistics: ' + (e && e.message)); }
       nextTech();                                   // 끝나면 바로 다음 연구
       if (st.enemies > peakEnemies) peakEnemies = st.enemies;
       if (t >= 60 && st.power.sat < worstSat) worstSat = st.power.sat;

@@ -12,7 +12,8 @@ var nests = [];
 var enemies = [];
 var corpses = [];          // 연출용 (FX_RNG 만 사용)
 var evolution = 0;
-var waveStats = { spawned: 0, killed: 0, buildingsLost: 0, lastWaveT: 0, waves: 0 };
+var waveStats = { spawned: 0, killed: 0, buildingsLost: 0, lastWaveT: 0, waves: 0,
+                  lost: [] };   // 최근 파괴 목록 {t,type,x,y} — 어디가 뚫렸는지 보려고
 
 function spawnNests(seed) {
   nests.length = 0;
@@ -165,6 +166,14 @@ function stepEnemies(dt) {
         tgt.hp -= spec.dmg;
         if (tgt.hp <= 0) {
           waveStats.buildingsLost++;
+          // **무엇이 어디서 부서졌는지 말해 준다.** 예전에는 상단 [손실] 숫자만 올라서,
+          // 공장 어딘가가 뜯기는 중인데 어디인지 알 방법이 없었다. 방어선 밖에 혼자
+          // 나가 있는 채광기 하나가 계속 물리는 상황이 특히 안 보인다.
+          waveStats.lost.push({ t: Math.round(gameTime), type: tgt.type, x: tgt.tx, y: tgt.ty });
+          if (waveStats.lost.length > 40) waveStats.lost.shift();
+          if (typeof toast === 'function') {
+            toast(BUILDINGS[tgt.type].name + ' 파괴됨 (' + tgt.tx + ',' + tgt.ty + ')', 'bad');
+          }
           removeEntity(tgt.id, false);
           en.target = null;
         }

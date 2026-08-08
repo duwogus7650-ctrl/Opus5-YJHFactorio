@@ -25,6 +25,7 @@ function newGame(seed) {
   enemies.length = 0; corpses.length = 0; turretFx.length = 0;
   resetEvolution();          // 진화도는 증분 누적이라 기준점까지 같이 되돌려야 한다
   waveStats.spawned = 0; waveStats.killed = 0; waveStats.buildingsLost = 0;
+  waveStats.lost.length = 0;
   waveStats.waves = 0; waveStats.lastWaveT = 0;
   beltStats.delivered = 0;
   ERRORS.length = 0;
@@ -797,7 +798,7 @@ window.__GAME = {
   howToGet: function (itemId) { return howToGet(itemId); },
   takeToStock: function (id) { return takeAllToStock(entities[id]); },
   takeableCount: function (id) { return stockTakeCount(entities[id]); },
-  putFromStock: function (id) { return putFromStock(entities[id]); },
+  putFromStock: function (id, perItemMax) { return putFromStock(entities[id], perItemMax); },
   takeOutputToStock: function (id) { return takeOutputToStock(entities[id]); },
   puttableItems: function (id) { return stockPuttableItems(entities[id]); },
   tutorialReset: function (on) { resetTutorial(on); renderTutorial(); return tutorial.step; },
@@ -932,7 +933,8 @@ window.__GAME = {
       evolution: evolution,
       enemies: enemies.length, nests: nests.length,
       waves: { spawned: waveStats.spawned, killed: waveStats.killed,
-               lost: waveStats.buildingsLost, waves: waveStats.waves },
+               lost: waveStats.buildingsLost, waves: waveStats.waves,
+               lostList: waveStats.lost.slice() },
       research: { current: currentResearch, progress: researchProgress,
                   frac: researchFrac(), done: Object.keys(techDone) },
       beltDelivered: beltStats.delivered,

@@ -1585,8 +1585,13 @@ function takeOutputToStock(e) {
   return moved;
 }
 
-function putFromStock(e) {
+// perItemMax — 한 번 호출에 **품목당** 넣을 최대 개수. 생략하면 예전처럼 버퍼가 찰
+// 때까지 넣는다(플레이어의 [보유 자재 넣기] 버튼이 기대하는 동작).
+// 상한이 필요한 이유: 버퍼는 품목당 50개라, 재료가 귀할 때 먼저 걸린 기계 한 대가
+// 50개를 가져가 주차해 버리면 나머지가 통째로 굶는다.
+function putFromStock(e, perItemMax) {
   if (!e || !PUT_TYPES[e.type]) return 0;
+  var cap = (typeof perItemMax === 'number' && perItemMax > 0) ? perItemMax : Infinity;
   var moved = 0, guard = 0;
   // **굽던 것의 재료를 먼저 시도한다.** 레시피가 풀린 용광로는 ITEM_IDS 선언 순서로
   // 처음 받아들여지는 광석에 굳는데(giveTo), 그 순서는 플레이어가 볼 수 없다 —
@@ -1604,10 +1609,11 @@ function putFromStock(e) {
     var k = scan[i];
     // canAccept 가 기계의 버퍼 한도를 이미 알고 있으므로 여기서 다시 세지 않는다.
     // guard 는 무한루프 방어일 뿐이고 정상 경로에서는 한도가 먼저 걸린다.
-    while ((inventory[k] || 0) > 0 && canAccept(e, k) && guard++ < 20000) {
+    var gave = 0;
+    while ((inventory[k] || 0) > 0 && gave < cap && canAccept(e, k) && guard++ < 20000) {
       if (!giveTo(e, k)) break;
       invTake(inventory, k, 1);
-      moved++;
+      moved++; gave++;
     }
   }
   if (moved) { markPowerDirty(); markLogicDirty(); }
@@ -2648,7 +2654,8 @@ var nests = [];
 var enemies = [];
 var corpses = [];          // 연출용 (FX_RNG 만 사용)
 var evolution = 0;
-var waveStats = { spawned: 0, killed: 0, buildingsLost: 0, lastWaveT: 0, waves: 0 };
+var waveStats = { spawned: 0, killed: 0, buildingsLost: 0, lastWaveT: 0, waves: 0,
+                  lost: [] };   // 최근 파괴 목록 {t,type,x,y} — 어디가 뚫렸는지 보려고
 
 function spawnNests(seed) {
   nests.length = 0;
@@ -2801,6 +2808,14 @@ function stepEnemies(dt) {
         tgt.hp -= spec.dmg;
         if (tgt.hp <= 0) {
           waveStats.buildingsLost++;
+          // **무엇이 어디서 부서졌는지 말해 준다.** 예전에는 상단 [손실] 숫자만 올라서,
+          // 공장 어딘가가 뜯기는 중인데 어디인지 알 방법이 없었다. 방어선 밖에 혼자
+          // 나가 있는 채광기 하나가 계속 물리는 상황이 특히 안 보인다.
+          waveStats.lost.push({ t: Math.round(gameTime), type: tgt.type, x: tgt.tx, y: tgt.ty });
+          if (waveStats.lost.length > 40) waveStats.lost.shift();
+          if (typeof toast === 'function') {
+            toast(BUILDINGS[tgt.type].name + ' 파괴됨 (' + tgt.tx + ',' + tgt.ty + ')', 'bad');
+          }
           removeEntity(tgt.id, false);
           en.target = null;
         }
@@ -5998,6 +6013,7 @@ function newGame(seed) {
   enemies.length = 0; corpses.length = 0; turretFx.length = 0;
   resetEvolution();          // 진화도는 증분 누적이라 기준점까지 같이 되돌려야 한다
   waveStats.spawned = 0; waveStats.killed = 0; waveStats.buildingsLost = 0;
+  waveStats.lost.length = 0;
   waveStats.waves = 0; waveStats.lastWaveT = 0;
   beltStats.delivered = 0;
   ERRORS.length = 0;
@@ -6770,7 +6786,7 @@ window.__GAME = {
   howToGet: function (itemId) { return howToGet(itemId); },
   takeToStock: function (id) { return takeAllToStock(entities[id]); },
   takeableCount: function (id) { return stockTakeCount(entities[id]); },
-  putFromStock: function (id) { return putFromStock(entities[id]); },
+  putFromStock: function (id, perItemMax) { return putFromStock(entities[id], perItemMax); },
   takeOutputToStock: function (id) { return takeOutputToStock(entities[id]); },
   puttableItems: function (id) { return stockPuttableItems(entities[id]); },
   tutorialReset: function (on) { resetTutorial(on); renderTutorial(); return tutorial.step; },
@@ -6905,7 +6921,8 @@ window.__GAME = {
       evolution: evolution,
       enemies: enemies.length, nests: nests.length,
       waves: { spawned: waveStats.spawned, killed: waveStats.killed,
-               lost: waveStats.buildingsLost, waves: waveStats.waves },
+               lost: waveStats.buildingsLost, waves: waveStats.waves,
+               lostList: waveStats.lost.slice() },
       research: { current: currentResearch, progress: researchProgress,
                   frac: researchFrac(), done: Object.keys(techDone) },
       beltDelivered: beltStats.delivered,

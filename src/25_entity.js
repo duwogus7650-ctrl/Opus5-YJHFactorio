@@ -251,8 +251,13 @@ function takeOutputToStock(e) {
   return moved;
 }
 
-function putFromStock(e) {
+// perItemMax — 한 번 호출에 **품목당** 넣을 최대 개수. 생략하면 예전처럼 버퍼가 찰
+// 때까지 넣는다(플레이어의 [보유 자재 넣기] 버튼이 기대하는 동작).
+// 상한이 필요한 이유: 버퍼는 품목당 50개라, 재료가 귀할 때 먼저 걸린 기계 한 대가
+// 50개를 가져가 주차해 버리면 나머지가 통째로 굶는다.
+function putFromStock(e, perItemMax) {
   if (!e || !PUT_TYPES[e.type]) return 0;
+  var cap = (typeof perItemMax === 'number' && perItemMax > 0) ? perItemMax : Infinity;
   var moved = 0, guard = 0;
   // **굽던 것의 재료를 먼저 시도한다.** 레시피가 풀린 용광로는 ITEM_IDS 선언 순서로
   // 처음 받아들여지는 광석에 굳는데(giveTo), 그 순서는 플레이어가 볼 수 없다 —
@@ -270,10 +275,11 @@ function putFromStock(e) {
     var k = scan[i];
     // canAccept 가 기계의 버퍼 한도를 이미 알고 있으므로 여기서 다시 세지 않는다.
     // guard 는 무한루프 방어일 뿐이고 정상 경로에서는 한도가 먼저 걸린다.
-    while ((inventory[k] || 0) > 0 && canAccept(e, k) && guard++ < 20000) {
+    var gave = 0;
+    while ((inventory[k] || 0) > 0 && gave < cap && canAccept(e, k) && guard++ < 20000) {
       if (!giveTo(e, k)) break;
       invTake(inventory, k, 1);
-      moved++;
+      moved++; gave++;
     }
   }
   if (moved) { markPowerDirty(); markLogicDirty(); }
