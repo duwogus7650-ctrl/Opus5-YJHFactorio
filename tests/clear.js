@@ -699,9 +699,9 @@
     jIn('furnace-cu#4', 'furnace', EAST_RC, 0, 'copper-plate', WEST_RC);
     jIn('asm-green#4', 'assembler', WEST_RC, 0, 'sci-green');
     jIn('asm-red#4', 'assembler', WEST_RC, 0, 'sci-red');
-    // 인서터가 녹팩의 상한이다 — 256개 만들고 녹팩이 259개에서 섰다(필요 280).
-    // **한 번에 하나만 바꾼다**: 인서터 조립기 한 대만 더.
-    jIn('asm-ins#2', 'assembler', WEST_RC, 0, 'inserter-item', EAST_RC);
+    // 인서터 조립기를 한 대 더 넣어 봤다: 인서터는 256 → 296 으로 늘었는데
+    // **녹팩은 259 → 229 로 줄었다** — 벨트가 대신 밀려났다. 사슬의 한 칸만
+    // 넓히면 바로 옆 칸이 좁아진다. 그래서 넣지 않는다.
 
   }
 
