@@ -226,6 +226,20 @@ function stockPuttableItems(e) {
   return out;
 }
 
+// 출력 버퍼만 걷어온다. takeAllToStock 은 입력까지 비우는데, 기계에 그걸 쓰면
+// 넣어 준 재료를 도로 뺏어서 영원히 완성되지 않는다 (자율 플레이어가 실제로 그랬다).
+function takeOutputToStock(e) {
+  if (!e || !e.out) return 0;
+  var moved = 0;
+  for (var k in e.out) {
+    var n = e.out[k];
+    if (n > 0) { inventory[k] = (inventory[k] || 0) + n; moved += n; }
+  }
+  e.out = {};
+  if (moved) { markPowerDirty(); markLogicDirty(); }
+  return moved;
+}
+
 function putFromStock(e) {
   if (!e || !PUT_TYPES[e.type]) return 0;
   var moved = 0, guard = 0;

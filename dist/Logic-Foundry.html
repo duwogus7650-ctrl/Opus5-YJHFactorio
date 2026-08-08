@@ -1527,6 +1527,20 @@ function stockPuttableItems(e) {
   return out;
 }
 
+// 출력 버퍼만 걷어온다. takeAllToStock 은 입력까지 비우는데, 기계에 그걸 쓰면
+// 넣어 준 재료를 도로 뺏어서 영원히 완성되지 않는다 (자율 플레이어가 실제로 그랬다).
+function takeOutputToStock(e) {
+  if (!e || !e.out) return 0;
+  var moved = 0;
+  for (var k in e.out) {
+    var n = e.out[k];
+    if (n > 0) { inventory[k] = (inventory[k] || 0) + n; moved += n; }
+  }
+  e.out = {};
+  if (moved) { markPowerDirty(); markLogicDirty(); }
+  return moved;
+}
+
 function putFromStock(e) {
   if (!e || !PUT_TYPES[e.type]) return 0;
   var moved = 0, guard = 0;
@@ -5484,6 +5498,7 @@ function loadExample() {
 var gameTime = 0;
 var worldSeed = 20260807;
 var paused = false;
+var gameSpeed = 1;        // 시험/녹화용 배속 (1 = 실시간)
 var lastFrame = 0;
 var accumulator = 0;
 var uiTimer = 0, miniTimer = 0;
@@ -5564,12 +5579,15 @@ function tick(dt) {
 function advance(elapsed) {
   accumulator += elapsed;
   var steps = 0;
-  while (accumulator >= TICK && steps < MAX_STEPS) {
+  // 배속을 올리면 한 프레임에 밀 틱 수도 그만큼 늘어야 한다. 상한을 고정해 두면
+  // 배속 8 이상에서 시간이 조용히 버려져 "30분 돌렸다" 가 거짓이 된다.
+  var cap = MAX_STEPS * Math.max(1, Math.ceil(gameSpeed));
+  while (accumulator >= TICK && steps < cap) {
     tick(TICK);
     accumulator -= TICK;
     steps++;
   }
-  if (steps >= MAX_STEPS) accumulator = 0;   // 밀린 시간은 버린다 (나선 방지)
+  if (steps >= cap) accumulator = 0;   // 밀린 시간은 버린다 (나선 방지)
   return steps;
 }
 
@@ -5578,7 +5596,10 @@ function frame(now) {
   lastFrame = now;
   if (!paused) {
     stepCameraKeys(elapsed);
-    guard('advance', function () { advance(elapsed); });
+    // 배속은 **녹화·소크 시험 전용**이다. UI 에 노출하지 않는다 — 게임 난이도를
+    // 바꾸는 손잡이가 되어 버린다. 시뮬레이션은 여전히 고정 스텝이라 결정성이
+    // 유지되고, 배속은 "한 프레임에 몇 틱을 미느냐" 만 바꾼다.
+    guard('advance', function () { advance(elapsed * gameSpeed); });
   }
   guard('render', render);
 
@@ -5836,6 +5857,8 @@ window.__GAME = {
     return { ticks: n, t: gameTime };
   },
   tickOnce: function () { tick(TICK); return gameTime; },
+  setSpeed: function (n) { gameSpeed = Math.max(0, Math.min(60, +n || 1)); return gameSpeed; },
+  getSpeed: function () { return gameSpeed; },
 
   give: function (item, n) { inventory[item] = (inventory[item] || 0) + n; return inventory[item]; },
   giveAll: function (n) {
@@ -5899,6 +5922,13 @@ window.__GAME = {
     return { x: p.x / d, y: p.y / d };
   },
   camera: function () { return { x: cam.x, y: cam.y, z: cam.z, dpr: cam.dpr || 1 }; },
+  // 녹화용 — 방금 지은 곳을 비춰야 영상이 무엇을 하는지 보여준다
+  setCamera: function (x, y, z) {
+    if (x !== undefined && x !== null) cam.x = clamp(x, 4, W - 4);
+    if (y !== undefined && y !== null) cam.y = clamp(y, 4, H - 4);
+    if (z) cam.z = clamp(z, 0.35, 2.6);
+    return { x: cam.x, y: cam.y, z: cam.z };
+  },
   gOut: function (ctrlId, nid, port) {
     var e = entities[ctrlId]; if (!e) return null;
     var n = graphNode(e.graph, nid); if (!n) return null;
@@ -6014,6 +6044,42 @@ window.__GAME = {
   },
 
   // 특정 광종이 2x2 로 깔린 자리를 찾아준다 (하네스가 채광기를 놓을 곳)
+  // 스폰 근처에서 채광기(2x2)를 놓을 수 있는 자리를 가까운 순으로 여러 개.
+  // oreSpot 은 지도 좌상단부터 훑어 첫 자리 하나만 주는데, 배치를 설계하려면
+  // "내 발밑에서 가까운 곳" 이 필요하다.
+  oreSpotsNear: function (itemId, cx, cy, count, minAmt) {
+    var want = ORE_ITEM.indexOf(itemId);
+    if (want <= 0) return [];
+    var found = [];
+    for (var y = 1; y < H - 2; y += 2) {
+      for (var x = 1; x < W - 2; x += 2) {
+        var ok = true;
+        for (var dy = 0; dy < 2 && ok; dy++) {
+          for (var dx = 0; dx < 2; dx++) {
+            var i = idx(x + dx, y + dy);
+            if (world.ore[i] !== want || world.oreAmt[i] < (minAmt || 500) || world.occ[i] !== 0) { ok = false; break; }
+          }
+        }
+        if (!ok) continue;
+        var d = Math.abs(x - cx) + Math.abs(y - cy);
+        found.push({ x: x, y: y, d: d, amount: surveyOre(x, y, 2, 2).total });
+      }
+    }
+    found.sort(function (a, b) { return a.d - b.d; });
+    return found.slice(0, count || 8);
+  },
+  // 배치가 왜 거절됐는지 그대로 돌려준다. 자율 플레이어가 실패 사유를 추측하다
+  // 두 판을 날렸다 ('자리 충돌' 인 줄 알았는데 실제로는 '톱니 5개 필요' 였다).
+  whyPlace: function (type, tx, ty, dir) {
+    var r = canPlace(type, tx, ty, dir === undefined ? 1 : dir);
+    return r.ok ? 'ok' : (r.why || '알 수 없음');
+  },
+  entIds: function () {
+    var r = []; forEachEntity(function (e) { r.push([e.id, e.type]); }); return r;
+  },
+  nestList: function () {
+    return nests.map(function (n) { return { x: Math.round(n.x), y: Math.round(n.y), hp: Math.round(n.hp) }; });
+  },
   oreSpot: function (itemId) {
     var want = ORE_ITEM.indexOf(itemId);
     if (want <= 0) return null;
@@ -6101,6 +6167,7 @@ window.__GAME = {
   takeToStock: function (id) { return takeAllToStock(entities[id]); },
   takeableCount: function (id) { return stockTakeCount(entities[id]); },
   putFromStock: function (id) { return putFromStock(entities[id]); },
+  takeOutputToStock: function (id) { return takeOutputToStock(entities[id]); },
   puttableItems: function (id) { return stockPuttableItems(entities[id]); },
   tutorialReset: function (on) { resetTutorial(on); renderTutorial(); return tutorial.step; },
   tutorialSkip: function () { var s = skipTutorialStep(); renderTutorial(); return s; },
@@ -6149,6 +6216,8 @@ window.__GAME = {
 
   // UI 조작 훅 — 스크린샷/스모크 테스트가 실제 화면을 열어 볼 때 쓴다
   ui: {
+    // 녹화·시연용 — 튜토리얼 패널이 공장을 가린다
+    closeTutor: function () { tutorial.on = false; renderTutorial(); return true; },
     closeHelp: function () { closeHelp(); },
     openHelp: function () { document.getElementById('help').style.display = 'block'; },
     openLogic: function (id) { var e = entities[id]; if (!e) return false; openLogic(e); return true; },
