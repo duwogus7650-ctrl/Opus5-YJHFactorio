@@ -413,9 +413,12 @@
   function gridRest() {
     var seen = {}, i, w = [PA, PB, PC, PD, PE, PF], k;
     for (k = 0; k < w.length; k++) for (i = 0; i < w[k].length; i++) seen[w[k][i][0] + ',' + w[k][i][1]] = 1;
+    // **지킬 수 있는 범위 안에만 깐다.** 손실 목록이 정확히 말해 줬다: 잃은 두 개는
+    // 공장이 아니라 x=62 의 전주였다(t=1847,1853). 터렛 사거리 밖에 혼자 나가 있는
+    // 전주는 방어선을 넓히는 게 아니라 적에게 먹이를 주는 것이다.
     var r = [];
-    for (var x = 62; x <= 97; x += 5) {
-      for (var y = 60; y <= 95; y += 5) {
+    for (var x = 67; x <= 97; x += 5) {
+      for (var y = 65; y <= 95; y += 5) {
         if (!seen[x + ',' + y]) r.push([x, y]);
       }
     }
@@ -696,6 +699,9 @@
     jIn('furnace-cu#4', 'furnace', EAST_RC, 0, 'copper-plate', WEST_RC);
     jIn('asm-green#4', 'assembler', WEST_RC, 0, 'sci-green');
     jIn('asm-red#4', 'assembler', WEST_RC, 0, 'sci-red');
+    // 인서터가 녹팩의 상한이다 — 256개 만들고 녹팩이 259개에서 섰다(필요 280).
+    // **한 번에 하나만 바꾼다**: 인서터 조립기 한 대만 더.
+    jIn('asm-ins#2', 'assembler', WEST_RC, 0, 'inserter-item', EAST_RC);
 
   }
 
