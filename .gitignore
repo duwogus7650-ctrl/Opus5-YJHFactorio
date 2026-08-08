@@ -12,3 +12,4 @@ node_modules/
 # shots/ 는 제외하지 않는다
 tests/.mutate-backup/
 dist/video/
+tests/_*.py
