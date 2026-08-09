@@ -122,6 +122,26 @@ var hoverT = { x: -1, y: -1 };
 var selected = null;      // 선택된 엔티티 id
 var pickMode = null;      // 제어기 노드가 지도에서 대상을 고르는 중
 
+// --- 청사진 ----------------------------------------------------------------
+// 두 모드뿐이다: 'sel' 은 영역을 끌어 담는 중, 'paste' 는 담은 것을 놓는 중.
+// B 로 돌린다 — 담은 게 없으면 담기, 있으면 놓기/다시 담기.
+var bpMode = null;
+function toggleBlueprint() {
+  if (bpMode) { bpMode = null; bpSelStart = null; toast('청사진 모드 해제'); }
+  else if (blueprint) { bpMode = 'paste'; selectTool(null); toast('청사진 붙여넣기 — 좌클릭으로 배치, B 로 다시 담기'); }
+  else { bpMode = 'sel'; selectTool(null); toast('청사진 담기 — 영역을 끌어서 선택'); }
+  renderBuildList();
+}
+function blueprintClickAt(tx, ty) {
+  if (bpMode !== 'paste' || !blueprint) return false;
+  var r = pasteBlueprint(tx, ty);
+  if (r.placed === 0) toast('아무것도 못 지었다 — ' + (r.why || '재료 부족'), 'bad');
+  else if (r.skipped) toast(r.placed + '개 배치 · ' + r.skipped + '개 건너뜀 (' + (r.why || '') + ')', 'warn');
+  else toast(r.placed + '개 배치');
+  renderInv();
+  return true;
+}
+
 function selectTool(t) {
   if (t && BUILDINGS[t].tech && !techDone[BUILDINGS[t].tech]) {
     toast(TECHS[BUILDINGS[t].tech].name + ' 연구가 필요하다', 'bad'); return;
@@ -177,6 +197,9 @@ function bindInput(canvas) {
     if (ev.button !== 0) return;
     mouse.down = true;
     if (pickMode) { doPick(); return; }
+    // 청사진이 도구보다 먼저다 — 모드에 들어와 있으면 클릭의 뜻이 통째로 다르다
+    if (bpMode === 'sel') { bpSelStart = { x: hoverT.x, y: hoverT.y }; return; }
+    if (bpMode === 'paste') { blueprintClickAt(hoverT.x, hoverT.y); return; }
     if (tool) { dragLast = null; dragPlace(); }
     else { pickEntity(); }
   });
@@ -184,6 +207,14 @@ function bindInput(canvas) {
     if (ev.button === 2) {
       if (mouse.rdown && !mouse.dragged) rightClickAction();
       mouse.rdown = false; return;
+    }
+    // 영역 선택은 **뗄 때** 확정한다. 누르는 순간 확정하면 한 칸짜리 청사진만 나온다.
+    if (bpMode === 'sel' && bpSelStart) {
+      var r = captureBlueprint(bpSelStart.x, bpSelStart.y, hoverT.x, hoverT.y);
+      bpSelStart = null;
+      if (!r.count) toast('그 영역에 담을 건물이 없다', 'bad');
+      else { bpMode = 'paste'; toast('청사진에 ' + r.count + '개 담았다 (' + r.w + 'x' + r.h + ') — 좌클릭으로 붙여넣기'); }
+      renderBuildList();
     }
     mouse.down = false; dragLast = null;
   });
@@ -311,6 +342,7 @@ function bindInput(canvas) {
     if (k === 'h' || k === 'H' || k === '?') { toggleHelp(); return; }
     if (k === 'p' || k === 'P') { showPollution = !showPollution; return; }
     if (k === 'q' || k === 'Q') { pipetteTool(); return; }
+    if (k === 'b' || k === 'B') { toggleBlueprint(); return; }
     // 단축키는 건물에 **고정**돼 있다 (BUILDINGS[].hotkey).
     // 예전엔 "잠긴 것을 뺀 목록의 순서"로 매겼는데, 연구로 새 건물이 열리면
     // 번호가 통째로 밀려서 3=채광기를 외운 사람이 물류학을 연구하는 순간
@@ -446,6 +478,31 @@ function doPick() {
 
 // --- 오버레이 (월드 좌표계에서 그린다) ----------------------------------------
 function drawOverlays() {
+  // 청사진 — 담는 중이면 끌고 있는 사각형, 놓는 중이면 놓일 자리.
+  // **놓일 자리를 안 보여주면** 원점이 좌상단이라는 규칙을 플레이어가 알 방법이 없다.
+  if (bpMode === 'sel' && bpSelStart && inBounds(hoverT.x, hoverT.y)) {
+    var sx0 = Math.min(bpSelStart.x, hoverT.x), sy0 = Math.min(bpSelStart.y, hoverT.y);
+    var sw = Math.abs(hoverT.x - bpSelStart.x) + 1, sh = Math.abs(hoverT.y - bpSelStart.y) + 1;
+    ctx.fillStyle = 'rgba(47,95,143,0.18)';
+    ctx.fillRect(sx0, sy0, sw, sh);
+    ctx.strokeStyle = '#7fb8d8'; ctx.lineWidth = 0.07;
+    ctx.strokeRect(sx0, sy0, sw, sh);
+  } else if (bpMode === 'paste' && blueprint && inBounds(hoverT.x, hoverT.y)) {
+    ctx.strokeStyle = 'rgba(127,184,216,0.55)'; ctx.lineWidth = 0.06;
+    ctx.strokeRect(hoverT.x, hoverT.y, blueprint.w, blueprint.h);
+    for (var bi = 0; bi < blueprint.ents.length; bi++) {
+      var bit = blueprint.ents[bi], bB = BUILDINGS[bit.t];
+      if (!bB) continue;
+      var bw = bB.w, bh = bB.h;
+      if (bB.rot && (bit.d === 1 || bit.d === 3) && bw !== bh) { var tmpw = bw; bw = bh; bh = tmpw; }
+      var px = hoverT.x + bit.dx, py = hoverT.y + bit.dy;
+      // 놓을 수 있는 칸과 막힌 칸을 색으로 가른다 — 붙여넣기 전에 몇 개가
+      // 건너뛸지 보이는 편이 낫다(전부-아니면-전무가 아니므로 더욱).
+      var okHere = canPlace(bit.t, px, py, bit.d, false).ok;
+      ctx.fillStyle = okHere ? 'rgba(127,184,216,0.22)' : 'rgba(192,57,43,0.30)';
+      ctx.fillRect(px + 0.05, py + 0.05, bw - 0.1, bh - 0.1);
+    }
+  }
   // 전주 공급구역
   if (tool === 'pole' || (selected && entities[selected] && entities[selected].type === 'pole')) {
     ctx.fillStyle = 'rgba(240,169,43,0.09)';
@@ -981,6 +1038,18 @@ function fillHelp() {
     '되먹임이 있는 제어를 짤 때 늘 만나는 문제이고, 이 게임에서 가장 배울 것이 많은 지점이다.</li>',
     '<li><b>방어 자동화</b> — 적 근접 센서가 적을 감지하면 생산 라인을 끄고 그 전력을 방어에 몰아준다.</li>',
     '</ul>',
+    '<h4>청사진 — 잘 도는 라인을 통째로 늘린다</h4>',
+    '<p><code>B</code> (폰은 아래 [청사진] 버튼) 를 누르고 <b>영역을 끌어서</b> 담는다.',
+    '담으면 곧바로 붙여넣기 모드가 되고, <b>좌클릭</b> 한 번으로 그 자리에 지어진다.',
+    '놓일 자리는 미리 파랗게 보이고, <b>못 놓는 칸은 빨갛게</b> 보인다 — 붙이기 전에 몇 개가',
+    '건너뛸지 알 수 있다. 다시 <code>B</code> 를 누르면 해제된다.</p>',
+    '<p><b>제어기의 규칙과 배선까지 따라온다.</b> 그게 이 기능의 값이다 — 두 번째 라인을 만들 때',
+    '회로를 손으로 다시 그리지 않아도 된다. 영역 <b>안</b>의 기계를 가리키던 참조는 사본의 기계로',
+    '갈아 끼워지고, 영역 <b>밖</b>을 가리키던 참조는 <b>끊긴다</b>(대상 고르기 상태가 된다) —',
+    '안 끊으면 붙여넣은 사본이 원본의 기계를 지배해서, 왜 멈췄는지 짚을 수 없게 된다.</p>',
+    '<p>세 가지는 알아 두는 편이 낫다. <b>재료는 실제로 나간다</b>(공짜로 지으면 치트다).',
+    '<b>내용물은 안 따라온다</b> — 상자 재고·벨트 위 아이템·연료는 계획이 아니라 화물이고,',
+    '따라오면 청사진이 복제기가 된다. 그리고 <b>회전은 아직 없다</b> — 담은 방향 그대로만 붙는다.</p>',
     '<h4>증기 발전 — 버퍼가 생기면 제어가 달라진다</h4>',
     '<p>강철 제련을 연구하면 <b>파이프·지하수 펌프·보일러·증기기관</b>이 열린다.',
     '<code>펌프 → 파이프 → 보일러 → 파이프 → 증기기관</code> 으로 <b>맞대어</b> 놓으면 한 유체망이 된다 —',
@@ -1119,6 +1188,8 @@ function bindMobileBar() {
   on('btnSheetRight', function () { toggleSheet('right'); });
   on('btnRotate', function () { toolDir = dirCW(toolDir); renderBuildList(); });
   on('btnDemolish', function () { setDemolish(!demolishMode); });
+  // 폰에는 B 키가 없다. 단축키만 두면 청사진은 폰에서 존재하지 않는 기능이 된다.
+  on('btnBlueprint', function () { toggleBlueprint(); });
   on('btnTech', function () { toggleTech(); });
   on('btnHelp', function () { toggleHelp(); });
   // 좁은 화면에서는 건설 시트를 먼저 열어 둔다 — 빈 화면만 보이면 무엇부터

@@ -2634,6 +2634,126 @@
         '개 · 건너뜀 ' + fsComp.skipped.length + ' · 유체 노드 포함 ' +
         ((G.gKinds(fsC) || []).indexOf('fluid') >= 0));
 
+      // ================= 11.7 청사진 =====================================
+      // 이 기능의 값은 **배선이 따라오는가**에 있다. 벨트만 복사하는 것은 편의지만,
+      // 제어기의 규칙·그래프가 새 대상으로 갈아 끼워진 채 따라오면 "잘 도는 라인"을
+      // 통째로 늘릴 수 있다. 그래서 게이트도 거기에 건다.
+      G.reset(8300); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(true); G.research('logistics'); G.research('logic-mem');
+      var bpBox = G.place('chest', 40, 40, 0);
+      var bpAsm = G.place('assembler', 42, 40, 0);
+      G.setRecipe(bpAsm, 'gear');
+      var bpCtl = G.place('controller', 40, 42, 0);
+      // "상자의 철판이 50 미만이면 조립기를 켠다" — 문장으로 만든 회로
+      G.ruleAdd(bpCtl, { name: '철판부족',
+        when: { src: 'chest', ent: bpBox, item: 'iron-plate', cmp: '<', value: 50 },
+        then: { act: 'run', ent: bpAsm, onWhenTrue: true } });
+      G.ruleCompile(bpCtl);
+      // 영역 밖 대상을 가리키는 두 번째 규칙 — 붙여넣으면 **끊겨야** 한다
+      var bpOutside = G.place('lab', 50, 50, 0);
+      G.ruleAdd(bpCtl, {
+        when: { src: 'chest', ent: bpBox, item: 'iron-plate', cmp: '>', value: 999 },
+        then: { act: 'run', ent: bpOutside, onWhenTrue: false } });
+      G.ruleCompile(bpCtl);
+      // **경계에 걸치는 건물을 일부러 하나 둔다.** 처음엔 영역 밖 연구소만 두고
+      // "안 담긴다"를 확인했는데, 그건 스캔이 영역 안 타일만 훑으니 당연한 것이라
+      // 아무것도 검사하지 않았다 — '걸친 것도 담는' 돌연변이가 그대로 살아남았다.
+      // 걸친 것이 있어야 '완전히 들어온 것만' 이라는 규칙이 실제로 재진다.
+      var bpEdge = G.place('assembler', 44, 44, 0);    // 44..46 → (45,45) 경계를 넘는다
+      var bpCap = G.bpCapture(39, 39, 45, 45);
+      chk('bp.capturesWholeBuildingsOnly',
+        bpCap.count === 3 && !!bpEdge && G.bpInfo().types.indexOf('lab') < 0,
+        '영역(39,39)-(45,45) 캡처 → ' + bpCap.count + '개 (상자·조립기·제어기 = 3) · ' +
+        '경계에 걸친 조립기(44,44~46,46) 제외 확인 · 영역 밖 연구소 포함 ' +
+        (G.bpInfo().types.indexOf('lab') >= 0) + ' (false 여야)');
+
+      // 붙여넣기는 **플레이어와 같은 길**로 짓는다 — 재료가 실제로 나가야 한다
+      var costBefore = G.state().inventory['iron-plate'] || 0;
+      var bpRes = G.bpPaste(60, 60);
+      var costAfter = G.state().inventory['iron-plate'] || 0;
+      var bpCost = G.bpInfo().cost['iron-plate'] || 0;
+      chk('bp.pasteChargesMaterials',
+        bpRes.placed === 3 && bpRes.skipped === 0 && (costBefore - costAfter) === bpCost,
+        '붙여넣기 ' + bpRes.placed + '개(건너뜀 ' + bpRes.skipped + ') · 철판 ' + costBefore +
+        ' → ' + costAfter + ' (청사진 원가 ' + bpCost + '만큼 나가야 · 공짜면 치트다)');
+
+      // **배선이 따라왔는가** — 사본 제어기가 사본 조립기를 지배해야 한다
+      // 청사진 원점은 선택 영역의 좌상단(39,39)이다. 상자는 그 안에서 (+1,+1) 이므로
+      // (60,60) 에 붙여넣으면 상자는 (61,61) 에 선다 — 처음에 (60,60) 으로 찾다가
+      // null 을 만져 드라이버가 죽었다.
+      var newBox = G.entAtTile(61, 61), newAsm = G.entAtTile(63, 61), newCtl = G.entAtTile(61, 63);
+      // **'켜져 있다'로는 아무것도 증명 못 한다.** 기계의 기본값이 켜짐이라, 참조가
+      // 통째로 끊긴 사본도 '켜짐'으로 통과한다(돌연변이 MISS 로 확인). 그래서
+      // 사본을 **끄게** 만든다 — 참조가 끊겼으면 절대 못 끄는 상태다.
+      // 지배 중(logicForced)까지 함께 단언한다.
+      G.fillChest(newBox, 'iron-plate', 500);     // 사본 상자를 채워 조건을 거짓으로 → 꺼져야
+      G.fillChest(bpBox, 'iron-plate', 10);       // 원본 상자는 비워 → 원본은 켜져야
+      G.run(0.3);
+      var newAsmOn = G.ent(newAsm).enabled, oldAsmOn = G.ent(bpAsm).enabled;
+      var newForced = G.ent(newAsm).logicForced;
+      chk('bp.wiringFollowsAndRetargets',
+        !!newBox && !!newAsm && !!newCtl && newForced === true &&
+        newAsmOn === false && oldAsmOn === true,
+        '사본 상자 500개 → 사본 조립기 ' + (newAsmOn ? '켜짐' : '꺼짐') + '(꺼져야) · 지배중 ' +
+        newForced + '(true 여야 · 참조가 끊기면 끌 수가 없다) · 원본 상자 10개 → 원본 조립기 ' +
+        (oldAsmOn ? '켜짐' : '꺼짐') + '(켜져야 · 사본이 원본을 지배하면 여기가 뒤집힌다)');
+
+      // 영역 밖을 가리키던 규칙은 끊겨야 한다. 안 끊으면 붙여넣은 사본이 남의
+      // 기계를 지배하고, 플레이어는 왜 멈췄는지 짚을 수 없다.
+      var newRules = G.ruleList(newCtl) || [];
+      var outsideRef = newRules.length > 1 ? newRules[1].sentence : '';
+      G.fillChest(newBox, 'iron-plate', 1500);    // 두 번째 규칙(>999)을 참으로
+      G.run(0.3);
+      chk('bp.outsideReferencesAreCut',
+        newRules.length === 2 && outsideRef.indexOf('대상 고르기') >= 0 &&
+        G.ent(bpOutside).enabled === true,
+        '사본의 둘째 규칙 문장 "' + outsideRef.slice(-28) + '" (대상이 비어야) · ' +
+        '영역 밖 연구소 ' + (G.ent(bpOutside).enabled ? '켜짐' : '꺼짐') +
+        ' (켜져 있어야 · 사본이 원본 밖을 끄면 실패)');
+
+      // **복제기가 아니다** — 내용물은 안 따라온다. 따라오면 청사진 한 번에
+      // 벨트 위 아이템과 상자 재고가 공짜로 늘어난다.
+      var srcContents = G.ent(bpBox).inv['iron-plate'] || 0;
+      var dstContents = G.ent(newBox).inv['iron-plate'] || 0;
+      G.bpClear();
+      var bp2 = G.bpCapture(39, 39, 45, 45);
+      var invBefore2 = G.state().inventory['iron-plate'] || 0;
+      G.bpPaste(70, 70);
+      var newBox2 = G.entAtTile(71, 71);
+      chk('bp.doesNotCopyContents',
+        bp2.count === 3 && srcContents > 0 && dstContents > 0 &&
+        (G.ent(newBox2).inv['iron-plate'] || 0) === 0,
+        '원본 상자 ' + srcContents + '개 · 새로 붙여넣은 상자 ' +
+        (G.ent(newBox2).inv['iron-plate'] || 0) + '개 (0이어야 · 내용물이 따라오면 복제기다) · ' +
+        '보유 철판은 원가만큼만 줄었다(' + invBefore2 + ' → ' +
+        (G.state().inventory['iron-plate'] || 0) + ')');
+
+      // 막힌 칸은 그 항목만 건너뛰고 나머지를 짓는다. 전부-아니면-전무면 큰
+      // 청사진이 한 칸 때문에 영영 안 붙는다.
+      G.place('wall', 81, 81, 0);                 // 상자가 설 자리(원점+1,+1)를 막는다
+      var bpRes3 = G.bpPaste(80, 80);
+      chk('bp.skipsBlockedTilesAndReports',
+        bpRes3.placed === 2 && bpRes3.skipped === 1 && !!bpRes3.why,
+        '한 칸을 벽으로 막고 붙여넣기 → 지음 ' + bpRes3.placed + ' · 건너뜀 ' +
+        bpRes3.skipped + ' · 이유 "' + (bpRes3.why || '없음') + '" (이유를 안 돌려주면 왜 안 붙었는지 모른다)');
+
+      // 재료가 없으면 아무것도 안 지어진다 — 음성 대조군. 이게 없으면 위 검사들은
+      // "언제나 지어진다"는 구현도 통과시킨다.
+      G.setInv('iron-plate', 0); G.setInv('gear', 0); G.setInv('circuit', 0);
+      var bpRes4 = G.bpPaste(90, 90);
+      chk('bp.poorPasteBuildsNothing',
+        bpRes4.placed === 0 && bpRes4.skipped === 3,
+        '재료를 0으로 만든 뒤 붙여넣기 → 지음 ' + bpRes4.placed + ' · 건너뜀 ' +
+        bpRes4.skipped + ' (조건 발생 확인)');
+
+      // 저장에 실려야 한다 — 저장 한 번에 사라지면 "만들어 두고 늘리기"가 성립하지 않는다
+      var bpRaw = G.saveRaw(); G.load(bpRaw);
+      var bpAfter = G.bpInfo();
+      chk('bp.survivesSave',
+        !!bpAfter && bpAfter.count === 3 && bpAfter.w === 7 && bpAfter.h === 7,
+        '저장→복원 후 청사진 ' + (bpAfter ? bpAfter.count + '개 · ' + bpAfter.w + 'x' + bpAfter.h : '없음') +
+        ' (3개 7x7 이어야)');
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

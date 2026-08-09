@@ -31,6 +31,7 @@ function newGame(seed) {
   ERRORS.length = 0;
   alarms.length = 0; displays.length = 0;
   busClear();                // 신호 버스도 판을 넘기지 않는다 — 결정성이 깨진다
+  blueprint = null;          // 청사진도 판에 딸린 물건이다
 
   generateWorld(worldSeed);
   spawnNests(worldSeed);
@@ -215,6 +216,9 @@ function saveGame() {
     // 버스는 직전 틱 합계 하나뿐이다. 안 담으면 불러온 첫 틱에 모든 채널이 0 이
     // 돼, 신호를 받아 라인을 잡고 있던 회로가 한 틱 동안 손을 놓는다.
     bus: busSnapshot(),
+    // 청사진도 저장한다. 저장 한 번에 사라지면 '한 라인 잘 만들어 두고 늘리기'가
+    // 성립하지 않는다 — 그게 이 기능의 전부다.
+    bp: blueprint,
     tut: { on: tutorial.on, track: tutorial.track, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
     prod: { smelted: prodStats.smelted, crafted: prodStats.crafted, byRecipe: prodStats.byRecipe }
   };
@@ -249,6 +253,7 @@ function loadGame(raw) {
     currentResearch = data.res || null; researchProgress = data.resP || 0;
     researchProgressBy = data.resBy || {};   // 예전 저장본엔 없다 — 빈 채로 두면 그만이다
     busRestore(data.bus);                    // 마찬가지로 없으면 전 채널 0 에서 시작한다
+    blueprint = data.bp || null;             // 예전 저장본엔 없다 — 빈 채로 둔다
     handQueue.length = 0;
     if (Array.isArray(data.hand)) {
       for (var hj = 0; hj < data.hand.length; hj++) {
@@ -425,6 +430,16 @@ window.__GAME = {
   // 유체망 — 이 설비가 속한 망의 물·증기. connected 0 은 "망이 없다"이고
   // 그건 "망에 있는데 비었다"와 다르다.
   fluid: function (id) { var e = entities[id]; return e ? fluidOf(e) : null; },
+  // 청사진 — 시험은 플레이어와 같은 경로(영역 캡처 → 붙여넣기)만 쓴다
+  bpCapture: function (x0, y0, x1, y1) { return captureBlueprint(x0, y0, x1, y1); },
+  bpPaste: function (tx, ty) { return pasteBlueprint(tx, ty); },
+  bpInfo: function () {
+    if (!blueprint) return null;
+    return { w: blueprint.w, h: blueprint.h, count: blueprint.ents.length,
+             types: blueprint.ents.map(function (i) { return i.t; }),
+             cost: blueprintCost() };
+  },
+  bpClear: function () { blueprint = null; return true; },
   fluidNetCount: function () { if (fluidDirty) rebuildFluid(); return fluidNets.length; },
   // 신호 버스 — 지금 읽히는 값(직전 틱 합계)
   bus: function (ch) { return ch === undefined ? busSnapshot() : busRead(ch); },

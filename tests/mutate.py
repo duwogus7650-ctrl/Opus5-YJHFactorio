@@ -769,6 +769,45 @@ MUTATIONS = [
      b'  return { connected: 1, water: net.water, steam: net.steam, cap: net.cap,',
      b'  return { connected: 0, water: net.water, steam: net.steam, cap: net.cap,',
      ['fluid.sensorReadsTheNet']),
+
+    # ---- 청사진 ----
+    # 공짜로 지으면 청사진이 치트가 된다.
+    ('붙여넣기가 재료를 안 받는다 (공짜 건설)', '34_blueprint.js',
+     b'    var e = placeEntity(it.t, tx + it.dx, ty + it.dy, it.d, false);',
+     b'    var e = placeEntity(it.t, tx + it.dx, ty + it.dy, it.d, true);',
+     ['bp.pasteChargesMaterials']),
+
+    # 영역 밖 참조를 안 끊으면 붙여넣은 사본이 남의 기계를 지배한다.
+    ('영역 밖 참조를 안 끊고 원본을 그대로 가리킨다', '34_blueprint.js',
+     b'  var n = idMap[oldId];\n  return (n === undefined) ? null : n;',
+     b'  var n = idMap[oldId];\n  return (n === undefined) ? oldId : n;',
+     ['bp.outsideReferencesAreCut']),
+
+    # 영역 안 참조까지 끊으면 배선이 따라오지 않는다 — 이 기능의 값 자체가 사라진다.
+    ('영역 안 참조도 끊는다 (배선이 안 따라온다)', '34_blueprint.js',
+     b'  var it = { srcId: e.id, dx: e.tx - ox, dy: e.ty - oy, t: e.type, d: e.dir };',
+     b'  var it = { dx: e.tx - ox, dy: e.ty - oy, t: e.type, d: e.dir };',
+     ['bp.wiringFollowsAndRetargets']),
+
+    ('청사진이 내용물까지 복사한다 (복제기)', '34_blueprint.js',
+     b"  if (it2.pf) { e2.playerFilter = it2.pf; e2.filter = it2.pf; }",
+     b"  if (it2.pf) { e2.playerFilter = it2.pf; e2.filter = it2.pf; }\n    if (it2.t === 'chest') invAdd(e2.inv, 'iron-plate', 500);",
+     ['bp.doesNotCopyContents']),
+
+    ('걸친 건물도 청사진에 담는다 (잘린 조각)', '34_blueprint.js',
+     b'      if (e.tx < ax || e.ty < ay || e.tx + e.w - 1 > bx || e.ty + e.h - 1 > by) continue;',
+     b'      if (false) continue;',
+     ['bp.capturesWholeBuildingsOnly']),
+
+    ('저장이 청사진을 안 담는다', '60_game.js',
+     b'    bp: blueprint,',
+     b'    bp: null,',
+     ['bp.survivesSave']),
+
+    ('B 키를 눌러도 청사진 모드가 안 켜진다', '50_ui.js',
+     b"    if (k === 'b' || k === 'B') { toggleBlueprint(); return; }",
+     b"    if (false) { toggleBlueprint(); return; }",
+     ['ui.blueprintKeyAndDragCapture'], 'uismoke.js'),
 ]
 
 

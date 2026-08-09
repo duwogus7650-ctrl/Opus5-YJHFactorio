@@ -856,6 +856,48 @@
         bsTxt.indexOf('채널 A') >= 0 && bsTxt.indexOf('5') >= 0,
         '신호 보내기 노드의 해석 줄 = "' + bsTxt + '" (대상 없다는 경고가 뜨면 안 되고, 채널과 값을 말해야 한다)');
 
+      // (f) **청사진의 진입점.** 모델 게이트는 G.bpCapture/bpPaste 를 직접 부르므로
+      //     "B 키가 먹히는가 · 드래그로 담기는가 · 클릭으로 붙는가"를 하나도
+      //     보증하지 않는다(교훈 05). 여기서는 사람이 하는 순서 그대로 두드린다.
+      G.reset(424250); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(true); G.ui.closeHelp(); G.ui.clearTool();
+      // **편집기를 닫고 시작한다.** 노드 편집기가 열려 있으면 게임 단축키가
+      // 통째로 막힌다(의도된 규칙이다) — 앞 절이 열어 둔 채 끝나서 B 키가
+      // 삼켜졌고, 그걸 '청사진이 안 된다'로 오독했다.
+      G.ui.closeLogic();
+      G.center(80, 80); G.setZoom(1); G.ui.refresh();
+      var bpChest = G.place('chest', 78, 78, 0);
+      var bpPole = G.place('pole', 80, 78, 0);
+      key('b');                                    // 담기 모드
+      // 영역을 끌어서 선택 — 누르고, 지나가고, 뗀다
+      move(77, 77); down(77, 77, 0);
+      move(79, 79); move(81, 79);
+      up(0);
+      var bpAfterDrag = G.bpInfo();
+      chk('ui.blueprintKeyAndDragCapture',
+        !!bpChest && !!bpPole && !!bpAfterDrag && bpAfterDrag.count === 2,
+        'B 키 → 영역 드래그 → 청사진 ' + (bpAfterDrag ? bpAfterDrag.count + '개 · ' +
+        bpAfterDrag.w + 'x' + bpAfterDrag.h : '없음') + ' (상자·전주 2개여야)');
+
+      // 담고 나면 곧바로 붙여넣기 모드다 — 좌클릭 한 번으로 지어져야 한다
+      var entsBefore = G.state().entityCount;
+      click(90, 90, 0);
+      var entsAfter = G.state().entityCount;
+      chk('ui.blueprintClickPastes',
+        entsAfter === entsBefore + 2 && !!G.entAtTile(91, 91),
+        '좌클릭 한 번 → 엔티티 ' + entsBefore + ' → ' + entsAfter +
+        '개 (2개 늘어야) · 원점+1 자리에 상자 ' + (G.entAtTile(91, 91) ? '있음' : '없음'));
+
+      // 음성 대조군 — 모드를 끄면 같은 클릭이 아무것도 안 지어야 한다.
+      // 이게 없으면 위 검사는 "언제나 붙여넣는다"는 구현도 통과시킨다.
+      key('b');                                    // 해제
+      var entsBefore2 = G.state().entityCount;
+      click(100, 100, 0);
+      chk('ui.blueprintModeOffPastesNothing',
+        G.state().entityCount === entsBefore2,
+        'B 로 모드 해제 후 같은 클릭 → 엔티티 ' + entsBefore2 + ' → ' +
+        G.state().entityCount + ' (안 늘어야 · 조건 발생 확인)');
+
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', G.ui.nodeCount() < 0, '노드 수가 음수일 리 없다', true);
