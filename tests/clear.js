@@ -8,7 +8,8 @@
 //  완주 조건 (전부 세계 상태로 판정한다):
 //    · 연구 8종 전부 완료 (실제로 연구소를 돌려서)
 //    · 건물 13종 전부 배치해 각자 제 일을 함
-//    · 노드 25종 전부를 살아 있는 회로에 써서 세계를 움직임
+//    · 노드 29종 전부를 살아 있는 회로에 써서 세계를 움직임 (종류가 늘면 이 줄이 아니라
+//      G.nodeKinds() 가 기준이다 — 검사는 그쪽을 본다)
 //    · 심화 튜토리얼 9단계 전부 통과 (건너뛰기 없이 세계 상태로)
 //    · 습격을 막아냄 (손실 0)
 //
@@ -930,10 +931,10 @@
     return null;
   }
 
-  // --- 제어기 3대 (노드 25종 전부를 살아 있는 회로에 건다) --------------------
+  // --- 제어기 4대 (노드 전 종류를 살아 있는 회로에 건다) ----------------------
   function nd(c, kind, x, y) { var id = G.gAdd(c, kind, x, y); markNode(kind); return id; }
   // 문장(규칙)으로 회로를 만든다. kinds 는 이 문장이 컴파일되며 쓰는 노드 종류 —
-  // "노드 25종을 다 써 봤는가" 판정에 그대로 센다. 컴파일 뒤 실제 그래프와
+  // "노드를 다 써 봤는가" 판정에 그대로 센다. 컴파일 뒤 실제 그래프와
   // 대조해 **적어 낸 종류가 진짜로 생겼는지** 확인한다(적어만 내고 안 생기면
   // 판정이 거짓말이 된다).
   function rule(c, patch, kinds) {
@@ -950,7 +951,7 @@
     if (miss.length) out.fails.push('제어기 ' + c + ': 문장이 만들었다고 적은 노드가 없다 — ' + miss.join(','));
     return miss.length === 0;
   }
-  var ctrl1 = null, ctrl2 = null, ctrl3 = null;
+  var ctrl1 = null, ctrl2 = null, ctrl3 = null, ctrl4 = null;
 
   // 제어기 1 — 부하 차단 (여유kW + 래치 + 타이머). 심화 3·4·5·6단계가 여기 걸린다.
   function stageCtrl1() {
@@ -1070,8 +1071,45 @@
     G.gLink(c, cnt, 0, d2, 0);
     var d3 = nd(c, 'display', 880, 760); G.gCfg(c, d3, 'label', '연구%');
     G.gLink(c, rs, 0, d3, 0);
+    // 재고는 인서터가 집을 때마다 튄다. 평활 필터로 눅여서 표시하고, 그 값을
+    // 신호 버스 A 로 내보낸다 — 받는 쪽은 제어기 4다.
+    var smo = nd(c, 'smooth', 460, 900); G.gCfg(c, smo, 'tau', 10);
+    G.gLink(c, iv, 0, smo, 0);
+    var d4 = nd(c, 'display', 880, 900); G.gCfg(c, d4, 'label', '철판(평활)');
+    G.gLink(c, smo, 0, d4, 0);
+    var snd = nd(c, 'bussend', 880, 1040); G.gCfg(c, snd, 'ch', 'A');
+    G.gLink(c, smo, 0, snd, 0);
+    // 습격이 한 번 올 때마다 한 단계씩 도는 상태기계. 네 전이를 같은 펄스에 물려
+    // 1→2→3→4→1 로 순환시킨다 (레벨이 아니라 상승엣지라서 습격 한 번에 한 칸이다).
+    var fsm3 = nd(c, 'fsm', 660, 760);
+    G.gLink(c, ed, 0, fsm3, 0); G.gLink(c, ed, 0, fsm3, 1);
+    G.gLink(c, ed, 0, fsm3, 2); G.gLink(c, ed, 0, fsm3, 3);
+    G.gLink(c, z, 0, fsm3, 4);
+    var d5 = nd(c, 'display', 880, 1180); G.gCfg(c, d5, 'label', '습격단계');
+    G.gLink(c, fsm3, 0, d5, 0);
     out.measured.ctrl3 = G.gInfo(c);
-    note('제어기3: 방어 자동화 + 노드 25종 전부 배선');
+    note('제어기3: 방어 자동화 + 평활/상태기계/신호송신');
+    return true;
+  }
+
+  // 제어기 4 — 신호 버스를 **받는** 쪽. 보내는 회로만 있으면 채널이 실제로
+  // 건너가는지는 이 주행이 한 번도 안 지나간다.
+  function stageCtrl4() {
+    if (ctrl4) return true;
+    if (!ctrl3) return false;                       // 보내는 쪽이 먼저다
+    if (!researched('logic-ctrl')) return false;
+    if (!afford('controller')) return false;
+    var c = placeIn('controller', CORE_RC, 0);
+    if (!c || c === 'mat' || c === 'tech') { c = spiral('controller', 74, 86, 0, 8); }
+    if (!c) return false;
+    ctrl4 = c; ctrlIds.push(c);
+    var rcv = nd(c, 'busrecv', 20, 20); G.gCfg(c, rcv, 'ch', 'A');
+    var lim = nd(c, 'const', 20, 160); G.gCfg(c, lim, 'value', 50);
+    var cmp4 = nd(c, 'cmp', 240, 20); G.gCfg(c, cmp4, 'op', '<');
+    G.gLink(c, rcv, 0, cmp4, 0); G.gLink(c, lim, 0, cmp4, 1);
+    var lmp4 = nd(c, 'lamp', 460, 20); G.gCfg(c, lmp4, 'label', '철판 부족(신호)');
+    G.gLink(c, cmp4, 0, lmp4, 0);
+    note('제어기4: 신호 버스 수신 → 재고 경보');
     return true;
   }
 
@@ -1086,7 +1124,8 @@
     out.fails.push('분배기 자리 없음');
     return true;
   }
-  var STAGES = [stageCtrl1, stageCtrl2, stageCtrl3, stageSplitter], stageDone = [0, 0, 0, 0];
+  var STAGES = [stageCtrl1, stageCtrl2, stageCtrl3, stageCtrl4, stageSplitter],
+      stageDone = [0, 0, 0, 0, 0];
   function runStages() {
     for (var i = 0; i < STAGES.length; i++) {
       if (stageDone[i]) continue;

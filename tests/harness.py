@@ -77,7 +77,20 @@ def build_test_page(extra_js):
     return html[:i] + block + html[i:]
 
 
-def run_browser(exe, page_path, args, timeout=300):
+# 브라우저 프로세스 상한. 40분 완주 주행(clear.js)은 이 값 바로 아래에서 끝나므로
+# 머신이 조금만 바빠도 TIMEOUT 으로 죽는다 — 그리고 타임아웃은 "게이트가 잡았다" 가
+# 아니라 **판정 불성립**이라 조용히 검증 구멍이 된다. 환경변수로 열어 둔다.
+#   LF_TIMEOUT=900 python tests/harness.py clear.js
+def _timeout_default(fallback):
+    try:
+        return max(30, int(os.environ.get('LF_TIMEOUT', '') or fallback))
+    except ValueError:
+        return fallback
+
+
+def run_browser(exe, page_path, args, timeout=None):
+    if timeout is None:
+        timeout = _timeout_default(300)
     profile = tempfile.mkdtemp(prefix='lf-prof-')
     cmd = [exe, '--headless=new', '--disable-gpu', '--no-sandbox',
            '--allow-file-access-from-files',
@@ -90,8 +103,10 @@ def run_browser(exe, page_path, args, timeout=300):
         shutil.rmtree(profile, ignore_errors=True)
 
 
-def run_playwright(engine, driver_path, timeout=600, device='desktop'):
+def run_playwright(engine, driver_path, timeout=None, device='desktop'):
     """Playwright 러너로 다른 엔진에서 돌린다. 표준출력이 그대로 판정 채널이다."""
+    if timeout is None:
+        timeout = _timeout_default(600)
     cmd = ['node', os.path.join(ROOT, 'tests', 'pwrun.js'), engine, driver_path, '400000', device]
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=timeout)
     return (p.returncode,

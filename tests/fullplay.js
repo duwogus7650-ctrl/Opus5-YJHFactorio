@@ -6,7 +6,8 @@
 //  관찰을 정답으로 쓰면 버그가 스펙이 되어 버린다.
 //
 //  덮는 범위:
-//    · 노드 25종 전부 — 입력 9 / 연산 10 / 출력 6
+//    · 노드 전 종류 — 개수는 여기 적지 않는다. 기준은 G.nodeKinds() 이고,
+//      숫자를 아는 곳은 아래 sweep.allNodeKindsKnown 한 군데뿐이다
 //    · 건물 전부 — 놓고, 실제로 제 일을 하는지
 //    · 레시피 전부 — 만들어지는지
 //    · 연구 전부 — 끝내면 실제로 열리는지
@@ -51,10 +52,13 @@
       var anomalies = [];
       function odd(what) { anomalies.push(what); }
 
-      // ======================= 1. 노드 25종 전수 =========================
+      // ======================= 1. 노드 전수 ===============================
       var kinds = G.nodeKinds();
       out.measured.nodeKinds = kinds.length;
-      chk('sweep.allNodeKindsKnown', kinds.length === 25,
+      // **이 숫자는 덫이다.** 노드 종류를 늘리면 여기가 RED 로 갈리고, 그때 이 파일
+      // 아래의 전수 시험도 같이 채우라는 뜻이다. 숫자만 올리고 시험을 안 채우면
+      // 그 종류는 "안 깨진 기능"이 아니라 **아직 안 들킨 기능**으로 남는다.
+      chk('sweep.allNodeKindsKnown', kinds.length === 29,
         '노드 종류 ' + kinds.length + '개: ' + kinds.join(','));
 
       // ---- 입력: 상수 ----
@@ -349,6 +353,66 @@
       chk('node.displayShows', dsp.length === 1 && dsp[0].value === 1,
         '수치 표시 → ' + JSON.stringify(dsp));
 
+      // ---- 연산: 평활 필터 ----
+      // 이 스윕은 노드 하나를 홀로 세워 놓고 본다. 계단응답의 해석해가 오라클이다.
+      freshCtrl();
+      var flIn = K(0, 0, 0);
+      var fln = N('smooth', 300, 0); G.gCfg(CT, fln, 'tau', 2);
+      L(flIn, 0, fln, 0);
+      G.run(0.5);
+      var flZero = O(fln);
+      G.gCfg(CT, flIn, 'value', 10);
+      G.run(2);                                   // t = τ → 63.2%
+      var flAtTau = O(fln);
+      G.run(4);                                   // t = 3τ → 95.0%
+      var flAt3 = O(fln);
+      chk('node.smooth',
+        Math.abs(flZero) < 1e-9 &&
+        Math.abs(flAtTau - 6.32121) < 0.01 && Math.abs(flAt3 - 9.50213) < 0.01,
+        'τ=2, 입력 0→10 계단: t=0 에서 ' + r2(flZero) + ' · t=τ 에서 ' + r2(flAtTau) +
+        ' (오라클 6.32) · t=3τ 에서 ' + r2(flAt3) + ' (오라클 9.50)');
+
+      // ---- 연산: 상태기계 ----
+      // 네 전이를 같은 신호에 물려 순환시킨다. 상승엣지 한 번에 한 칸이어야 한다.
+      freshCtrl();
+      var fsGo2 = K(0, 0, 0), fsRs2 = K(0, 0, 120);
+      var fsn = N('fsm', 300, 0);
+      L(fsGo2, 0, fsn, 0); L(fsGo2, 0, fsn, 1); L(fsGo2, 0, fsn, 2); L(fsGo2, 0, fsn, 3);
+      L(fsRs2, 0, fsn, 4);
+      G.run(0.2);
+      var fsA = O(fsn, 0);
+      G.gCfg(CT, fsGo2, 'value', 1); G.run(0.5);   // 참으로 계속 붙들어도 한 칸
+      var fsB = O(fsn, 0);
+      var fsHot = [O(fsn, 1), O(fsn, 2), O(fsn, 3), O(fsn, 4)].join(',');
+      G.gCfg(CT, fsGo2, 'value', 0); G.run(0.2);
+      G.gCfg(CT, fsGo2, 'value', 1); G.run(0.2);   // 다시 올리면 한 칸 더
+      var fsC2 = O(fsn, 0);
+      G.gCfg(CT, fsRs2, 'value', 1); G.run(0.2);
+      var fsD = O(fsn, 0);
+      chk('node.fsm',
+        fsA === 1 && fsB === 2 && fsHot === '0,1,0,0' && fsC2 === 3 && fsD === 1,
+        '시작 ' + fsA + '단계 → 조건 유지 30틱 ' + fsB + '단계(2여야) · 단계출구 [' + fsHot +
+        '] · 내렸다 올림 ' + fsC2 + '단계(3여야) · 리셋 ' + fsD + '단계(1이어야)');
+
+      // ---- 출력/입력: 신호 버스 ----
+      // 한 제어기 안에서도 보내고 받을 수 있지만, 값은 **다음 틱**에 온다.
+      // 두 송신이 합산되는지도 같은 자리에서 본다.
+      freshCtrl();
+      var buA2 = K(3, 0, 0), buB2 = K(4, 0, 120);
+      var buS1 = N('bussend', 300, 0);   G.gCfg(CT, buS1, 'ch', 'A'); L(buA2, 0, buS1, 0);
+      var buS2 = N('bussend', 300, 120); G.gCfg(CT, buS2, 'ch', 'A'); L(buB2, 0, buS2, 0);
+      var buS3 = N('bussend', 300, 240); G.gCfg(CT, buS3, 'ch', 'B'); L(buA2, 0, buS3, 0);
+      var buR = N('busrecv', 600, 0);    G.gCfg(CT, buR, 'ch', 'A');
+      G.tickOnce();
+      var buT1 = O(buR);                            // 같은 틱엔 아직 0
+      G.tickOnce();
+      var buT2 = O(buR);                            // 다음 틱에 3+4
+      var buChans = JSON.stringify(G.bus());
+      chk('node.bus',
+        buT1 === 0 && buT2 === 7 && G.bus('A') === 7 && G.bus('B') === 3 && G.bus('C') === 0,
+        '3+4 를 채널 A 로 송신 → 첫 틱 수신 ' + buT1 + '(0이어야) · 다음 틱 ' + buT2 +
+        '(7이어야) · 채널 전체 ' + buChans);
+
       // ======================= 2. 모든 건물 =============================
       freshCtrl();
       var types = G.buildingTypes();
@@ -444,7 +508,7 @@
         ' · 아직 잠긴 노드 ' + lockedAfter.length + (lockedAfter.length ? ': ' + lockedAfter.join(',') : ''));
 
       // ======================= 5. 저장/복원 왕복 =========================
-      // 노드 25종이 모두 든 그래프를 저장하고 복원해도 값이 같아야 한다.
+      // 노드 전 종류가 든 그래프를 저장하고 복원해도 값이 같아야 한다.
       freshCtrl();
       var allNodes = [];
       for (var ki = 0; ki < kinds.length; ki++) allNodes.push(N(kinds[ki], 100 + ki * 12, ki * 30));

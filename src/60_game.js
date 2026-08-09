@@ -30,6 +30,7 @@ function newGame(seed) {
   beltStats.delivered = 0;
   ERRORS.length = 0;
   alarms.length = 0; displays.length = 0;
+  busClear();                // 신호 버스도 판을 넘기지 않는다 — 결정성이 깨진다
 
   generateWorld(worldSeed);
   spawnNests(worldSeed);
@@ -203,6 +204,9 @@ function saveGame() {
     nests: nests.map(function (n) { return [n.x, n.y, n.hp, n.absorbed, n.cool, n.seed]; }),
     enemies: enemies.map(function (e) { return [Math.round(e.x * 100), Math.round(e.y * 100), e.hp, e.tier]; }),
     evo: evolution, ws: waveStats,
+    // 버스는 직전 틱 합계 하나뿐이다. 안 담으면 불러온 첫 틱에 모든 채널이 0 이
+    // 돼, 신호를 받아 라인을 잡고 있던 회로가 한 틱 동안 손을 놓는다.
+    bus: busSnapshot(),
     tut: { on: tutorial.on, track: tutorial.track, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
     prod: { smelted: prodStats.smelted, crafted: prodStats.crafted, byRecipe: prodStats.byRecipe }
   };
@@ -236,6 +240,7 @@ function loadGame(raw) {
     inventory = data.inv || {}; techDone = data.tech || {};
     currentResearch = data.res || null; researchProgress = data.resP || 0;
     researchProgressBy = data.resBy || {};   // 예전 저장본엔 없다 — 빈 채로 두면 그만이다
+    busRestore(data.bus);                    // 마찬가지로 없으면 전 채널 0 에서 시작한다
     handQueue.length = 0;
     if (Array.isArray(data.hand)) {
       for (var hj = 0; hj < data.hand.length; hj++) {
@@ -403,6 +408,13 @@ window.__GAME = {
     return { ticks: n, t: gameTime };
   },
   tickOnce: function () { tick(TICK); return gameTime; },
+  // **검증 전용 — 게임은 여전히 60 UPS 고정 스텝이다.** 시뮬을 임의의 dt 로 한 번
+  // 미는 유일한 경로이고, 존재 이유는 하나다: 같은 게임시간을 다르게 쪼개도 결과가
+  // 같은지 물어야 dt 를 곱했는지 아닌지가 갈린다 (교훈 03 의 60배 오염이 그 실패다).
+  tickWith: function (dt) { tick(Math.max(0, +dt || 0)); return gameTime; },
+  // 신호 버스 — 지금 읽히는 값(직전 틱 합계)
+  bus: function (ch) { return ch === undefined ? busSnapshot() : busRead(ch); },
+  busChannels: function () { return BUS_CHANNELS.slice(); },
   setSpeed: function (n) { gameSpeed = Math.max(0, Math.min(60, +n || 1)); return gameSpeed; },
   getSpeed: function () { return gameSpeed; },
 

@@ -153,9 +153,13 @@ MUTATIONS = [
      b'  if (c) return (c.lanes[0][0] && (!e.filter || c.lanes[0][0].id === e.filter)) ? c.lanes[0][0].id : beltPeek(c, e.filter);',
      ['inserter.peekMatchesTake']),
 
-    ('복원에서도 건설비를 요구한다', '25_entity.js',
-     b'  if (!restore) {\n    var cost = B.cost;',
-     b'  if (true) {\n    var cost = B.cost;',
+    # **불러오기 경로만** 유료로 만든다. 예전에는 canPlace 의 `if (!restore)` 를
+    # 통째로 켰는데, 그러면 시험용 G.place 까지 재료를 요구해 드라이버가 초반에
+    # 죽는다 — 게이트가 실행조차 안 돼 INVALID(검정 불성립)로 빠졌다. 돌연변이는
+    # 겨냥한 게이트가 살아서 판정할 수 있을 만큼만 좁게 깨뜨려야 한다.
+    ('복원에서도 건설비를 요구한다', '60_game.js',
+     b'      var e = placeEntity(o.t, o.x, o.y, o.d, true);',
+     b'      var e = placeEntity(o.t, o.x, o.y, o.d, false);',
      ['save.restoreWithEmptyInventory']),
 
     ('불러오기 전에 id 커서를 안 올린다', '60_game.js',
@@ -322,8 +326,11 @@ MUTATIONS = [
      b'  var on = true;',
      ['ui.outputNodeFollowsTheValue'], 'uismoke.js'),
 
+    # 앵커가 소스를 두 번 따라가지 못해 조용히 INVALID 로 빠져 있었다 —
+    # `!who` 는 표시용 함수를 술어로 쓰던 옛 코드고, 지금은 대상 자체를 본다.
+    # 앵커가 사라진 돌연변이는 '검정한 척'이라 잡을 때마다 현재 코드로 옮긴다.
     ('대상이 비어도 경고하지 않는다', '55_logicui.js',
-     b"  if (n.kind !== 'lamp' && n.kind !== 'display' && !who) {",
+     b"  if (!noEnt && !entities[n.cfg.ent]) {",
      b'  if (false) {',
      ['ui.outputNodeWarnsNoTarget'], 'uismoke.js'),
 
@@ -535,7 +542,7 @@ MUTATIONS = [
     # 각각 지운 돌연변이 2종을 실제로 돌려 보고 확인했다. 그래서 여기서는 "순진한
     # 구현" 통째로 — 재고를 훑어 기계 버퍼에 그냥 밀어 넣는 형태로 바꾼다.
     ('넣기를 순진한 구현으로 되돌린다 (한도·품목 판정 없이 전부 밀어 넣기)', '25_entity.js',
-     b'    while ((inventory[k] || 0) > 0 && canAccept(e, k) && guard++ < 20000) {\n'
+     b'    while ((inventory[k] || 0) > 0 && gave < cap && canAccept(e, k) && guard++ < 20000) {\n'
      b'      if (!giveTo(e, k)) break;',
      b'    while ((inventory[k] || 0) > 0 && guard++ < 20000) {\n'
      b'      invAdd(e.inv, k, 1);',
@@ -588,6 +595,97 @@ MUTATIONS = [
      b"    if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName || '') && ev.key !== 'Escape') return;",
      b"    if (false) return;",
      ['ui.keysIgnoredWhileTyping'], 'uismoke.js'),
+
+    # ---- 평활 필터 · 상태기계 · 신호 버스 ----
+    # 오일러 근사는 **계단응답으로는 안 걸린다** — τ 시점 오차가 0.0006 이라 오라클
+    # 허용치 안에 든다. dt 를 어떻게 쪼개도 같은가를 묻는 게이트만 이걸 잡는다.
+    ('평활 필터가 지수해 대신 오일러 근사를 쓴다', '35_logic.js',
+     b'        n.state.y += (xs - n.state.y) * (1 - Math.exp(-dt / tau));',
+     b'        n.state.y += (xs - n.state.y) * (dt / tau);',
+     ['smooth.dtInvariant']),
+
+    ('평활 필터가 아무것도 안 눅인다 (항상 통과)', '35_logic.js',
+     b'      if (tau <= 0) n.state.y = xs;',
+     b'      if (tau >= 0) n.state.y = xs;',
+     ['smooth.stepResponseMatchesAnalytic']),
+
+    ('상태기계가 상승엣지가 아니라 레벨로 전이한다', '35_logic.js',
+     b'        if (t4 === n.state.s - 1 && cur4 && !n.state.pe[t4]) fired = true;',
+     b'        if (t4 === n.state.s - 1 && cur4) fired = true;',
+     ['fsm.advancesOnceWhileHeld']),
+
+    ('상태기계에서 전이가 리셋을 이긴다', '35_logic.js',
+     b'      if (rstF) n.state.s = 1;',
+     b'      if (fired) n.state.s = (n.state.s % 4) + 1;\n      else if (rstF) n.state.s = 1;\n      else if (false) n.state.s = 1;',
+     ['fsm.resetDominates']),
+
+    ('상태기계의 단계 출구가 전부 켜진다', '35_logic.js',
+     b'      for (var q4 = 1; q4 <= 4; q4++) n.out[q4] = (n.state.s === q4) ? 1 : 0;',
+     b'      for (var q4 = 1; q4 <= 4; q4++) n.out[q4] = 1;',
+     ['fsm.oneHotOutputs']),
+
+    ('신호 버스가 합산하지 않고 마지막 값으로 덮어쓴다', '35_logic.js',
+     b'  busNext[ch] = (busNext[ch] || 0) + v;',
+     b'  busNext[ch] = v;',
+     ['bus.sumsWriters']),
+
+    ('신호 버스를 같은 틱에 읽는다 (평가 순서에 의존하게 된다)', '35_logic.js',
+     b"    case 'busrecv': n.out[0] = busRead(n.cfg.ch); break;",
+     b"    case 'busrecv': n.out[0] = (busNext[n.cfg.ch] !== undefined) ? busNext[n.cfg.ch] : busRead(n.cfg.ch); break;",
+     ['bus.readsPreviousTick']),
+
+    ('신호 버스를 틱마다 비우지 않는다 (값이 눈덩이처럼 쌓인다)', '35_logic.js',
+     b'function busSwap() { busNow = busNext; busNext = {}; }',
+     b'function busSwap() { busNow = busNext; }',
+     ['bus.readsPreviousTick']),
+
+    ('저장이 신호 버스를 안 담는다', '60_game.js',
+     b'    bus: busSnapshot(),',
+     b'    bus: {},',
+     ['bus.survivesSave']),
+
+    ('새 노드가 연구 전에도 팔레트에서 풀린다', '35_logic.js',
+     b'  return !d.tech || !!techDone[d.tech];',
+     b'  return true;',
+     ['ui.newNodesLockedBeforeTech'], 'uismoke.js'),
+
+    # ---- 적대적 리뷰가 잡은 자리들 (게이트를 메운 뒤 그 게이트들을 역검정한다) ----
+    ('평활 필터가 배선 전에 0 으로 씨앗을 박는다', '35_logic.js',
+     b'      if (!inputFed(g, n, 0)) { delete n.state.y; n.out[0] = 0; break; }',
+     b'      if (false) { delete n.state.y; n.out[0] = 0; break; }',
+     ['smooth.seedsFromRealInputWhenWired']),
+
+    ('상태기계가 4단계에서 멈춘다 (고리가 안 돈다)', '35_logic.js',
+     b'      else if (fired) n.state.s = (n.state.s % 4) + 1;',
+     b'      else if (fired) n.state.s = Math.min(n.state.s + 1, 4);',
+     ['fsm.ringWrapsAtFour']),
+
+    ('상태기계가 현재 단계를 안 보고 아무 입력에나 전이한다', '35_logic.js',
+     b'        if (t4 === n.state.s - 1 && cur4 && !n.state.pe[t4]) fired = true;',
+     b'        if (cur4 && !n.state.pe[t4]) fired = true;',
+     ['fsm.inputsAreStageScoped']),
+
+    # 리셋 우선순위는 그대로 두고 엣지 기억만 지우는 변형이다. 그래서
+    # fsm.resetDominates 는 통과한 채로 fsm.resetKeepsEdgeMemory 만 뒤집혀야 한다.
+    ('리셋이 엣지 기억까지 지운다', '35_logic.js',
+     b'      if (rstF) n.state.s = 1;',
+     b'      if (rstF) { n.state.pe = [false, false, false, false]; }\n      if (rstF) n.state.s = 1;',
+     ['fsm.resetKeepsEdgeMemory']),
+
+    # 노드 상태를 통째로 안 담는 저장. 예전 게이트는 2단계에서 저장했는데, 상태를
+    # 잃은 구현은 1단계로 초기화된 뒤 붙들린 조건에 한 칸 튀어 정확히 2단계에
+    # 도착했다 — 두 결함이 상쇄돼 GREEN 이 나왔다. 3단계·조건 내림으로 옮겨 고쳤다.
+    ('저장이 노드 상태를 통째로 버린다', '60_game.js',
+     b'cfg: n.cfg, st: n.state,',
+     b'cfg: n.cfg, st: {},',
+     ['fsm.survivesSave']),
+
+    # 단계는 담고 엣지 기억만 버리는 복원. 이건 위 돌연변이가 못 잡는 자리다 —
+    # 조건을 내린 채 저장하는 검사는 pe 가 없어도 안 튀기 때문이다.
+    ('복원이 상태기계의 엣지 기억만 버린다', '60_game.js',
+     b'state: n.st || {}, out: [], prev: []',
+     b'state: (n.st ? { s: n.st.s } : {}), out: [], prev: []',
+     ['fsm.saveKeepsEdgeMemory']),
 ]
 
 

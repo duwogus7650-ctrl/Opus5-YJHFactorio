@@ -66,7 +66,11 @@ def main():
     if not os.path.isdir(DIST):
         os.makedirs(DIST)
     dst = os.path.join(DIST, OUT_NAME)
-    with io.open(dst, 'w', encoding='utf-8') as f:
+    # newline='\n' 을 명시한다. 기본값은 os.linesep 으로 바꿔 써서 Windows 에서는
+    # dist 가 CRLF 로 나오고, 그게 git 의 autocrlf 설정에 따라 커밋될 수도 아닐 수도
+    # 있다 — 배포본의 바이트가 체크아웃 설정에 달리면 "배포본 바이트 기준" 검증이
+    # 무슨 바이트를 잰 것인지 알 수 없게 된다.
+    with io.open(dst, 'w', encoding='utf-8', newline='\n') as f:
         f.write(out)
 
     print('BUILD OK  ->  %s' % dst)

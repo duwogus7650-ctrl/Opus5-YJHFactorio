@@ -138,19 +138,23 @@ function outputMeaning(g, n) {
   var fed = !!g.inLinks && !!g.inLinks[n.nid + ':0'];
   var v = readIn(g, n, 0);
   var on = truthy(v);
-  var who = (n.kind === 'lamp' || n.kind === 'display') ? null : entName(n.cfg.ent);
+  // 대상 엔티티를 고르지 않는 출력 노드들 — 경보·수치표시·신호 송신은 화면과
+  // 채널이 대상이라 '대상이 비어 있다' 검사에 걸리면 안 된다.
+  var noEnt = (n.kind === 'lamp' || n.kind === 'display' || n.kind === 'bussend');
+  var who = noEnt ? null : entName(n.cfg.ent);
 
   // 대상이 없으면 이 노드는 장식이다. 이것이 "배선했는데 아무 반응이 없다" 의 정체다.
   // **판정은 이름 문자열이 아니라 대상 자체로 한다.** entName 이 사람이 읽을 문구를
   // 돌려주도록 바꾼 순간 `!who` 가 영원히 거짓이 돼 이 검사가 통째로 죽었다 —
   // 표시용 함수를 술어로 쓰면 표시를 고칠 때 판정이 조용히 따라 바뀐다.
-  if (n.kind !== 'lamp' && n.kind !== 'display' && !entities[n.cfg.ent]) {
+  if (!noEnt && !entities[n.cfg.ent]) {
     return { bad: true, text: '대상이 비어 있다 — 배선해도 아무 일도 하지 않는다' };
   }
   if (!fed) {
     return { bad: true, text: '입력이 안 물렸다 — 늘 ' +
       (n.kind === 'enable' ? '멈춤' : n.kind === 'gate' ? '닫힘' :
-       n.kind === 'fire' ? '사격 금지' : n.kind === 'filter' ? '0일 때 품목' : '꺼짐') + ' 으로 본다' };
+       n.kind === 'fire' ? '사격 금지' : n.kind === 'filter' ? '0일 때 품목' :
+       n.kind === 'bussend' ? '아무것도 안 보냄' : '꺼짐') + ' 으로 본다' };
   }
   var now = on ? '참' : '거짓';
   switch (n.kind) {
@@ -172,6 +176,12 @@ function outputMeaning(g, n) {
       return { bad: false, text: '지금 ' + now + ' → 경보 ' + (on ? '켜짐' : '꺼짐') };
     case 'display':
       return { bad: false, text: '지금 값 ' + fmt(v, 2) };
+    case 'bussend':
+      // 지금 보내는 값과, 채널에서 **지금 읽히는** 값을 함께 적는다. 둘은 한 틱
+      // 어긋나 있고 다른 송신자가 있으면 합계라서, 안 적으면 "보냈는데 값이
+      // 다르다"로 보인다.
+      return { bad: false, text: '채널 ' + (n.cfg.ch || 'A') + ' 로 ' + fmt(v, 2) +
+        ' 송신 — 지금 읽히는 합계 ' + fmt(busRead(n.cfg.ch), 2) + ' (한 틱 뒤 반영)' };
   }
   return null;
 }

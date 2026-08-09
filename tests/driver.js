@@ -1580,6 +1580,282 @@
         '상수 7 + 5 → 샘플홀드 → 표시 = ' + (dv.length ? dv[0].value : 'none') +
         ' (12여야 · 0이면 한 틱 늦게 도착한 것)');
 
+      // === 평활 필터 — 계단응답 해석해가 오라클이다 =========================
+      // 1차 지연계의 계단응답은 y(t) = 1 - e^(-t/τ) 다. τ 에서 63.21%, 3τ 에서
+      // 95.02%. 이 축에 오라클을 안 붙이면 "값이 대충 따라간다"로 전부 통과한다.
+      G.reset(6260); G.clearEntities(); G.clearEnemies();
+      G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+      var flC = G.place('controller', 40, 40, 0);
+      var flK = G.gAdd(flC, 'const', 10, 10);   G.gCfg(flC, flK, 'value', 0);
+      var flS = G.gAdd(flC, 'smooth', 300, 10); G.gCfg(flC, flS, 'tau', 5);
+      G.gLink(flC, flK, 0, flS, 0);
+      G.run(0.5);                                   // y 를 0 에 앉힌다
+      var flStart = G.gOut(flC, flS, 0);
+      G.gCfg(flC, flK, 'value', 1);                 // 계단 입력
+      G.run(5);   var flTau  = G.gOut(flC, flS, 0); // t = τ
+      G.run(10);  var fl3Tau = G.gOut(flC, flS, 0); // t = 3τ
+      chk('smooth.stepResponseMatchesAnalytic',
+        Math.abs(flStart) < 1e-9 &&
+        Math.abs(flTau - 0.632121) < 0.001 && Math.abs(fl3Tau - 0.950213) < 0.001,
+        'τ=5 계단응답: t=0 에서 ' + flStart.toFixed(6) + ' · t=τ 에서 ' + flTau.toFixed(6) +
+        ' (오라클 0.632121) · t=3τ 에서 ' + fl3Tau.toFixed(6) + ' (오라클 0.950213)');
+
+      // 음성 대조군 — τ=0 은 그냥 통과여야 한다. 위 검사가 "무조건 느리게 따라간다"
+      // 로 통과하는 구현을 걸러낸다.
+      G.gCfg(flC, flS, 'tau', 0); G.gCfg(flC, flK, 'value', 42);
+      G.tickOnce();
+      var flPass = G.gOut(flC, flS, 0);
+      chk('smooth.zeroTauIsPassthrough', Math.abs(flPass - 42) < 1e-9,
+        'τ=0, 입력 42 → 한 틱 뒤 ' + flPass + ' (42여야 · 필터가 항상 걸리면 여기서 갈린다)');
+
+      // dt 를 곱했는가 — 같은 게임시간을 다르게 쪼개면 갈린다.
+      // 지수해 y += (x-y)(1-e^(-dt/τ)) 는 어떻게 쪼개도 같은 값이고, 오일러 근사
+      // (x-y)·dt/τ 는 안 그렇다. 매 틱 누적에 dt 를 빠뜨려 오염이 60배 나왔던
+      // 실패(교훈 03)와 같은 축이라 게이트를 이 성질로 건다.
+      function smoothAfter1s(seed, useBigSteps) {
+        G.reset(seed); G.clearEntities(); G.clearEnemies();
+        G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+        var c = G.place('controller', 40, 40, 0);
+        var k = G.gAdd(c, 'const', 10, 10);   G.gCfg(c, k, 'value', 0);
+        var s = G.gAdd(c, 'smooth', 300, 10); G.gCfg(c, s, 'tau', 5);
+        G.gLink(c, k, 0, s, 0);
+        G.tickOnce();                     // y=0 에서 출발
+        G.gCfg(c, k, 'value', 1);
+        if (useBigSteps) { for (var b = 0; b < 4; b++) G.tickWith(0.25); }  // 1초를 4번에
+        else G.run(1);                                                     // 1초를 60번에
+        return G.gOut(c, s, 0);
+      }
+      var flFine = smoothAfter1s(6261, false);
+      var flCoarse = smoothAfter1s(6262, true);
+      chk('smooth.dtInvariant',
+        Math.abs(flFine - flCoarse) < 1e-6 && Math.abs(flFine - 0.181269) < 0.001,
+        '1초를 60틱으로 → ' + flFine.toFixed(6) + ' · 4틱으로 → ' + flCoarse.toFixed(6) +
+        ' (오라클 1-e^-0.2 = 0.181269 · 두 값이 다르면 dt 를 안 곱했거나 오일러 근사다)');
+
+      // 놓고 나서 잇는다 — 사람이 쓰는 유일한 순서다. 배선 전에 씨앗을 박으면
+      // y=0 으로 굳어, 배선한 순간 "이미 돌던 신호에 필터를 무는" 바로 그 과도가
+      // 생긴다(적대적 리뷰가 잡았다. τ=10 이면 60→50 경보가 18초간 거짓으로 켜진다).
+      G.reset(6267); G.clearEntities(); G.clearEnemies();
+      G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+      var sdC = G.place('controller', 40, 40, 0);
+      var sdK = G.gAdd(sdC, 'const', 10, 10);   G.gCfg(sdC, sdK, 'value', 500);
+      var sdS = G.gAdd(sdC, 'smooth', 300, 10); G.gCfg(sdC, sdS, 'tau', 5);
+      G.run(0.5);                                   // 아직 안 물린 채로 30틱
+      var sdUnfed = G.gOut(sdC, sdS, 0);
+      G.gLink(sdC, sdK, 0, sdS, 0);
+      G.tickOnce();                                 // 물린 첫 틱
+      var sdFirst = G.gOut(sdC, sdS, 0);
+      chk('smooth.seedsFromRealInputWhenWired',
+        Math.abs(sdUnfed) < 1e-9 && Math.abs(sdFirst - 500) < 1e-9,
+        '안 물린 동안 ' + sdUnfed + ' (0이어야) → 상수 500 을 물린 첫 틱 ' + sdFirst +
+        ' (500이어야 · 0에서 기어오르면 없던 과도가 생긴다)');
+      // 음성 대조군 — 처음부터 물려 있던 신호가 계단으로 바뀌면 그건 눅어야 한다.
+      // 없으면 위 검사는 "필터가 아예 안 걸린다" 를 통과시킨다.
+      G.gCfg(sdC, sdK, 'value', 1000);
+      G.tickOnce();
+      var sdStep = G.gOut(sdC, sdS, 0);
+      chk('smooth.wiredStepStillFilters',
+        sdStep > 500 && sdStep < 510,
+        '물린 채로 500 → 1000 계단, 한 틱 뒤 ' + sdStep.toFixed(3) +
+        ' (500 바로 위여야 · 1000 이면 필터가 아무 일도 안 한다)');
+
+      // === 상태기계 — 상승엣지 전이, 리셋 우선, 원핫 ========================
+      G.reset(6263); G.clearEntities(); G.clearEnemies();
+      G.research('logistics'); G.research('logic-mem');
+      var fsC = G.place('controller', 40, 40, 0);
+      var fsGo = G.gAdd(fsC, 'const', 10, 10);   G.gCfg(fsC, fsGo, 'value', 0);
+      var fsR  = G.gAdd(fsC, 'const', 10, 300);  G.gCfg(fsC, fsR, 'value', 0);
+      var fsM  = G.gAdd(fsC, 'fsm', 400, 10);
+      // 네 전이 조건을 **모두** 같은 신호에 물린다. 하나만 물리면 레벨 전이 구현도
+      // 2단계에서 멈춰서(다음 조건이 안 물렸으므로) 상승엣지와 구별되지 않는다.
+      G.gLink(fsC, fsGo, 0, fsM, 0); G.gLink(fsC, fsGo, 0, fsM, 1);
+      G.gLink(fsC, fsGo, 0, fsM, 2); G.gLink(fsC, fsGo, 0, fsM, 3);
+      G.gLink(fsC, fsR, 0, fsM, 4);
+      G.run(0.2);
+      var fsS0 = G.gOut(fsC, fsM, 0);
+      G.gCfg(fsC, fsGo, 'value', 1);
+      G.run(0.5);                                   // 30틱 동안 조건을 참으로 유지
+      var fsS1 = G.gOut(fsC, fsM, 0);
+      G.run(2);                                     // 정상상태 — 더 돌려도 그대로여야
+      var fsS1b = G.gOut(fsC, fsM, 0);
+      chk('fsm.advancesOnceWhileHeld', fsS0 === 1 && fsS1 === 2 && fsS1b === 2,
+        '시작 ' + fsS0 + '단계 → 조건을 30틱 참으로 유지 → ' + fsS1 + '단계 (2여야) → 2초 더 → ' +
+        fsS1b + '단계 (레벨 전이면 매 틱 돌아 3단계로 간다)');
+      // 원핫 — 단계 출구는 현재 단계에서만 1
+      var fsOne = [G.gOut(fsC, fsM, 1), G.gOut(fsC, fsM, 2), G.gOut(fsC, fsM, 3), G.gOut(fsC, fsM, 4)];
+      chk('fsm.oneHotOutputs',
+        fsOne[0] === 0 && fsOne[1] === 1 && fsOne[2] === 0 && fsOne[3] === 0,
+        '2단계에서 단계 출구 [' + fsOne.join(',') + '] (0,1,0,0 이어야)');
+      // 다시 올라가면 한 칸 더 — 펄스마다 한 칸이라는 것까지 봐야 "안 움직이는" 구현이 걸린다
+      // (여기서 한 번 펄스를 넣는 헬퍼를 쓴다 — 아래에서 고리를 계속 돌린다)
+      function fsPulse() {
+        G.gCfg(fsC, fsGo, 'value', 0); G.run(0.2);
+        G.gCfg(fsC, fsGo, 'value', 1); G.run(0.2);
+        return G.gOut(fsC, fsM, 0);
+      }
+      var fsS2 = fsPulse();
+      chk('fsm.nextPulseAdvancesAgain', fsS2 === 3,
+        '조건을 내렸다 다시 올림 → ' + fsS2 + '단계 (3이어야 · 음성 대조군: 전이가 아예 안 되면 위 검사도 통과한다)');
+
+      // 고리를 **끝까지** 돈다. 3단계까지만 보면 4단계도, 4→1 순환도, 네 번째
+      // 전이 입력도, 네 번째 단계 출구도 한 번도 안 밟는다 — 3단계 순환기로
+      // 만들어 놔도 위 게이트가 전부 통과한다.
+      var fsS4 = fsPulse();
+      var fsHot4 = [G.gOut(fsC, fsM, 1), G.gOut(fsC, fsM, 2),
+                    G.gOut(fsC, fsM, 3), G.gOut(fsC, fsM, 4)].join(',');
+      var fsWrap = fsPulse();
+      chk('fsm.ringWrapsAtFour',
+        fsS4 === 4 && fsHot4 === '0,0,0,1' && fsWrap === 1,
+        '3 → ' + fsS4 + '단계(4여야) · 4단계 출구 [' + fsHot4 + '] (0,0,0,1 이어야) → 한 번 더 → ' +
+        fsWrap + '단계 (1로 돌아와야 · 안 돌아오면 4에서 멈추는 순환기다)');
+
+      // 리셋은 전이보다 세다 — **같은 틱 안에서** 그런지를 봐야 한다.
+      // 처음에는 리셋을 들고 0.2초를 돌린 뒤 단계를 읽었는데, 그건 "리셋이 결국
+      // 이긴다"만 보는 검사였다: 전이가 이기는 구현도 다음 틱에 리셋이 도로 1로
+      // 끌어내려 통과했다(돌연변이 MISS 로 확인). 전이와 리셋이 함께 참이 되는
+      // 그 한 틱만 잘라서 본다.
+      fsPulse(); fsPulse();                         // 1 → 2 → 3
+      G.gCfg(fsC, fsGo, 'value', 0); G.run(0.2);
+      var fsPre = G.gOut(fsC, fsM, 0);              // 3단계에서 대기
+      G.gCfg(fsC, fsR, 'value', 1); G.gCfg(fsC, fsGo, 'value', 1);
+      G.tickOnce();                                 // 리셋 ON 과 전이 상승이 같은 틱
+      var fsRst = G.gOut(fsC, fsM, 0);
+      chk('fsm.resetDominates', fsPre === 3 && fsRst === 1,
+        '3단계에서 리셋과 전이가 같은 틱에 참 → ' + fsRst +
+        '단계 (1이어야 · 전이가 이기면 4가 된다) · 직전 단계 ' + fsPre);
+
+      // **리셋은 엣지 기억까지 지우면 안 된다.** 지우는 구현도 위 검사들을 전부
+      // 통과하는데, 리셋을 놓는 순간 붙들려 있던 조건이 '방금 올라간 것'으로 읽혀
+      // 한 칸 튄다 — 플레이어에겐 "리셋했더니 저절로 움직였다"로 보인다.
+      G.run(0.3);                                   // 리셋과 전이를 함께 든 채 유지
+      var fsHeld = G.gOut(fsC, fsM, 0);
+      G.gCfg(fsC, fsR, 'value', 0); G.run(0.3);     // 전이는 참인 채로 리셋만 내린다
+      var fsAfterRelease = G.gOut(fsC, fsM, 0);
+      chk('fsm.resetKeepsEdgeMemory', fsHeld === 1 && fsAfterRelease === 1,
+        '리셋+전이 동시 유지 → ' + fsHeld + '단계 · 리셋만 내림(전이는 참 유지) → ' +
+        fsAfterRelease + '단계 (1이어야 · 리셋이 엣지 기억을 지우면 2로 튄다)');
+
+      // 저장은 단계를 들고 가야 한다 — 안 그러면 불러오는 순간 공정이 처음으로 돌아간다.
+      // **2단계에서 저장하면 안 된다.** 상태를 통째로 잃은 구현은 1단계로 초기화된 뒤,
+      // 붙들린 전이 조건에 곧바로 한 칸 튀어 정확히 2단계에 도착한다 — 두 버그가
+      // 상쇄돼 게이트가 GREEN 을 낸다(적대적 리뷰가 잡은 구멍이다). 3단계에서,
+      // 그리고 전이 조건을 **내린 채** 저장한다.
+      G.gCfg(fsC, fsGo, 'value', 0); G.run(0.2);
+      fsPulse(); fsPulse();                         // 1 → 2 → 3
+      G.gCfg(fsC, fsGo, 'value', 0); G.run(0.2);    // 조건을 내려 둔다
+      var fsBefore = G.gOut(fsC, fsM, 0);
+      var fsRaw = G.saveRaw(); G.load(fsRaw); G.run(0.05);
+      var fsAfter = G.gOut(fsC, fsM, 0);
+      chk('fsm.survivesSave', fsBefore === 3 && fsAfter === 3,
+        '조건을 내린 채 ' + fsBefore + '단계에서 저장 → 복원 후 ' + fsAfter +
+        '단계 (3이어야 · 상태를 안 담으면 1단계로 돌아간다)');
+
+      // 엣지 기억도 저장돼야 한다. 단계만 담고 pe 를 버리면, 붙들린 조건이 복원
+      // 직후 상승으로 읽혀 한 칸 튄다 — 위 검사는 조건을 내려 뒀으므로 못 잡는다.
+      G.gCfg(fsC, fsGo, 'value', 1); G.run(0.2);    // 4단계로, 조건을 든 채
+      var fsBefore2 = G.gOut(fsC, fsM, 0);
+      var fsRaw2 = G.saveRaw(); G.load(fsRaw2); G.run(0.05);
+      var fsAfter2 = G.gOut(fsC, fsM, 0);
+      chk('fsm.saveKeepsEdgeMemory', fsBefore2 === 4 && fsAfter2 === 4,
+        '전이 조건을 참으로 든 채 ' + fsBefore2 + '단계에서 저장 → 복원 후 ' + fsAfter2 +
+        '단계 (4여야 · 엣지 기억을 안 담으면 복원 즉시 한 칸 튄다)');
+
+      // **전이 입력은 그 단계에서만 유효하다.** 위 리그는 네 입력을 한 신호에 물려
+      // 놔서 이 성질을 하나도 안 잰다 — 현재 단계를 안 보고 아무 입력에나 전이하는
+      // 구현이 여기까지 전부 통과한다. 입력마다 다른 소스를 물린 리그로 따로 본다.
+      G.reset(6266); G.clearEntities(); G.clearEnemies();
+      G.research('logistics'); G.research('logic-mem');
+      var sqC = G.place('controller', 40, 40, 0);
+      var sqA = G.gAdd(sqC, 'const', 10, 10);   G.gCfg(sqC, sqA, 'value', 0);   // 1→2 전용
+      var sqB = G.gAdd(sqC, 'const', 10, 300);  G.gCfg(sqC, sqB, 'value', 0);   // 3→4 전용
+      var sqM = G.gAdd(sqC, 'fsm', 400, 10);
+      G.gLink(sqC, sqA, 0, sqM, 0);                 // '1→2' 에만
+      G.gLink(sqC, sqB, 0, sqM, 2);                 // '3→4' 에만
+      G.run(0.2);
+      G.gCfg(sqC, sqB, 'value', 1); G.run(0.5);     // 1단계인데 '3→4' 를 올린다
+      var sqStay = G.gOut(sqC, sqM, 0);
+      G.gCfg(sqC, sqA, 'value', 1); G.run(0.2);     // 이제 '1→2' 를 올린다
+      var sqGo = G.gOut(sqC, sqM, 0);
+      chk('fsm.inputsAreStageScoped', sqStay === 1 && sqGo === 2,
+        "1단계에서 '3→4' 입력을 올림 → " + sqStay + "단계 (1이어야 · 단계를 안 보면 2로 간다) · " +
+        "이어서 '1→2' 를 올림 → " + sqGo + '단계 (2여야 · 조건 발생 확인)');
+
+      // === 신호 버스 — 합산되고, 한 틱 늦고, 순서를 안 탄다 ==================
+      // 제어기 사이의 평가 순서는 배치로 정해지지 않는다(graphCompile 주석). 그래서
+      // 버스가 순서를 타면 플레이어가 원인을 짚을 단서가 하나도 없다. 그 성질을
+      // 값으로 못 박는다.
+      // 제어기 평가 순서 = 생성 순서다(forEachEntity 가 entOrder 를 돈다). 그래서
+      // **수신기를 언제 만드느냐가 검출력을 바꾼다** — 수신기를 늘 마지막에 만들면
+      // '같은 틱에 읽는' 결함은 항상 잡히지만, 수신기가 먼저인 배치에서 그 결함이
+      // 어떻게 보이는지는 한 번도 안 재게 된다. rcvFirst 로 둘 다 돈다.
+      function busRig(seed, reverse, rcvFirst) {
+        G.reset(seed); G.clearEntities(); G.clearEnemies();
+        G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+        var mk = function (tx, val, ch) {
+          var c = G.place('controller', tx, 40, 0);
+          var k = G.gAdd(c, 'const', 10, 10); G.gCfg(c, k, 'value', val);
+          var s = G.gAdd(c, 'bussend', 300, 10); G.gCfg(c, s, 'ch', ch);
+          G.gLink(c, k, 0, s, 0);
+          return { ctrl: c, send: s };
+        };
+        var rc = null, rn = null;
+        var mkRecv = function () {
+          rc = G.place('controller', 52, 40, 0);
+          rn = G.gAdd(rc, 'busrecv', 10, 10); G.gCfg(rc, rn, 'ch', 'A');
+        };
+        if (rcvFirst) mkRecv();
+        var w1, w2;
+        if (reverse) { w2 = mk(44, 4, 'A'); w1 = mk(40, 3, 'A'); }
+        else         { w1 = mk(40, 3, 'A'); w2 = mk(44, 4, 'A'); }
+        var other = mk(48, 9, 'B');            // 다른 채널 — 섞이면 안 된다
+        if (!rcvFirst) mkRecv();
+        return { w1: w1, w2: w2, other: other, rc: rc, rn: rn };
+      }
+      var buA = busRig(6264, false);
+      G.tickOnce();
+      var buFirst = G.gOut(buA.rc, buA.rn, 0);      // 같은 틱엔 아직 0
+      G.tickOnce();
+      var buSecond = G.gOut(buA.rc, buA.rn, 0);     // 다음 틱에 3+4=7
+      chk('bus.readsPreviousTick', buFirst === 0 && buSecond === 7,
+        '송신 3+4 → 첫 틱 수신 ' + buFirst + ' (0이어야 · 같은 틱에 읽히면 평가 순서를 탄다)' +
+        ' → 다음 틱 ' + buSecond + ' (7이어야)');
+      chk('bus.sumsWriters', G.bus('A') === 7,
+        '채널 A 합계 ' + G.bus('A') + ' (3+4=7 이어야 · 덮어쓰기면 3 또는 4가 나온다)');
+      chk('bus.channelsAreIsolated', G.bus('B') === 9 && G.bus('C') === 0,
+        '채널 B ' + G.bus('B') + ' (9여야) · 채널 C ' + G.bus('C') +
+        ' (0이어야 · 음성 대조군: 채널이 안 갈리면 위 합계 검사가 무의미하다)');
+      // 수신기를 **먼저** 만든 배치에서도 한 틱 늦게 와야 한다. 이쪽이 위 검사의
+      // 진짜 음성 대조군이다 — 수신기가 언제나 마지막이면, 같은 틱에 읽는 구현도
+      // '아직 아무도 안 썼다' 가 아니라 '이미 다 썼다' 를 보게 되어 검출이 배치에
+      // 얹혀 간다.
+      var buR1 = busRig(6268, false, true);
+      G.tickOnce();
+      var buRF1 = G.gOut(buR1.rc, buR1.rn, 0);
+      G.tickOnce();
+      var buRF2 = G.gOut(buR1.rc, buR1.rn, 0);
+      chk('bus.delayHoldsWhenReceiverIsFirst', buRF1 === 0 && buRF2 === 7,
+        '수신 제어기를 먼저 만든 배치 → 첫 틱 ' + buRF1 + ' (0이어야) · 다음 틱 ' + buRF2 +
+        ' (7이어야 · 이 배치에서 값이 갈리면 버스가 생성 순서를 타는 것이다)');
+
+      // 순서 무관 — 송신 제어기를 반대 순서로 만들어도 같은 값
+      var buB = busRig(6265, true);
+      G.run(0.05);
+      var buRev = G.bus('A');
+      chk('bus.orderIndependent', buRev === 7,
+        '송신 제어기 생성 순서를 뒤집어도 채널 A = ' + buRev + ' (7이어야)');
+      // 송신 노드를 지우면 그 몫이 다음 틱에 빠진다 (출력 축의 유령 지배 해제와 같은 성질)
+      G.gRemove(buB.w2.ctrl, buB.w2.send);
+      G.run(0.05);
+      var buGone = G.bus('A');
+      chk('bus.contributionLeavesWithNode', buGone === 3,
+        '4를 보내던 송신 노드를 삭제 → 채널 A = ' + buGone +
+        ' (3이어야 · 안 빠지면 지운 회로가 계속 지배한다)');
+      // 저장이 버스를 안 담으면 불러온 첫 틱에 모든 채널이 0 이 된다
+      var buRaw = G.saveRaw(); G.load(buRaw);
+      var buLoaded = G.bus('A');
+      chk('bus.survivesSave', buLoaded === 3,
+        '저장→복원 직후 채널 A = ' + buLoaded + ' (3이어야 · 0이면 복원 첫 틱에 회로가 손을 놓는다)');
+
       // --- 분배기 [출력우선] 의 왼쪽/오른쪽은 진행방향 기준이다 ---------------
       // cells[0] 은 언제나 좌표가 작은 쪽이라, 남·서향에서는 UI 의 [왼쪽]이
       // 오른쪽으로 나갔다. 이 집의 규약(레인 0 = dirCCW)과 어긋난 채로 있었다.

@@ -734,6 +734,94 @@
         '편집기 안내줄 = "' + (hintTxt ? hintTxt.textContent.slice(0, 90) : '없음') + '"');
       G.ui.closeLogic();
 
+      // (e) **새 노드 4종의 클릭 경로.** 이 검사는 자기 판을 새로 깔기 때문에
+      //     파일 맨 끝에 둔다 — 중간에 두었더니 뒤따르는 되먹임 점선 검사가
+      //     지워진 제어기를 보고 RED 가 됐다. 뒤의 장면을 바꾸는 검사는 뒤의
+      //     검사가 무엇을 재는지까지 바꾼다 (같은 실패를 문장 편집기에서 한 번 했다).
+      G.ui.closeLogic();
+      G.reset(424244); G.clearEntities(); G.powerCheat(true); G.giveAll(9999);
+      var nvC = G.place('controller', 60, 60, 0);
+      G.ui.openLogic(nvC); G.ui.showGraph();
+      var newKinds = ['smooth', 'fsm', 'busrecv', 'bussend'];
+      var palMissing = [], notLocked = [];
+      for (var nk = 0; nk < newKinds.length; nk++) {
+        var pit = document.querySelector('#pal .pitem[data-k="' + newKinds[nk] + '"]');
+        if (!pit) { palMissing.push(newKinds[nk]); continue; }
+        if (pit.className.indexOf('locked') < 0) notLocked.push(newKinds[nk]);
+      }
+      chk('ui.newNodesInPalette', palMissing.length === 0,
+        '팔레트에 없는 새 노드: ' + (palMissing.length ? palMissing.join(',') : '없음') +
+        ' (' + newKinds.length + '종 전부 나와야 한다)');
+      var nvBefore = G.ui.nodeCount();
+      for (var nk2 = 0; nk2 < newKinds.length; nk2++) {
+        var pit2 = document.querySelector('#pal .pitem[data-k="' + newKinds[nk2] + '"]');
+        if (pit2) pit2.click();
+      }
+      chk('ui.newNodesLockedBeforeTech',
+        notLocked.length === 0 && G.ui.nodeCount() === nvBefore,
+        '연구 전 잠김 표시가 없는 것: ' + (notLocked.length ? notLocked.join(',') : '없음') +
+        ' (조건 발생 확인) · 4종을 다 눌러도 노드 ' + nvBefore + '개 그대로');
+
+      // 연구하면 같은 클릭이 먹혀야 한다
+      G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+      G.ui.closeLogic(); G.ui.openLogic(nvC); G.ui.showGraph();
+      var nvAfterBase = G.ui.nodeCount(), nvFailed = [];
+      for (var nk3 = 0; nk3 < newKinds.length; nk3++) {
+        var pit3 = document.querySelector('#pal .pitem[data-k="' + newKinds[nk3] + '"]');
+        var cnt0 = G.ui.nodeCount();
+        if (pit3) pit3.click();
+        if (G.ui.nodeCount() !== cnt0 + 1) nvFailed.push(newKinds[nk3]);
+      }
+      chk('ui.newNodesAddedAfterTech',
+        nvFailed.length === 0 && G.ui.nodeCount() === nvAfterBase + newKinds.length,
+        '연구 후 클릭 4회 → 노드 ' + nvAfterBase + ' → ' + G.ui.nodeCount() +
+        '개 · 안 생긴 것: ' + (nvFailed.length ? nvFailed.join(',') : '없음'));
+
+      // (a3) **입력 포트 5개짜리 노드가 실제로 배선되는가.** 지금까지 최대 3개였다.
+      //      포트를 정의표에 적는 것과 편집기가 그것을 그리고 맞히는 것은 별개다.
+      //      배선할 때마다 그래프가 다시 그려지므로 매번 다시 찾아야 한다.
+      var wC = G.place('controller', 64, 60, 0);
+      G.ui.openLogic(wC); G.ui.showGraph();
+      var wK = G.gAdd(wC, 'const', 40, 40);
+      var wF = G.gAdd(wC, 'fsm', 420, 40);
+      G.ui.renderGraph();
+      var fsmEl0 = document.querySelector('#graphInner .node[data-nid="' + wF + '"]');
+      var fsmPorts = fsmEl0 ? fsmEl0.querySelectorAll('.port.in[data-in]').length : 0;
+      for (var wi = 0; wi < 5; wi++) {
+        var srcRow = document.querySelector('#graphInner .node[data-nid="' + wK + '"] .port.out[data-out="0"]');
+        var fsmEl = document.querySelector('#graphInner .node[data-nid="' + wF + '"]');
+        var dstRow = fsmEl ? fsmEl.querySelector('.port.in[data-in="' + wi + '"]') : null;
+        if (!srcRow || !dstRow) continue;
+        var sr = srcRow.getBoundingClientRect(), dr = dstRow.getBoundingClientRect();
+        srcRow.dispatchEvent(new MouseEvent('mousedown',
+          { clientX: sr.right - 4, clientY: sr.top + sr.height / 2, bubbles: true, cancelable: true }));
+        dstRow.dispatchEvent(new MouseEvent('mouseup',
+          { clientX: dr.right - 4, clientY: dr.top + dr.height / 2, bubbles: true, cancelable: true }));
+      }
+      chk('ui.fiveInputPortsAreWirable',
+        fsmPorts === 5 && G.gInfo(wC).links === 5,
+        '상태기계의 입력 포트 ' + fsmPorts + '개(5여야) · 다섯 개를 전부 마우스로 끌어 물린 결과 배선 ' +
+        G.gInfo(wC).links + '개 (5여야 · 하나라도 못 맞히면 여기서 갈린다)');
+
+      // (a4) 신호 송신 노드는 대상 엔티티를 안 고른다 — '대상이 비어 있다' 경고가
+      //      뜨면 안 된다. 출력 노드 경고문은 종류를 손으로 나열하는 자리라 새 노드가
+      //      추가되면 조용히 오탐이 된다.
+      var bsC = G.place('controller', 68, 60, 0);
+      G.ui.openLogic(bsC); G.ui.showGraph();
+      var bsK = G.gAdd(bsC, 'const', 40, 40); G.gCfg(bsC, bsK, 'value', 5);
+      var bsS = G.gAdd(bsC, 'bussend', 400, 40);
+      G.gLink(bsC, bsK, 0, bsS, 0);
+      G.ui.renderGraph(); G.run(0.05); G.ui.updateLive();
+      // **해석 줄 그 자체를 읽는다.** 처음에는 노드 전체의 textContent 에서 '채널'을
+      // 찾았는데, 그 글자는 설정 라벨에도 있어서 해석 줄이 비어 있어도 통과했다 —
+      // 통과하면서 틀릴 수 있는 성질은 주 검사가 아니다 (교훈 13).
+      var bsMean = document.querySelector('[data-mean="' + bsS + '"]');
+      var bsTxt = bsMean ? bsMean.textContent : '';
+      chk('ui.busSendExplainsItself',
+        !!bsMean && bsTxt.indexOf('대상이 비어 있다') < 0 &&
+        bsTxt.indexOf('채널 A') >= 0 && bsTxt.indexOf('5') >= 0,
+        '신호 보내기 노드의 해석 줄 = "' + bsTxt + '" (대상 없다는 경고가 뜨면 안 되고, 채널과 값을 말해야 한다)');
+
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', G.ui.nodeCount() < 0, '노드 수가 음수일 리 없다', true);

@@ -800,7 +800,7 @@ var TECHS = {
                   unlock: ['기관총 터렛', '벽', '탄창 레시피'],
                   desc: '방어 시설. 적의 습격은 오염을 따라온다.' },
   'logic-mem':  { name: '논리 II — 기억소자', cost: { 'sci-red': 40 }, needs: ['logistics'],
-                  unlock: ['SR 래치', '카운터', '샘플홀드', '엣지검출'],
+                  unlock: ['SR 래치', '카운터', '샘플홀드', '엣지검출', '상태기계'],
                   desc: '제어기에 상태를 가진 노드가 추가된다. 여기서부터 진짜 프로그래밍.' },
   // 강철은 **쓸 데가 있어야 한다.** 예전엔 레시피만 있고 소비처가 한 곳도 없어서,
   // 적팩 50개를 들여 "철판 5개를 못 쓰는 물건 1개로 바꾸는 기능"을 여는 연구였다.
@@ -810,7 +810,7 @@ var TECHS = {
                   unlock: ['강철 레시피', '분배기'],
                   desc: '철판 5개를 강철 1개로. 분배기가 강철을 먹는다.' },
   'logic-ctrl': { name: '논리 III — 공정 제어', cost: { 'sci-red': 50, 'sci-green': 50 }, needs: ['logic-mem'],
-                  unlock: ['인서터 필터 출력', '벨트 게이트', 'PID 노드', '부하 차단'],
+                  unlock: ['인서터 필터 출력', '벨트 게이트', 'PID 노드', '평활 필터', '신호 버스', '부하 차단'],
                   desc: '제어기가 라인을 실시간으로 갈아탈 수 있게 된다.' },
   'defense-ai': { name: '방어 자동화', cost: { 'sci-red': 50, 'sci-green': 50 }, needs: ['military', 'logic-mem'],
                   unlock: ['적 근접 센서', '터렛 사격허가 출력', '경보'],
@@ -2176,6 +2176,40 @@ function netPowerOf(e) {
 var TRUE_EPS = 0.5;      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
 function truthy(v) { return v >= TRUE_EPS; }
 
+// --- 신호 버스 --------------------------------------------------------------
+//  제어기끼리 값을 주고받는 8채널. 두 가지를 못 박아 둔다.
+//
+//  * **읽기는 언제나 직전 틱의 값이다.** 같은 틱에 읽히게 하면 두 제어기의 평가
+//    순서가 값을 갈라놓는다 — 제어기 사이의 순서는 배치로 정해지지 않으므로
+//    (graphCompile 주석 참고) 플레이어가 원인을 짚을 단서가 하나도 없다.
+//    1틱 지연은 이미 이 게임이 되먹임 배선에 쓰는 규약이라 새 개념도 아니다.
+//  * **여러 송신자는 합산된다.** 마지막 값이 이기게 하면 이 역시 순서 의존이고,
+//    한쪽 회로가 통째로 무시당한 것처럼 보인다. 합은 순서와 무관하다.
+//
+//  채널 이름은 자유 입력이 아니라 고정 목록이다 — 오타 하나로 조용히 침묵하는
+//  것이 이 게임에서 가장 나쁜 실패다(대상 필터를 좁힌 것과 같은 이유).
+var BUS_CHANNELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+var busNow = {};        // 이번 틱에 읽히는 값 = 직전 틱 합계
+var busNext = {};       // 이번 틱에 쌓이는 합계
+function busClear() { busNow = {}; busNext = {}; }
+function busRead(ch) { var v = busNow[ch]; return (typeof v === 'number' && isFinite(v)) ? v : 0; }
+function busWrite(ch, v) {
+  if (!(typeof v === 'number' && isFinite(v))) return;
+  busNext[ch] = (busNext[ch] || 0) + v;
+}
+// 틱 끝에서 교체한다. 송신 노드를 지우면 다음 틱 합계에 그 몫이 아예 없으므로
+// 채널이 저절로 0 으로 돌아온다 — 출력 축의 '유령 지배' 해제와 같은 성질이다.
+function busSwap() { busNow = busNext; busNext = {}; }
+function busSnapshot() { var o = {}; for (var k in busNow) if (busNow[k]) o[k] = busNow[k]; return o; }
+function busRestore(o) {
+  busClear();
+  if (!o) return;
+  for (var i = 0; i < BUS_CHANNELS.length; i++) {
+    var c = BUS_CHANNELS[i], v = o[c];
+    if (typeof v === 'number' && isFinite(v)) busNow[c] = v;
+  }
+}
+
 // --- 노드 정의표 -----------------------------------------------------------
 //  cat: 'in' 입력 / 'op' 연산 / 'out' 출력
 //  cfg 항목 type: 'num' | 'item' | 'ent' | 'opsel' | 'text'
@@ -2209,6 +2243,9 @@ var NODE_DEFS = {
   'enemy':   { label: '적 근접', cat: 'in', ins: [], outs: ['마릿수', '최근접거리'],
                cfg: [{ k: 'radius', t: 'num', label: '반경', def: 30 }],
                tech: 'defense-ai' },
+  'busrecv': { label: '신호 받기', cat: 'in', ins: [], outs: ['값'],
+               cfg: [{ k: 'ch', t: 'opsel', label: '채널', opts: BUS_CHANNELS, def: 'A' }],
+               tech: 'logic-ctrl' },
 
   // ---- 연산 ----
   'cmp':     { label: '비교', cat: 'op', ins: ['A', 'B'], outs: ['참'],
@@ -2226,6 +2263,18 @@ var NODE_DEFS = {
   'edge':    { label: '엣지 검출', cat: 'op', ins: ['A'], outs: ['펄스'],
                cfg: [{ k: 'mode', t: 'opsel', label: '검출', opts: ['상승', '하강', '양쪽'], def: '상승' }], tech: 'logic-mem' },
   'hold':    { label: '샘플 홀드', cat: 'op', ins: ['값', '샘플'], outs: ['유지값'], cfg: [], tech: 'logic-mem' },
+  // 1차 저역통과(EMA). **박스카 평균이 아니다** — 창 안의 표본을 다 들고 있으면
+  // 노드마다 배열이 저장에 들어가는데, 저장은 localStorage 한 칸(약 140 KB)이고
+  // 이미 141 KB 다. 여기 상태는 숫자 하나뿐이고, 계단응답 1-e^(-t/τ) 가 그대로
+  // 게이트의 오라클이 된다. τ 는 63% 에 도달하는 시간이다.
+  'smooth':  { label: '평활 필터', cat: 'op', ins: ['값'], outs: ['평활값'],
+               cfg: [{ k: 'tau', t: 'num', label: '시상수 s', def: 5 }], tech: 'logic-ctrl' },
+  // 4단계 상태기계(SFC). 전이는 **상승엣지**다 — 레벨로 하면 조건이 참인 동안
+  // 60 Hz 로 단계가 돌아버린다. 카운터의 '증가' 입력이 이미 같은 규약이다.
+  // 리셋은 레벨이고 전이보다 우선한다(SR 래치의 RESET 과 같다).
+  'fsm':     { label: '상태기계 (4단계)', cat: 'op',
+               ins: ['1→2', '2→3', '3→4', '4→1', '리셋'],
+               outs: ['단계', '1단계', '2단계', '3단계', '4단계'], cfg: [], tech: 'logic-mem' },
   'pid':     { label: 'PID 제어', cat: 'op', ins: ['목표', '측정'], outs: ['출력', '오차'],
                cfg: [{ k: 'kp', t: 'num', label: 'Kp', def: 1 }, { k: 'ki', t: 'num', label: 'Ki', def: 0 },
                      { k: 'kd', t: 'num', label: 'Kd', def: 0 }, { k: 'lim', t: 'num', label: '제한', def: 100 }],
@@ -2250,7 +2299,10 @@ var NODE_DEFS = {
   'lamp':    { label: '경보 램프', cat: 'out', ins: ['점등'], outs: [],
                cfg: [{ k: 'label', t: 'text', label: '문구', def: '' }] },
   'display': { label: '수치 표시', cat: 'out', ins: ['값'], outs: [],
-               cfg: [{ k: 'label', t: 'text', label: '이름', def: '' }] }
+               cfg: [{ k: 'label', t: 'text', label: '이름', def: '' }] },
+  'bussend': { label: '신호 보내기', cat: 'out', ins: ['값'], outs: [],
+               cfg: [{ k: 'ch', t: 'opsel', label: '채널', opts: BUS_CHANNELS, def: 'A' }],
+               tech: 'logic-ctrl' }
 };
 var NODE_KINDS = Object.keys(NODE_DEFS);
 
@@ -2555,6 +2607,50 @@ function evalNode(g, n, dt, ctrl) {
       n.out[0] = n.state.v || 0;
       break;
     }
+    case 'smooth': {
+      // **입력이 안 물렸으면 씨앗을 심지 않는다.** 사람이 쓰는 순서는 언제나
+      // '놓고 나서 잇기'인데, 놓자마자 도는 틱에서 readIn 이 0 을 주므로 여기서
+      // 씨앗을 박으면 y=0 으로 굳는다. 그러면 배선한 순간 아래 주석이 막겠다던
+      // 과도(0 → 현재값)가 정확히 생긴다 — 씨앗이 자기 목적을 배반한다.
+      // 다른 출력 노드의 '안 물린 입력은 지배하지 않는다' 와 같은 규약이다.
+      if (!inputFed(g, n, 0)) { delete n.state.y; n.out[0] = 0; break; }
+      var xs = readIn(g, n, 0);
+      var tau = +n.cfg.tau || 0;
+      // 첫 평가는 입력값에서 출발한다. 0 에서 시작하면 이미 돌던 신호에 필터를
+      // 물리는 순간 없던 과도(0 → 현재값)가 생겨 그것 때문에 라인이 흔들린다.
+      if (typeof n.state.y !== 'number' || !isFinite(n.state.y)) n.state.y = xs;
+      if (tau <= 0) n.state.y = xs;                    // τ=0 은 그냥 통과 (음성 대조군)
+      else {
+        // **정확한 지수해다.** y += (x-y)(1-e^(-dt/τ)). 오일러 근사 (x-y)·dt/τ 로
+        // 쓰면 dt 를 어떻게 쪼개느냐에 따라 값이 달라진다 — 1초를 4틱으로 밀 때와
+        // 60틱으로 밀 때가 어긋난다. 지수해는 어느 쪽이든 같은 값이고, 그 성질이
+        // 곧 "dt 를 곱했는가"를 묻는 게이트가 된다 (교훈 03).
+        n.state.y += (xs - n.state.y) * (1 - Math.exp(-dt / tau));
+      }
+      n.out[0] = n.state.y;
+      break;
+    }
+    case 'fsm': {
+      if (!(n.state.s >= 1 && n.state.s <= 4)) n.state.s = 1;
+      if (!n.state.pe || n.state.pe.length !== 4) n.state.pe = [false, false, false, false];
+      var rstF = truthy(readIn(g, n, 4));
+      // 엣지 기억은 **네 입력 모두** 매 틱 갱신한다. 현재 단계의 입력만 보면,
+      // 다른 단계에 있는 동안 참이 된 조건이 그 단계로 돌아온 순간 '방금 올라간
+      // 것'으로 읽혀 한 칸 더 튄다.
+      var fired = false;
+      for (var t4 = 0; t4 < 4; t4++) {
+        var cur4 = truthy(readIn(g, n, t4));
+        if (t4 === n.state.s - 1 && cur4 && !n.state.pe[t4]) fired = true;
+        n.state.pe[t4] = cur4;
+      }
+      if (rstF) n.state.s = 1;                          // 리셋 우선
+      else if (fired) n.state.s = (n.state.s % 4) + 1;  // 한 틱에 한 번만 전이
+      n.out[0] = n.state.s;
+      for (var q4 = 1; q4 <= 4; q4++) n.out[q4] = (n.state.s === q4) ? 1 : 0;
+      break;
+    }
+    case 'busrecv': n.out[0] = busRead(n.cfg.ch); break;
+
     case 'pid': {
       var sp = readIn(g, n, 0), pv2 = readIn(g, n, 1);
       var err = sp - pv2;
@@ -2624,6 +2720,15 @@ function evalNode(g, n, dt, ctrl) {
     }
     case 'display': {
       displays.push({ label: String(n.cfg.label || ('값 #' + n.nid)), value: readIn(g, n, 0) });
+      break;
+    }
+    case 'bussend': {
+      // 다른 출력 노드와 같은 형태를 유지한다. **다만 여기서는 값이 안 바뀐다** —
+      // 합산 규약이라 0 을 한 몫 더해도 합계가 그대로다. 그래서 이 가드는 게이트로
+      // 검정할 수 없고(등가 변형), 그 사실을 알고 남겨 둔다: 채널에 '누가 쓰고
+      // 있는가' 를 나중에 드러내게 되면 그때 관측 가능해진다.
+      if (!inputFed(g, n, 0)) break;
+      busWrite(n.cfg.ch, readIn(g, n, 0));
       break;
     }
   }
@@ -2696,6 +2801,10 @@ function stepLogic(dt) {
     if (e.type === 'inserter' && !e.fFilter) e.filter = e.playerFilter || null;
     if (e.type === 'turret' && !e.fFire) e.fireOk = true;
   });
+  // 이번 틱에 쌓인 송신 합계를 다음 틱의 읽기값으로 넘긴다. 모든 제어기가 끝난
+  // 뒤에 한 번만 — 중간에 바꾸면 먼저 평가된 제어기와 나중 제어기가 서로 다른
+  // 값을 보게 되어 순서 의존이 되살아난다.
+  busSwap();
   logicDirty = false;
 }
 
@@ -2703,7 +2812,7 @@ function stepLogic(dt) {
 // ===========================================================================
 //  37_rules.js — 문장(규칙) → 노드 그래프 컴파일러
 //
-//  제어기 편집기는 사실상 프로그래밍 언어다: 빈 캔버스에 노드 25종을 놓고 선을
+//  제어기 편집기는 사실상 프로그래밍 언어다: 빈 캔버스에 노드 29종을 놓고 선을
 //  잇는다. 코딩을 안 해 본 사람은 **무엇을 만들지 이미 알아야** 시작할 수 있고,
 //  거기서 멈춘다. 그래서 같은 것을 문장으로도 쓸 수 있게 한다:
 //
@@ -5069,6 +5178,21 @@ function fillHelp() {
     '되먹임이 있는 제어를 짤 때 늘 만나는 문제이고, 이 게임에서 가장 배울 것이 많은 지점이다.</li>',
     '<li><b>방어 자동화</b> — 적 근접 센서가 적을 감지하면 생산 라인을 끄고 그 전력을 방어에 몰아준다.</li>',
     '</ul>',
+    '<h4>신호를 다듬고, 나누고, 단계로 쪼갠다</h4>',
+    '<p><b>평활 필터</b>(논리 III)는 덜덜 떨리는 값을 눅인다. <code>시상수 s</code>는 입력이 갑자기 바뀌었을 때',
+    '<b>63%까지 따라가는 데 걸리는 시간</b>이다 — 5로 두면 5초에 63%, 15초에 95% 따라간다.',
+    '전력 만족도나 상자 재고처럼 매 틱 튀는 값을 임계값 비교에 바로 물리면 그 경계에서 딸깍거리는데,',
+    '필터를 한 단 끼우면 잦아든다. <b>대신 반응이 느려진다</b> — 그 맞바꿈이 이 노드의 전부다.</p>',
+    '<p><b>상태기계</b>(논리 II)는 공정을 <b>1→2→3→4→1</b> 단계로 돌린다. 각 입력은 그 단계에서만 보고,',
+    '<b>거짓에서 참으로 올라가는 순간</b>에만 넘어간다(참인 채로 두어도 한 칸만 간다). 리셋은 언제나 1단계로,',
+    '전이보다 우선한다. 단계별 출구 <code>1단계~4단계</code>가 그 단계에서만 1이므로,',
+    '거기에 기계를 물리면 "지금은 이것만 만든다"가 된다. 타이머를 입력에 물리면 순서 반복이 되고,',
+    '재고 조건을 물리면 재고가 이끄는 공정이 된다.</p>',
+    '<p><b>신호 보내기 / 받기</b>(논리 III)는 <b>제어기끼리</b> 값을 주고받는 8채널(A~H)이다.',
+    '한 제어기가 다 하기엔 회로가 커질 때 역할별로 쪼개 쓴다 — 발전소 제어기가 전력 여유를 A로 쏘면,',
+    '지도 반대편 라인 제어기들이 그걸 받아 각자 판단한다. 규칙 두 가지만 기억하면 된다:',
+    '<b>같은 채널에 여러 제어기가 보내면 합산</b>되고(순서를 안 타게 하려는 것이다),',
+    '<b>받는 값은 언제나 한 틱 전 값</b>이다(되먹임 배선과 같은 규약). 보낸 노드를 지우면 그 몫이 바로 빠진다.</p>',
     '<p class="dim">편집기의 <b>예제 불러오기</b>를 누르면 위 히스테리시스 회로가 배선된 채로 들어온다.',
     '한 번 보고 나면 나머지는 응용이다.</p>'
   // 공백으로 잇는다 — ''로 이으면 줄 끝과 다음 줄 첫 글자가 붙어 "만든다.정답 배선은"
@@ -5966,19 +6090,23 @@ function outputMeaning(g, n) {
   var fed = !!g.inLinks && !!g.inLinks[n.nid + ':0'];
   var v = readIn(g, n, 0);
   var on = truthy(v);
-  var who = (n.kind === 'lamp' || n.kind === 'display') ? null : entName(n.cfg.ent);
+  // 대상 엔티티를 고르지 않는 출력 노드들 — 경보·수치표시·신호 송신은 화면과
+  // 채널이 대상이라 '대상이 비어 있다' 검사에 걸리면 안 된다.
+  var noEnt = (n.kind === 'lamp' || n.kind === 'display' || n.kind === 'bussend');
+  var who = noEnt ? null : entName(n.cfg.ent);
 
   // 대상이 없으면 이 노드는 장식이다. 이것이 "배선했는데 아무 반응이 없다" 의 정체다.
   // **판정은 이름 문자열이 아니라 대상 자체로 한다.** entName 이 사람이 읽을 문구를
   // 돌려주도록 바꾼 순간 `!who` 가 영원히 거짓이 돼 이 검사가 통째로 죽었다 —
   // 표시용 함수를 술어로 쓰면 표시를 고칠 때 판정이 조용히 따라 바뀐다.
-  if (n.kind !== 'lamp' && n.kind !== 'display' && !entities[n.cfg.ent]) {
+  if (!noEnt && !entities[n.cfg.ent]) {
     return { bad: true, text: '대상이 비어 있다 — 배선해도 아무 일도 하지 않는다' };
   }
   if (!fed) {
     return { bad: true, text: '입력이 안 물렸다 — 늘 ' +
       (n.kind === 'enable' ? '멈춤' : n.kind === 'gate' ? '닫힘' :
-       n.kind === 'fire' ? '사격 금지' : n.kind === 'filter' ? '0일 때 품목' : '꺼짐') + ' 으로 본다' };
+       n.kind === 'fire' ? '사격 금지' : n.kind === 'filter' ? '0일 때 품목' :
+       n.kind === 'bussend' ? '아무것도 안 보냄' : '꺼짐') + ' 으로 본다' };
   }
   var now = on ? '참' : '거짓';
   switch (n.kind) {
@@ -6000,6 +6128,12 @@ function outputMeaning(g, n) {
       return { bad: false, text: '지금 ' + now + ' → 경보 ' + (on ? '켜짐' : '꺼짐') };
     case 'display':
       return { bad: false, text: '지금 값 ' + fmt(v, 2) };
+    case 'bussend':
+      // 지금 보내는 값과, 채널에서 **지금 읽히는** 값을 함께 적는다. 둘은 한 틱
+      // 어긋나 있고 다른 송신자가 있으면 합계라서, 안 적으면 "보냈는데 값이
+      // 다르다"로 보인다.
+      return { bad: false, text: '채널 ' + (n.cfg.ch || 'A') + ' 로 ' + fmt(v, 2) +
+        ' 송신 — 지금 읽히는 합계 ' + fmt(busRead(n.cfg.ch), 2) + ' (한 틱 뒤 반영)' };
   }
   return null;
 }
@@ -6850,6 +6984,7 @@ function newGame(seed) {
   beltStats.delivered = 0;
   ERRORS.length = 0;
   alarms.length = 0; displays.length = 0;
+  busClear();                // 신호 버스도 판을 넘기지 않는다 — 결정성이 깨진다
 
   generateWorld(worldSeed);
   spawnNests(worldSeed);
@@ -7023,6 +7158,9 @@ function saveGame() {
     nests: nests.map(function (n) { return [n.x, n.y, n.hp, n.absorbed, n.cool, n.seed]; }),
     enemies: enemies.map(function (e) { return [Math.round(e.x * 100), Math.round(e.y * 100), e.hp, e.tier]; }),
     evo: evolution, ws: waveStats,
+    // 버스는 직전 틱 합계 하나뿐이다. 안 담으면 불러온 첫 틱에 모든 채널이 0 이
+    // 돼, 신호를 받아 라인을 잡고 있던 회로가 한 틱 동안 손을 놓는다.
+    bus: busSnapshot(),
     tut: { on: tutorial.on, track: tutorial.track, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
     prod: { smelted: prodStats.smelted, crafted: prodStats.crafted, byRecipe: prodStats.byRecipe }
   };
@@ -7056,6 +7194,7 @@ function loadGame(raw) {
     inventory = data.inv || {}; techDone = data.tech || {};
     currentResearch = data.res || null; researchProgress = data.resP || 0;
     researchProgressBy = data.resBy || {};   // 예전 저장본엔 없다 — 빈 채로 두면 그만이다
+    busRestore(data.bus);                    // 마찬가지로 없으면 전 채널 0 에서 시작한다
     handQueue.length = 0;
     if (Array.isArray(data.hand)) {
       for (var hj = 0; hj < data.hand.length; hj++) {
@@ -7223,6 +7362,13 @@ window.__GAME = {
     return { ticks: n, t: gameTime };
   },
   tickOnce: function () { tick(TICK); return gameTime; },
+  // **검증 전용 — 게임은 여전히 60 UPS 고정 스텝이다.** 시뮬을 임의의 dt 로 한 번
+  // 미는 유일한 경로이고, 존재 이유는 하나다: 같은 게임시간을 다르게 쪼개도 결과가
+  // 같은지 물어야 dt 를 곱했는지 아닌지가 갈린다 (교훈 03 의 60배 오염이 그 실패다).
+  tickWith: function (dt) { tick(Math.max(0, +dt || 0)); return gameTime; },
+  // 신호 버스 — 지금 읽히는 값(직전 틱 합계)
+  bus: function (ch) { return ch === undefined ? busSnapshot() : busRead(ch); },
+  busChannels: function () { return BUS_CHANNELS.slice(); },
   setSpeed: function (n) { gameSpeed = Math.max(0, Math.min(60, +n || 1)); return gameSpeed; },
   getSpeed: function () { return gameSpeed; },
 
