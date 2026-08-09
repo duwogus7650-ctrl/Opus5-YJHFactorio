@@ -48,7 +48,11 @@ var RULE_SOURCES = {
   'enemyN':    { label: '가까이 온 적 수', node: 'enemy',    port: 0, needs: ['radius'],
                  unit: '마리', tech: 'defense-ai' },
   'enemyDist': { label: '가장 가까운 적까지', node: 'enemy',  port: 1, needs: ['radius'],
-                 unit: '칸', tech: 'defense-ai' }
+                 unit: '칸', tech: 'defense-ai' },
+  // 다른 제어기가 보낸 값. 채널은 고르는 것이지 적는 것이 아니다 — 오타 하나로
+  // 조용히 0 이 되는 것이 이 게임에서 제일 나쁜 실패라서.
+  'busIn':     { label: '받은 신호', node: 'busrecv', port: 0, needs: ['ch'],
+                 tech: 'logic-ctrl' }
 };
 var RULE_SOURCE_IDS = Object.keys(RULE_SOURCES);
 
@@ -63,7 +67,11 @@ var RULE_ACTIONS = {
   'lamp':   { label: '경보를 켠다', node: 'lamp', verbOn: '켠다', verbOff: '끈다', text: 'label' },
   'display':{ label: '화면에 숫자를 띄운다', node: 'display', text: 'label', value: true },
   'filter': { label: '인서터가 집을 것을 바꾼다', node: 'filter', entFilter: ['inserter'],
-              tech: 'logic-ctrl', twoItems: true }
+              tech: 'logic-ctrl', twoItems: true },
+  // 값을 그대로 다른 제어기에 넘긴다. 참/거짓이 아니라 **잰 값**을 보내므로
+  // value 플래그가 붙는다 (display 와 같은 자리).
+  'bus':    { label: '다른 제어기에 신호를 보낸다', node: 'bussend', value: true, ch: true,
+              tech: 'logic-ctrl' }
 };
 var RULE_ACTION_IDS = Object.keys(RULE_ACTIONS);
 
@@ -78,7 +86,10 @@ var RULE_CMPS = [
 var RULE_MATHS = [
   { op: '-', label: '에서 뺀 값' }, { op: '+', label: '을 더한 값' },
   { op: '*', label: '을 곱한 값' }, { op: '/', label: '으로 나눈 값' },
-  { op: 'min', label: '과 둘 중 작은 값' }, { op: 'max', label: '과 둘 중 큰 값' }
+  { op: 'min', label: '과 둘 중 작은 값' }, { op: 'max', label: '과 둘 중 큰 값' },
+  // 유일한 단항이다 — 두 값을 계산하는 게 아니라 한 값을 시간으로 눅인다.
+  // b 는 상수가 아니라 **시상수(초)** 라서 문장도 다르게 읽는다.
+  { op: 'smooth', label: '초로 눅인 값', unary: true, tech: 'logic-ctrl' }
 ];
 
 // 기억(memory) — 문장 뒤에 붙는 선택지. 각각 어떤 노드가 필요한지 함께 적는다.
@@ -106,10 +117,15 @@ var RULE_MEMOS = {
 // }
 function newRule(id) {
   return { id: id, name: '', enabled: true,
-           when: { src: 'chest', ent: null, item: 'iron-plate', radius: 30,
+           when: { src: 'chest', ent: null, item: 'iron-plate', radius: 30, ch: 'A',
                    math: null, cmp: '<', value: 50, and: [], andMode: 'AND', refName: null },
            memo: { kind: 'none', resetCmp: '>', resetValue: 200, everySec: 0, times: 3 },
-           then: { act: 'run', ent: null, item2: null, label: '', onWhenTrue: true } };
+           then: { act: 'run', ent: null, item2: null, label: '', ch: 'A', onWhenTrue: true } };
+}
+
+function ruleMath(op) {
+  for (var i = 0; i < RULE_MATHS.length; i++) if (RULE_MATHS[i].op === op) return RULE_MATHS[i];
+  return null;
 }
 
 // 규칙이 지금 연구 상태로 컴파일 가능한가. 안 되면 이유를 돌려준다.
@@ -119,6 +135,17 @@ function ruleBlockedReason(r) {
   if (s && s.tech && !techDone[s.tech]) return TECHS[s.tech].name + ' 연구가 필요하다';
   var a = RULE_ACTIONS[r.then.act];
   if (a && a.tech && !techDone[a.tech]) return TECHS[a.tech].name + ' 연구가 필요하다';
+  // 계산 한 단에도 연구가 걸릴 수 있다(눅이기 = 평활 필터). 여기를 빼먹으면
+  // 잠긴 노드가 회로에 들어가 조용히 0 을 내고, 문장은 멀쩡해 보인다.
+  var mo = r.when.math && r.when.math.op && ruleMath(r.when.math.op);
+  if (mo && mo.tech && !techDone[mo.tech]) return TECHS[mo.tech].name + ' 연구가 필요하다';
+  for (var q = 0; q < (r.when.and || []).length; q++) {
+    var sub = r.when.and[q];
+    var ss = RULE_SOURCES[sub.src];
+    if (ss && ss.tech && !techDone[ss.tech]) return TECHS[ss.tech].name + ' 연구가 필요하다';
+    var sm = sub.math && sub.math.op && ruleMath(sub.math.op);
+    if (sm && sm.tech && !techDone[sm.tech]) return TECHS[sm.tech].name + ' 연구가 필요하다';
+  }
   var m = RULE_MEMOS[r.memo.kind];
   if (m && m.tech && !techDone[m.tech]) return TECHS[m.tech].name + ' 연구가 필요하다';
   if (r.memo.kind === 'latch' && r.memo.everySec > 0 && !techDone['logic-mem']) {
@@ -179,22 +206,34 @@ function compileCondition(g, w, x0, y0, named) {
   if (s.needs.indexOf('ent') >= 0) src.cfg.ent = w.ent || null;
   if (s.needs.indexOf('item') >= 0) src.cfg.item = w.item || null;
   if (s.needs.indexOf('radius') >= 0) src.cfg.radius = +w.radius || 30;
+  if (s.needs.indexOf('ch') >= 0) src.cfg.ch = w.ch || 'A';
 
   var vNid = src.nid, vPort = s.port, x = x0 + RULE_COL;
 
   // 계산 한 단 (선택) — "공급kW 에서 수요kW 를 뺀 값" 같은 것
   if (w.math && w.math.op) {
-    var mb = graphAddNode(g, 'const', x0, y0 + RULE_SUB);
-    mb.cfg.value = +w.math.b || 0;
-    var mm = graphAddNode(g, 'math', x, y0);
-    mm.cfg.op = w.math.op;
-    graphLink(g, vNid, vPort, mm.nid, 0);
-    graphLink(g, mb.nid, 0, mm.nid, 1);
-    vNid = mm.nid; vPort = 0; x += RULE_COL;
+    var mdef = ruleMath(w.math.op);
+    if (mdef && mdef.unary) {
+      // 눅이기는 상수를 하나 더 놓지 않는다 — b 는 시상수라 노드의 설정값이다
+      var sm = graphAddNode(g, 'smooth', x, y0);
+      sm.cfg.tau = +w.math.b || 0;
+      graphLink(g, vNid, vPort, sm.nid, 0);
+      vNid = sm.nid; vPort = 0; x += RULE_COL;
+    } else {
+      var mb = graphAddNode(g, 'const', x0, y0 + RULE_SUB);
+      mb.cfg.value = +w.math.b || 0;
+      var mm = graphAddNode(g, 'math', x, y0);
+      mm.cfg.op = w.math.op;
+      graphLink(g, vNid, vPort, mm.nid, 0);
+      graphLink(g, mb.nid, 0, mm.nid, 1);
+      vNid = mm.nid; vPort = 0; x += RULE_COL;
+    }
   }
 
   // 참/거짓을 내는 읽기(기계가 도는가 등)를 그대로 조건으로 쓰면 비교가 필요 없다.
-  if (s.bool && (w.cmp === '==' || !w.cmp)) return { nid: vNid, port: vPort, isBool: true };
+  if (s.bool && (w.cmp === '==' || !w.cmp)) {
+    return { nid: vNid, port: vPort, isBool: true, valNid: vNid, valPort: vPort };
+  }
 
   var kv = graphAddNode(g, 'const', x0, y0 + RULE_SUB * 2);
   kv.cfg.value = +w.value || 0;
@@ -202,7 +241,9 @@ function compileCondition(g, w, x0, y0, named) {
   c.cfg.op = w.cmp || '<';
   graphLink(g, vNid, vPort, c.nid, 0);
   graphLink(g, kv.nid, 0, c.nid, 1);
-  return { nid: c.nid, port: 0, isBool: true, x: x };
+  // valNid/valPort = **비교하기 전의 값** 그 자체. '숫자를 띄운다' 처럼 참/거짓이
+  // 아니라 값을 받아야 하는 행동이 이걸 쓴다 (아래 compileOneRule).
+  return { nid: c.nid, port: 0, isBool: true, x: x, valNid: vNid, valPort: vPort };
 }
 
 function compileOneRule(g, r, y0, named) {
@@ -210,6 +251,7 @@ function compileOneRule(g, r, y0, named) {
   var cond = compileCondition(g, w, 20, y0, named);
   if (!cond) return null;
   var condNid = cond.nid, condPort = cond.port;
+  var valNid = cond.valNid, valPort = cond.valPort;   // 비교 전의 값 (있을 때만)
   var x = (cond.x || 20 + RULE_COL) + RULE_COL;
 
   // 그리고 / 또는 로 묶인 추가 조건
@@ -288,6 +330,23 @@ function compileOneRule(g, r, y0, named) {
   if (ad.entFilter) an2.cfg.ent = t.ent || null;
   if (ad.text) an2.cfg.label = t.label || (r.name || '');
   if (ad.twoItems) { an2.cfg.a = t.item || null; an2.cfg.b = t.item2 || null; }
+  if (ad.ch) an2.cfg.ch = t.ch || 'A';
+
+  // **값을 받는 행동은 값을 받아야 한다.** 행동표에 value 플래그가 있었는데 여기서
+  // 한 번도 안 읽어서, '숫자를 화면에 띄운다' 가 조건의 참/거짓(1 또는 0)을 띄우고
+  // 있었다 — 문장은 맞는데 값이 틀린, 이 게임이 가장 싫어하는 종류다.
+  // 조건은 버리지 않고 [선택] 한 단으로 살린다: 조건이 참이면 값, 아니면 0.
+  // 그래야 "재고가 50 미만이면 그 값을 보낸다" 같은 문장이 말 그대로 돈다.
+  if (ad.value && valNid) {
+    var zero = graphAddNode(g, 'const', x, y0 + RULE_SUB * 2);
+    zero.cfg.value = 0;
+    var sel = graphAddNode(g, 'select', x, y0 + RULE_SUB);
+    graphLink(g, actIn, actPort, sel.nid, 0);      // 조건
+    graphLink(g, valNid, valPort, sel.nid, 1);     // 참일 때: 잰 값
+    graphLink(g, zero.nid, 0, sel.nid, 2);         // 거짓일 때: 0
+    graphLink(g, sel.nid, 0, an2.nid, 0);
+    return condNid;
+  }
   graphLink(g, actIn, actPort, an2.nid, 0);
   return condNid;
 }
@@ -301,15 +360,8 @@ function ruleSentence(r) {
   else if (s) {
     // 주어가 "상자 #14 의 상자의 재고(철판)" 처럼 겹치면 문장이 아니라 경로가 된다.
     // 품목이 있으면 품목을 주어로 세운다 — "상자 #14 의 철판".
-    var subj = s.label;
-    if (s.needs.indexOf('item') >= 0 && w.item && ITEMS[w.item]) subj = ITEMS[w.item].name;
-    if (s.needs.indexOf('ent') >= 0) subj = entName(w.ent) + ' 의 ' + subj;
-    var mtxt = '';
-    if (w.math && w.math.op) {
-      var mm = null;
-      for (var i = 0; i < RULE_MATHS.length; i++) if (RULE_MATHS[i].op === w.math.op) mm = RULE_MATHS[i];
-      mtxt = ' 에 ' + w.math.b + (mm ? mm.label : '');
-    }
+    var subj = ruleSubject(w, s);
+    var mtxt = mathPhrase(w.math);
     var ct = null;
     for (var c = 0; c < RULE_CMPS.length; c++) if (RULE_CMPS[c].op === w.cmp) ct = RULE_CMPS[c];
     if (s.bool && (!w.cmp || w.cmp === '==')) parts.push('만약 ' + subj + ' 이면');
@@ -323,6 +375,7 @@ function ruleSentence(r) {
   var t = r.then, ad = RULE_ACTIONS[t.act];
   var verb = ad ? (ad.verbOn ? (t.onWhenTrue === false ? ad.verbOff : ad.verbOn) : ad.label) : '';
   var obj = (ad && ad.entFilter) ? entName(t.ent) + ' 을 ' : '';
+  if (ad && ad.ch) obj = '채널 ' + (t.ch || 'A') + ' 로 ';
   parts.push('그래서 ' + obj + verb);
   if (m.kind === 'latch') {
     var rct = null;
@@ -335,12 +388,26 @@ function ruleSentence(r) {
   else if (m.kind === 'hold') parts.push('— 그때 값을 기억해서');
   return parts.join(' ');
 }
-function condPhrase(w) {
-  var s = RULE_SOURCES[w.src];
-  if (!s) return '?';
+// 주어 한 덩어리. 품목이 있으면 품목이 주어고, 대상이 있으면 그 앞에 붙고,
+// 채널이 있으면 "채널 A 로 받은 신호" 가 된다.
+function ruleSubject(w, s) {
   var subj = s.label;
   if (s.needs.indexOf('item') >= 0 && w.item && ITEMS[w.item]) subj = ITEMS[w.item].name;
   if (s.needs.indexOf('ent') >= 0) subj = entName(w.ent) + ' 의 ' + subj;
+  if (s.needs.indexOf('ch') >= 0) subj = '채널 ' + (w.ch || 'A') + ' 로 ' + subj;
+  return subj;
+}
+// 계산 한 단을 사람 말로. 단항(눅이기)은 조사가 달라서 따로 쓴다.
+function mathPhrase(m) {
+  if (!m || !m.op) return '';
+  var md = ruleMath(m.op);
+  if (md && md.unary) return ' 를 ' + m.b + md.label;
+  return ' 에 ' + m.b + (md ? md.label : '');
+}
+function condPhrase(w) {
+  var s = RULE_SOURCES[w.src];
+  if (!s) return '?';
+  var subj = ruleSubject(w, s) + mathPhrase(w.math);
   var ct = null;
   for (var c = 0; c < RULE_CMPS.length; c++) if (RULE_CMPS[c].op === w.cmp) ct = RULE_CMPS[c];
   if (s.bool && (!w.cmp || w.cmp === '==')) return subj + ' 이면';
@@ -389,6 +456,16 @@ var RULE_CARDS = [
       r.name = '';
       r.when.src = 'powerHead'; r.when.cmp = '>='; r.when.value = 0;
       r.then.act = 'display'; r.then.label = '전기 여유';
+    } },
+  { id: 'signal', title: '공장 상태를 다른 제어기에 알리기',
+    why: '제어기 하나에 규칙을 다 몰아넣으면 읽을 수가 없다. 재는 쪽과 판단하는 쪽을 ' +
+         '나누고 <b>채널</b>로 값을 넘긴다. 받는 쪽에서는 [받은 신호] 를 읽으면 된다.',
+    need: 'logic-ctrl',
+    make: function (r) {
+      r.name = '전기여유알림';
+      r.when.src = 'powerHead'; r.when.cmp = '>='; r.when.value = -1e9;
+      r.when.math = { op: 'smooth', b: 5 };     // 튀는 값은 눅여서 보낸다
+      r.then.act = 'bus'; r.then.ch = 'A';
     } },
   { id: 'blank', title: '빈 문장으로 직접 만들기', why: '', make: function () {} }
 ];

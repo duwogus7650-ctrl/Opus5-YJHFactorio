@@ -143,7 +143,22 @@ function ruleCardHtml(r, i) {
       h.push(selHtml('', 'when.item', r.id, ITEM_IDS.map(function (k) { return [k, ITEMS[k].name]; }), w.item));
     }
     if (s && s.needs.indexOf('radius') >= 0) { h.push('반경'); h.push(numHtml('when.radius', r.id, w.radius)); h.push('칸'); }
+    if (s && s.needs.indexOf('ch') >= 0) {
+      h.push('<span class="kw">채널</span>' + selHtml('', 'when.ch', r.id,
+        BUS_CHANNELS.map(function (c) { return [c, c]; }), w.ch || 'A'));
+    }
     if (!(s && s.bool)) {
+      // 계산 한 단. **표에만 있고 화면에 없던 자리다** — 컴파일러도 되읽기도 지원하는데
+      // 고를 방법이 없어서 카드로 만든 규칙만 쓸 수 있었다. 진입점이 없는 기능은 없는
+      // 기능이라는 것을 이 레포는 저장/불러오기에서 한 번 배웠다.
+      // 숫자를 앞에 둔다 — 문장이 "[5] [초로 눅인 값]" 으로 읽혀야 한다.
+      var mathOpts = [['', '(그대로)', false]];
+      for (var mi = 0; mi < RULE_MATHS.length; mi++) {
+        var mdf = RULE_MATHS[mi], mlock = !!(mdf.tech && !techDone[mdf.tech]);
+        mathOpts.push([mdf.op, mdf.label + (mlock ? ' (연구 필요)' : ''), mlock]);
+      }
+      if (w.math && w.math.op) h.push(numHtml('when.math.b', r.id, w.math.b));
+      h.push(selHtml('', 'when.math.op', r.id, mathOpts, (w.math && w.math.op) || ''));
       h.push('이');
       h.push(numHtml('when.value', r.id, w.value));
       h.push('<span class="kw">' + (s ? (s.unit || '') : '') + '</span>');
@@ -164,6 +179,10 @@ function ruleCardHtml(r, i) {
   if (ad && ad.verbOn) {
     h.push(selHtml('', 'then.onWhenTrue', r.id,
       [['1', ad.verbOn], ['0', ad.verbOff]], t.onWhenTrue === false ? '0' : '1'));
+  }
+  if (ad && ad.ch) {
+    h.push('<span class="kw">채널</span>' + selHtml('', 'then.ch', r.id,
+      BUS_CHANNELS.map(function (c) { return [c, c]; }), t.ch || 'A'));
   }
   if (ad && ad.text) {
     h.push('<input data-r="' + r.id + '" data-k="then.label" value="' + (t.label || '') +
@@ -264,9 +283,16 @@ function ruleById(id) {
   for (var i = 0; i < curCtrl.rules.length; i++) if (curCtrl.rules[i].id === id) return curCtrl.rules[i];
   return null;
 }
+// 중간 경로가 비어 있으면 **만들어서** 넣는다. 예전에는 조용히 return 했는데,
+// when.math 는 기본값이 null 이라 그 길로 들어오는 설정이 전부 아무 일도 안 하고
+// 사라진다 — 이 게임이 제일 싫어하는 실패(고칠 수 있어 보이는데 안 먹힘)다.
 function setPath(obj, path, val) {
   var ks = path.split('.');
-  while (ks.length > 1) { obj = obj[ks.shift()]; if (!obj) return; }
+  while (ks.length > 1) {
+    var k = ks.shift();
+    if (!obj[k]) obj[k] = {};
+    obj = obj[k];
+  }
   obj[ks[0]] = val;
 }
 // 값이 바뀔 때마다 **곧바로 다시 컴파일한다.** 저장 버튼을 따로 두면 "고쳤는데
@@ -284,7 +310,17 @@ function bindRuleControls(host) {
       var r = ruleById(+this.getAttribute('data-r')); if (!r) return;
       var k = this.getAttribute('data-k'), v = this.value;
       if (k === 'then.onWhenTrue') v = (v === '1');
+      // '(그대로)' 를 고르면 계산 한 단을 통째로 뗀다. 빈 op 를 남겨 두면
+      // 문장에는 안 보이는데 회로에는 노드가 남는다.
+      if (k === 'when.math.op' && !v) { r.when.math = null; ruleChanged(); return; }
+      // 그 외에는 **setPath 가 중간 경로를 만들게 둔다.** 여기서 when.math 를 손으로
+      // 만들어 주면 setPath 의 그 분기를 아무도 안 지나가고, 그러면 그 코드가
+      // 맞는지 틀린지 검정할 방법이 사라진다(돌연변이가 안 잡힌다 = 등가 변형).
       setPath(r, k, v);
+      if (k === 'when.math.op' && r.when.math && r.when.math.b === undefined) {
+        var md = ruleMath(v);
+        r.when.math.b = (md && md.unary) ? 5 : 0;   // 시상수 기본 5초 / 상수 기본 0
+      }
       ruleChanged();
     };
   }

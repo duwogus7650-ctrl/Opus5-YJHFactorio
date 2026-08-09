@@ -686,6 +686,45 @@ MUTATIONS = [
      b'state: n.st || {}, out: [], prev: []',
      b'state: (n.st ? { s: n.st.s } : {}), out: [], prev: []',
      ['fsm.saveKeepsEdgeMemory']),
+
+    # ---- 문장(규칙) 어휘: 신호 버스 · 눅이기 · 값을 받는 행동 ----
+    # 값을 받는 행동이 조건의 참/거짓을 받게 되돌린다. 이게 실제로 출고돼 있던
+    # 상태이고, '숫자를 화면에 띄운다' 가 1 을 띄우고 있었다.
+    ('값을 받는 행동이 참/거짓을 받는다', '37_rules.js',
+     b'  if (ad.value && valNid) {',
+     b'  if (false) {',
+     ['rule.displayShowsTheNumber']),
+
+    ('문장의 눅이기가 시상수를 무시한다 (그대로 통과)', '37_rules.js',
+     b'      sm.cfg.tau = +w.math.b || 0;',
+     b'      sm.cfg.tau = 0;',
+     ['rule.smoothCompilesAndFilters']),
+
+    ('문장이 계산 한 단의 연구 관문을 안 본다', '37_rules.js',
+     b'  if (mo && mo.tech && !techDone[mo.tech]) return TECHS[mo.tech].name',
+     b'  if (false) return TECHS[mo.tech].name',
+     ['rule.smoothLocksBehindResearch']),
+
+    ('문장의 채널 선택이 노드에 안 내려간다', '37_rules.js',
+     b"  if (s.needs.indexOf('ch') >= 0) src.cfg.ch = w.ch || 'A';",
+     b"  if (false) src.cfg.ch = w.ch || 'A';",
+     ['rule.busCarriesValueBetweenControllers']),
+
+    ('보내는 행동의 채널이 노드에 안 내려간다', '37_rules.js',
+     b"  if (ad.ch) an2.cfg.ch = t.ch || 'A';",
+     b"  if (false) an2.cfg.ch = t.ch || 'A';",
+     ['rule.busCarriesValueBetweenControllers']),
+
+    # 화면에 계산 한 단을 고를 자리가 없으면, 컴파일러가 지원해도 아무도 못 쓴다.
+    ('문장 편집기에서 계산 드롭다운을 뺀다', '57_ruleui.js',
+     b"      h.push(selHtml('', 'when.math.op', r.id, mathOpts, (w.math && w.math.op) || ''));",
+     b'      h.push(\'\');',
+     ['ui.mathDropdownExistsAndCompiles'], 'uismoke.js'),
+
+    ('중간 경로가 없으면 설정이 조용히 사라진다', '57_ruleui.js',
+     b'    if (!obj[k]) obj[k] = {};',
+     b'    if (!obj[k]) return;',
+     ['ui.mathDropdownExistsAndCompiles'], 'uismoke.js'),
 ]
 
 

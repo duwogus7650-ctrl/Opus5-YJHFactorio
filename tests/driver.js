@@ -2085,6 +2085,111 @@
         '저장→복원 후 규칙 ' + (after ? after.length : 0) + '개 · 첫 규칙 이름 "' +
         (after && after[0] ? after[0].name : '') + '"');
 
+      // ▶ 아래 블록은 자기 판을 새로 깐다. 그래서 규칙 절이 **끝난 뒤**에 둔다 —
+      //   중간에 뒀더니 G.reset 이 위 검사들의 제어기·조립기를 지워 드라이버가
+      //   TypeError 로 통째로 죽었다(교훈 14 를 쓴 사람이 그대로 다시 밟았다).
+      // **'숫자를 띄운다' 는 숫자를 띄워야 한다.** 행동표에 value 플래그가 있는데
+      // 컴파일러가 그걸 한 번도 안 읽어서, 조건의 참/거짓(1 또는 0)이 화면에 떴다.
+      // "숫자를 화면에 띄워 보기" 카드가 정확히 그 상태였다 — 문장은 맞는데 값이 틀리다.
+      G.reset(8101); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      var rc9 = G.place('controller', 40, 40, 0);
+      var rBox9 = G.place('chest', 44, 40, 0);
+      G.fillChest(rBox9, 'iron-plate', 37);
+      G.ruleAdd(rc9, {
+        when: { src: 'chest', ent: rBox9, item: 'iron-plate', cmp: '>=', value: 0 },
+        then: { act: 'display', label: '철판수' } });
+      G.ruleCompile(rc9);
+      G.run(0.2);
+      var dsp9 = G.state().displays.filter(function (d) { return d.label === '철판수'; });
+      chk('rule.displayShowsTheNumber',
+        dsp9.length === 1 && dsp9[0].value === 37,
+        '상자에 철판 37개 · "철판수를 띄운다" 문장 → 표시값 ' +
+        (dsp9.length ? dsp9[0].value : 'none') + ' (37이어야 · 1이면 조건의 참/거짓을 띄운 것)');
+      // 음성 대조군 — 조건이 거짓이면 0 이어야 한다. 이게 없으면 위 검사는
+      // "조건을 아예 안 본다" 는 구현도 통과시킨다.
+      G.ruleSet(rc9, G.ruleList(rc9)[0].id, { when: { cmp: '>', value: 1000 } });
+      G.ruleCompile(rc9); G.run(0.2);
+      var dsp9b = G.state().displays.filter(function (d) { return d.label === '철판수'; });
+      chk('rule.displayBlanksWhenConditionFails',
+        dsp9b.length === 1 && dsp9b[0].value === 0,
+        '조건을 거짓으로(1000개 초과) → 표시값 ' + (dsp9b.length ? dsp9b[0].value : 'none') +
+        ' (0이어야 · 조건 발생 확인)');
+
+
+      // --- 문장으로 쓴 신호 버스 · 눅이기 ---------------------------------
+      // 새 노드를 문장 어휘에 넣었으면, 그 문장이 **회로가 되어 세계를 움직이는지**
+      // 까지 봐야 한다. 어휘표에 줄을 추가한 것만으로는 아무것도 보증되지 않는다.
+      G.reset(8102); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(true);
+      G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+      var sbA = G.place('controller', 40, 40, 0);       // 재는 쪽
+      var sbB = G.place('controller', 44, 40, 0);       // 판단하는 쪽
+      var sbBox = G.place('chest', 48, 40, 0);
+      var sbAsm = G.place('assembler', 52, 40, 0);
+      G.setRecipe(sbAsm, 'gear');
+      G.fillChest(sbBox, 'iron-plate', 80);
+      // 제어기 A: "상자의 철판이 -1 이상이면 채널 C 로 그 값을 보낸다"
+      G.ruleAdd(sbA, {
+        when: { src: 'chest', ent: sbBox, item: 'iron-plate', cmp: '>=', value: -1 },
+        then: { act: 'bus', ch: 'C' } });
+      var sbCompA = G.ruleCompile(sbA);
+      // 제어기 B: "채널 C 로 받은 신호가 50 미만이면 조립기를 켠다"
+      G.ruleAdd(sbB, {
+        when: { src: 'busIn', ch: 'C', cmp: '<', value: 50 },
+        then: { act: 'run', ent: sbAsm, onWhenTrue: true } });
+      var sbCompB = G.ruleCompile(sbB);
+      G.run(0.2);
+      var sbChan = G.bus('C');
+      var sbHighOff = G.ent(sbAsm).enabled;             // 80개 → 조건 거짓 → 꺼짐
+      G.fillChest(sbBox, 'iron-plate', -70);            // 10개로 떨어뜨린다
+      G.run(0.2);
+      var sbChan2 = G.bus('C');
+      var sbLowOn = G.ent(sbAsm).enabled;               // 10개 → 조건 참 → 켜짐
+      chk('rule.busCarriesValueBetweenControllers',
+        sbCompA.skipped.length === 0 && sbCompB.skipped.length === 0 &&
+        sbChan === 80 && sbChan2 === 10 && sbHighOff === false && sbLowOn === true,
+        '문장 두 줄(보내기/받기) → 채널 C = ' + sbChan + ' (80이어야) · 철판을 10개로 → ' +
+        sbChan2 + ' (10이어야) · 조립기 ' + (sbHighOff ? '켜짐' : '꺼짐') + '→' +
+        (sbLowOn ? '켜짐' : '꺼짐') + ' (꺼짐→켜짐이어야 · 문장이 채널을 건너 세계를 움직였는가)');
+
+      // 눅이기 한 단이 문장으로 걸리는가 — 계단을 넣고 τ 시점 값을 오라클과 댄다
+      G.reset(8103); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+      var smC = G.place('controller', 40, 40, 0);
+      var smBox = G.place('chest', 44, 40, 0);
+      G.ruleAdd(smC, {
+        when: { src: 'chest', ent: smBox, item: 'iron-plate', cmp: '>=', value: -1,
+                math: { op: 'smooth', b: 4 } },
+        then: { act: 'display', label: '눅인재고' } });
+      var smComp = G.ruleCompile(smC);
+      G.run(0.5);                                        // 0 에서 안정
+      G.fillChest(smBox, 'iron-plate', 100);             // 계단 0 → 100
+      G.run(4);                                          // t = τ
+      var smAtTau = G.state().displays.filter(function (d) { return d.label === '눅인재고'; });
+      var smVal = smAtTau.length ? smAtTau[0].value : -1;
+      chk('rule.smoothCompilesAndFilters',
+        smComp.skipped.length === 0 && Math.abs(smVal - 63.2121) < 0.5,
+        '문장 "재고를 4초로 눅인 값" → 계단 0→100 후 t=τ 에서 ' + smVal.toFixed(3) +
+        ' (오라클 63.21 · 100이면 눅이기가 안 걸린 것)');
+
+      // 연구 전에는 문장이 컴파일을 거부해야 한다 — 잠긴 노드는 조용히 0 을 낸다.
+      // 눅이기(평활 필터)는 논리 III 이므로 계산 한 단에도 관문이 걸려야 한다.
+      G.reset(8104); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.research('logistics'); G.research('logic-mem');   // logic-ctrl 은 일부러 뺀다
+      var lkC = G.place('controller', 40, 40, 0);
+      G.ruleAdd(lkC, {
+        when: { src: 'chest', ent: null, item: 'iron-plate', cmp: '>=', value: 0,
+                math: { op: 'smooth', b: 4 } },
+        then: { act: 'display', label: 'x' } });
+      var lkComp = G.ruleCompile(lkC);
+      var lkWhy = (G.ruleList(lkC)[0] || {}).blocked;
+      G.research('logic-ctrl');
+      var lkComp2 = G.ruleCompile(lkC);
+      chk('rule.smoothLocksBehindResearch',
+        lkComp.nodes === 0 && lkComp.skipped.length === 1 && !!lkWhy && lkComp2.nodes > 0,
+        '논리 III 연구 전 눅이기 문장 → 노드 ' + lkComp.nodes + '개(0이어야) · 이유 "' +
+        (lkWhy || '없음') + '" → 연구 후 노드 ' + lkComp2.nodes + '개 (조건 발생 확인)');
+
       // ================= 8.4 철거 환급은 단위를 지킨다 =====================
       // 터렛의 e.ammo 는 **발** 단위(탄창 1개 = 10발)인데 환급은 그 숫자를 그대로
       // 탄창으로 돌려줬다 — 철거가 10배 복사기였다. 발전기는 반대로 e.fuel 이

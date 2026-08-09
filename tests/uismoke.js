@@ -686,6 +686,40 @@
         '비교를 "보다 작으면"으로 바꾸고 철판 10개 → 조립기 ' +
         (G.ent(uAsm).enabled ? '켜짐' : '꺼짐') + ' (카드가 "넘치면 끈다"이므로 꺼져야)');
 
+      // **계산 한 단에 진입점이 있는가.** 컴파일러와 되읽기는 진작부터 when.math 를
+      // 지원했는데 화면에 고를 자리가 없어서, 카드로 만든 규칙 말고는 아무도 쓸 수
+      // 없었다. 저장/불러오기에서 같은 실패를 한 번 했다 — 진입점이 없는 기능은
+      // 없는 기능이다. 드롭다운을 실제로 바꿔 회로가 따라 바뀌는지로 잰다.
+      G.research('logic-ctrl');
+      G.ui.openLogic(uCtl);                       // 연구 반영해 다시 그린다
+      var mathSel = null, sels2 = document.querySelectorAll('#rulePane .rline select');
+      for (var ms = 0; ms < sels2.length; ms++) {
+        if (sels2[ms].getAttribute('data-k') === 'when.math.op') mathSel = sels2[ms];
+      }
+      var hadSmoothBefore = (G.gKinds(uCtl) || []).indexOf('smooth') >= 0;
+      if (mathSel) {
+        mathSel.value = 'smooth';
+        mathSel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      var hasSmoothAfter = (G.gKinds(uCtl) || []).indexOf('smooth') >= 0;
+      // 시상수 칸도 같이 나와야 한다 — 값을 못 고치면 반쪽이다
+      var tauInput = document.querySelector('#rulePane input[data-k="when.math.b"]');
+      chk('ui.mathDropdownExistsAndCompiles',
+        !!mathSel && hadSmoothBefore === false && hasSmoothAfter === true && !!tauInput,
+        '계산 드롭다운 ' + (mathSel ? '있음' : '없음') + ' · 고르기 전 평활 노드=' +
+        hadSmoothBefore + ' → 고른 뒤=' + hasSmoothAfter + ' (조건 발생 확인) · 시상수 칸 ' +
+        (tauInput ? '있음(' + tauInput.value + ')' : '없음'));
+      // 되돌리기도 되어야 한다 — '(그대로)' 를 고르면 노드가 빠져야 한다.
+      // 빈 op 를 남기면 문장엔 안 보이는데 회로엔 남는다.
+      if (mathSel) {
+        mathSel.value = '';
+        mathSel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      chk('ui.mathDropdownCanBeCleared',
+        (G.gKinds(uCtl) || []).indexOf('smooth') < 0,
+        "'(그대로)' 로 되돌림 → 평활 노드 " +
+        ((G.gKinds(uCtl) || []).indexOf('smooth') >= 0 ? '남음' : '빠짐') + ' (빠져야)');
+
       // **한 방향이다** — 회로로 펼친 뒤 노드를 손대면 문장으로 못 돌아온다
       document.getElementById('btnToGraph').click();
       var inGraph = !document.getElementById('rulePane').classList.contains('on');
