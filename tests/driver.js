@@ -1726,45 +1726,47 @@
         '규칙을 끄면 → 노드 ' + G.gInfo(rc1).nodes + '개(0이어야) · 조립기 ' +
         (G.ent(rAsm).enabled ? '켜짐' : '꺼짐') + '(플레이어 설정인 켜짐으로 돌아와야)');
 
-      // **한 규칙의 배치는 그 규칙의 자리만 보고 정해져야 한다.**
-      // 좌표가 곧 평가 순서라(graphCompile), 앞 규칙이 커졌다고 뒤 규칙이 밀리면
-      // 손도 안 댄 규칙의 평가 순서가 조용히 바뀐다 — 노드를 지웠다 다시 만들면
-      // 순서가 뒤로 밀리던 그 버그와 같은 부류다.
-      // (처음엔 "같은 문장 두 번 컴파일" 로만 쟀는데, 그건 규칙이 하나면 아무것도
-      //  구별하지 못했다. 돌연변이 검정에서 SURVIVED 로 드러났다.)
-      function ruleTwoY(firstMemo) {
+      // **규칙끼리 겹치지 않아야 한다.** 좌표가 곧 평가 순서라(graphCompile),
+      // 두 문장의 노드가 뒤엉키면 회로로 펼쳤을 때 어느 것이 어느 규칙인지 알 수
+      // 없고 순서도 뒤섞인다. 행 간격을 190px 로 박아 뒀더니 래치 규칙이 자기
+      // 부품을 y+516 까지 뻗어 다음 규칙을 덮었다(이 게이트가 잡았다).
+      function ruleRows(firstMemo) {
         G.reset(8101); G.clearEntities(); G.giveAll(9999); G.research('logic-mem');
         var c = G.place('controller', 40, 40, 0);
         var b2 = G.place('chest', 44, 40, 0);
         var a2 = G.place('assembler', 48, 40, 0);
-        // 규칙 1 — memo 에 따라 노드 수가 달라진다
-        G.ruleAdd(c, { when: { src: 'chest', ent: b2, item: 'iron-plate', cmp: '<', value: 50 },
-                       memo: { kind: firstMemo, resetCmp: '>', resetValue: 200 },
-                       then: { act: 'run', ent: a2 } });
-        // 규칙 2 — 두 판에서 **완전히 동일**하다
+        var r1 = G.ruleAdd(c, { when: { src: 'chest', ent: b2, item: 'iron-plate', cmp: '<', value: 50 },
+                                memo: { kind: firstMemo, resetCmp: '>', resetValue: 200 },
+                                then: { act: 'run', ent: a2 } });
         var r2 = G.ruleAdd(c, { when: { src: 'powerSat', cmp: '<', value: 95 },
                                 then: { act: 'run', ent: a2, onWhenTrue: false } });
         G.ruleCompile(c);
-        // 규칙 2 가 만든 노드들의 좌표 (규칙 1 의 크기와 무관해야 한다)
-        var ys = G.gNodes(c).filter(function (n) { return n.y >= 190; })
-                            .map(function (n) { return n.x + ',' + n.y; }).sort().join(' | ');
-        return { ys: ys, order: G.gInfo(c).order.join(','), r2: r2 };
+        var ns = G.gNodes(c);
+        function band(rid) {
+          var lo = 1e9, hi = -1e9;
+          for (var k = 0; k < ns.length; k++) {
+            if (ns[k].rule !== rid) continue;
+            if (ns[k].y < lo) lo = ns[k].y;
+            if (ns[k].y > hi) hi = ns[k].y;
+          }
+          return [lo, hi];
+        }
+        return { one: band(r1), two: band(r2), n: ns.length,
+                 sig: ns.map(function (n) { return n.rule + ':' + n.x + ',' + n.y; }).sort().join('|'),
+                 order: G.gInfo(c).order.join(',') };
       }
-      var thin = ruleTwoY('none');       // 규칙 1 이 작을 때
-      var fat = ruleTwoY('latch');       // 규칙 1 이 클 때
-      chk('rule.layoutIndependentOfOtherRules',
-        thin.ys.length > 0 && thin.ys === fat.ys,
-        '규칙 1 을 크게 바꿔도 규칙 2 의 노드 좌표는 그대로여야 한다
-' +
-        '        작을 때 [' + thin.ys + ']
-        클 때  [' + fat.ys + ']');
-      // 음성 대조군 — 같은 문장을 두 번 컴파일하면 완전히 같아야 한다.
-      // 이게 없으면 위 검사는 "좌표를 아예 안 본다" 도 통과시킨다.
-      var again = ruleTwoY('none');
-      chk('rule.deterministicLayout', again.ys === thin.ys && again.order === thin.order,
+      var thin = ruleRows('none'), fat = ruleRows('latch');
+      var overlapThin = thin.one[1] >= thin.two[0], overlapFat = fat.one[1] >= fat.two[0];
+      chk('rule.rowsDoNotOverlap', !overlapThin && !overlapFat,
+        '규칙1 세로범위 vs 규칙2 시작 — 작을 때 ' + thin.one[1] + ' < ' + thin.two[0] +
+        '=' + !overlapThin + ' · 클 때(래치) ' + fat.one[1] + ' < ' + fat.two[0] +
+        '=' + !overlapFat + ' (겹치면 두 문장의 노드가 뒤엉킨다)');
+      // 음성 대조군 — 같은 문장을 두 번 컴파일하면 좌표·순서가 완전히 같아야 한다.
+      // 이게 없으면 위 검사는 "좌표를 아무렇게나 줘도" 통과시킨다.
+      var again = ruleRows('latch');
+      chk('rule.deterministicLayout', again.sig === fat.sig && again.order === fat.order,
         '같은 문장 두 번 컴파일 → 좌표·순서 동일=' +
-        (again.ys === thin.ys && again.order === thin.order) +
-        ' · 순서 [' + thin.order + ']');
+        (again.sig === fat.sig && again.order === fat.order) + ' · 노드 ' + fat.n + '개');
 
       // 연구 안 된 노드로는 컴파일하지 않는다 — 잠긴 노드는 evalNode 가 조용히 0을
       // 낸다. "문장은 맞는데 아무 일도 안 일어남"이 이 게임에서 제일 나쁜 실패다.

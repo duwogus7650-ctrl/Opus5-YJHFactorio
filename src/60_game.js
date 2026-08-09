@@ -517,7 +517,7 @@ window.__GAME = {
   gNodes: function (ctrlId) {
     var e = entities[ctrlId]; if (!e || !e.graph) return [];
     return e.graph.nodes.map(function (n) {
-      return { nid: n.nid, kind: n.kind, x: Math.round(n.x), y: Math.round(n.y) };
+      return { nid: n.nid, kind: n.kind, x: Math.round(n.x), y: Math.round(n.y), rule: n.rule || null };
     });
   },
 

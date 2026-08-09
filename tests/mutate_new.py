@@ -113,10 +113,12 @@ MUTATIONS = [
      'dir === undefined ? 1 : dir, true);',
      'build.minerNeedsOre', 'driver.js'),
 
-    ("규칙 컴파일 좌표를 흔들기", "37_rules.js",
-     "    var y0 = 20 + i * RULE_ROW;",
-     "    var y0 = 20 + i * RULE_ROW + (g.nodes.length % 7);",
-     "rule.deterministicLayout", "driver.js"),
+    # 규칙 간격을 다시 고정값으로 — 래치 규칙이 y+516 까지 뻗으므로 190px 간격이면
+    # 다음 규칙과 겹친다. 겹침 게이트가 잡아야 한다.
+    ("규칙 간격을 고정 190px 로", "37_rules.js",
+     "    y0 = maxY + RULE_GAP;",
+     "    y0 = 20 + (i + 1) * 190;",
+     "rule.rowsDoNotOverlap", "driver.js"),
 
     ("연구 잠금 무시하고 컴파일", "37_rules.js",
      "    if (why) { skipped.push({ name: r.name || ('규칙 ' + (i + 1)), why: why }); continue; }",
@@ -174,52 +176,48 @@ def run_driver(drv):
     return res, r.returncode, aborted
 
 
-def stale_snapshots():
-    """지난 실행이 남긴 스냅샷들 — 최신 순."""
-    base = tempfile.gettempdir()
-    out = []
-    for n in os.listdir(base):
-        if not n.startswith('lf-mutnew-'):
-            continue
-        p = os.path.join(base, n, 'src')
-        if os.path.isdir(p):
-            out.append((os.path.getmtime(p), os.path.join(base, n)))
-    out.sort(reverse=True)
-    return [p for _, p in out]
-
-
 def check_stale():
-    """**전원이 꺼지면 finally 가 안 돈다.**
+    """시작 전에 **지금 소스에 변형이 적용돼 있지 않은지** 확인한다.
 
-    이 도구는 소스를 제자리에서 변형하고 finally 에서 되돌린다. 예외·Ctrl-C 에는
-    그게 돌지만 전원 차단에는 안 돈다 — 실제로 21건을 돌리다 컴퓨터가 꺼져서
-    첫 변형(터렛 탄약 환급을 10배 복사로 되돌린 것)이 소스에 그대로 남았다.
-    그 상태로 계속 작업하면 게이트가 그 버그를 다시 잡을 때까지 아무도 모른다.
+    이 도구는 소스를 제자리에서 고치고 finally 에서 되돌린다. 예외·Ctrl-C 에는 그게
+    돌지만 **전원 차단에는 안 돈다** — 실제로 21건을 돌리다 컴퓨터가 꺼져서 첫 변형
+    (터렛 탄약 환급을 10배 복사로 되돌린 것)이 소스에 그대로 남았다. 그 상태로 계속
+    작업하면 게이트가 그 버그를 다시 잡을 때까지 아무도 모른다.
 
-    그래서 시작할 때 남은 스냅샷과 지금 소스를 파일별로 대조해, 다른 것이 있으면
-    **먼저 알리고 멈춘다.** 조용히 덮어쓰지 않는다 — 그 사이에 손으로 고친 것이
-    있을 수 있고, 그건 스냅샷에 없다.
+    스냅샷과 비교하는 방식은 **"변형이 남은 것"과 "그 뒤에 내가 정당하게 고친 것"을
+    구별하지 못한다** (실제로 내 수정에 대고 오탐을 냈다). 그래서 질문을 바꾼다:
+    **모든 돌연변이의 앵커(find)가 소스에 정확히 1회씩 있는가?**
+    변형이 적용돼 있으면 그 앵커는 사라지고 자리에 repl 이 있다. 앵커가 없으면
+    변형이 남았거나 소스가 그만큼 바뀐 것이고, 어느 쪽이든 **그대로 돌리면 안 된다** —
+    앵커 없는 항목은 조용히 INVALID 로 빠져 검정한 척만 하게 된다.
     """
-    snaps = stale_snapshots()
-    if not snaps:
+    missing, applied = [], []
+    for name, fname, find, repl, gate, drv in MUTATIONS:
+        path = os.path.join(SRC, fname)
+        if not os.path.exists(path):
+            missing.append((name, fname, '파일 없음'))
+            continue
+        txt = io.open(path, encoding='utf-8').read()
+        n = txt.count(find)
+        if n == 1:
+            continue
+        # 앵커가 없다 — 그 자리에 변형(repl)이 있으면 변형이 남은 것이다
+        if repl and repl.strip() and repl in txt:
+            applied.append((name, fname))
+        else:
+            missing.append((name, fname, '앵커 %d회' % n))
+    if not missing and not applied:
         return
-    newest = snaps[0]
-    diff = []
-    for f in sorted(os.listdir(os.path.join(newest, 'src'))):
-        a = os.path.join(newest, 'src', f)
-        b = os.path.join(SRC, f)
-        if not os.path.exists(b):
-            diff.append(f + ' (지금 없음)')
-        elif io.open(a, encoding='utf-8').read() != io.open(b, encoding='utf-8').read():
-            diff.append(f)
-    if not diff:
-        return
-    print('※ 지난 실행의 스냅샷이 남아 있고, 지금 소스와 다르다:')
-    print('   스냅샷: ' + newest)
-    for d in diff:
-        print('   다름: ' + d)
-    print('   지난 실행이 중단돼 **변형이 남았을 수 있다.** 아래로 확인·복구한 뒤 다시 돌려라:')
-    print('   git diff src/   ·   copy "%s\\src\\*" src\\' % newest)
+    if applied:
+        print('※ **소스에 변형이 남아 있다** — 지난 실행이 중단됐을 수 있다:')
+        for name, fname in applied:
+            print('   %s  (%s)' % (name, fname))
+        print('   git diff src/ 로 확인하고 되돌린 뒤 다시 돌려라.')
+    if missing:
+        print('※ 앵커를 못 찾는 항목 — 그대로 돌리면 검정한 척만 한다:')
+        for name, fname, why in missing:
+            print('   %-30s %-16s %s' % (name[:30], fname, why))
+        print('   소스가 바뀌었으면 MUTATIONS 의 찾을 문자열을 소스에서 다시 가져와라.')
     sys.exit(2)
 
 

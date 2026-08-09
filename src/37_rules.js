@@ -132,8 +132,11 @@ function ruleBlockedReason(r) {
 // 좌표가 평가 순서를 정하므로(graphCompile), 여기서 흔들리면 같은 문장이
 // 판마다 다르게 돈다.
 var RULE_COL = 210;     // 열 간격(px)
-var RULE_ROW = 190;     // 규칙 한 줄의 세로 간격
 var RULE_SUB = 62;      // 한 규칙 안에서 부품을 세로로 벌리는 간격
+var RULE_GAP = 90;      // 규칙과 규칙 사이 여백
+// **규칙 간격을 고정값으로 두면 안 된다.** 190px 로 박아 뒀더니 래치 규칙은 자기
+// 부품이 y+516 까지 뻗어 다음 규칙과 겹쳤다 — 회로로 펼치면 두 문장의 노드가
+// 뒤엉켜 어느 것이 어느 규칙인지 알 수 없다. 규칙마다 실제 높이를 재서 그만큼 내린다.
 
 function compileRules(e) {
   var g = newGraph();
@@ -141,13 +144,23 @@ function compileRules(e) {
   var skipped = [];
   var named = {};                    // 규칙 이름 -> 그 규칙의 '판단 결과' 노드 nid
 
+  var y0 = 20;
   for (var i = 0; i < e.rules.length; i++) {
     var r = e.rules[i];
     if (!r.enabled) { skipped.push({ name: r.name || ('규칙 ' + (i + 1)), why: '꺼 둠' }); continue; }
     var why = ruleBlockedReason(r);
     if (why) { skipped.push({ name: r.name || ('규칙 ' + (i + 1)), why: why }); continue; }
-    var y0 = 20 + i * RULE_ROW;
+    var mark = g.nodes.length;
     var out = compileOneRule(g, r, y0, named);
+    // 이 규칙이 만든 노드에 표를 달고, 실제로 얼마나 내려갔는지 재서 다음 줄을 잡는다.
+    // 표(n.rule)는 시험이 "이 규칙의 노드"를 정확히 집게 해 주고, 화면에서 어느
+    // 문장이 만든 노드인지 짚는 데도 쓸 수 있다.
+    var maxY = y0;
+    for (var k = mark; k < g.nodes.length; k++) {
+      g.nodes[k].rule = r.id;
+      if (g.nodes[k].y > maxY) maxY = g.nodes[k].y;
+    }
+    y0 = maxY + RULE_GAP;
     if (out && r.name) named[r.name] = out;
   }
   e.graph = g;
