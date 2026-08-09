@@ -100,6 +100,7 @@
     var bi = G.buildingInfo(type); if (!bi) return false;
     return !bi.tech || G.state().research.done.indexOf(bi.tech) >= 0;
   }
+  function researched(t) { return G.state().research.done.indexOf(t) >= 0; }
   function far(x, y, R) { var dx = x - CX, dy = y - CY; return dx * dx + dy * dy > R * R; }
 
   // 나선 탐색 — (ax,ay) 에서 링을 넓혀 가며 처음 서는 자리에 짓는다.
@@ -931,6 +932,24 @@
 
   // --- 제어기 3대 (노드 25종 전부를 살아 있는 회로에 건다) --------------------
   function nd(c, kind, x, y) { var id = G.gAdd(c, kind, x, y); markNode(kind); return id; }
+  // 문장(규칙)으로 회로를 만든다. kinds 는 이 문장이 컴파일되며 쓰는 노드 종류 —
+  // "노드 25종을 다 써 봤는가" 판정에 그대로 센다. 컴파일 뒤 실제 그래프와
+  // 대조해 **적어 낸 종류가 진짜로 생겼는지** 확인한다(적어만 내고 안 생기면
+  // 판정이 거짓말이 된다).
+  function rule(c, patch, kinds) {
+    var id = G.ruleAdd(c, patch);
+    if (id === null) { out.fails.push('규칙 추가 실패 @제어기 ' + c); return null; }
+    for (var i = 0; i < (kinds || []).length; i++) markNode(kinds[i]);
+    return id;
+  }
+  function verifyRuleKinds(c, claimed) {
+    var have = {};
+    var ns = G.gNodes(c);
+    for (var i = 0; i < ns.length; i++) have[ns[i].kind] = 1;
+    var miss = claimed.filter(function (k) { return !have[k]; });
+    if (miss.length) out.fails.push('제어기 ' + c + ': 문장이 만들었다고 적은 노드가 없다 — ' + miss.join(','));
+    return miss.length === 0;
+  }
   var ctrl1 = null, ctrl2 = null, ctrl3 = null;
 
   // 제어기 1 — 부하 차단 (여유kW + 래치 + 타이머). 심화 3·4·5·6단계가 여기 걸린다.
@@ -938,30 +957,33 @@
     if (ctrl1) return true;
     var lab = findOne('lab');
     if (!lab) return false;
+    // 부하 차단은 **기억소자**가 있어야 성립한다. 연구 전에 세우면 문장이
+    // 컴파일을 거부하고(잠긴 노드는 조용히 0을 내므로 그게 맞다) 회로가 안 생긴다.
+    // 예전 손배선은 이걸 못 보고 죽은 래치를 만들어 두고 있었다.
+    if (!researched('logic-mem')) return false;
     if (!afford('controller')) return false;
     var c = spiral('controller', 76, 74, 0, 6);
     if (!c) { c = placeIn('controller', CORE_RC, 0); }
     if (!c || c === 'mat' || c === 'tech') return false;
     ctrl1 = c; ctrlIds.push(c);
     look(80, 78, 0.9);
-    var p = nd(c, 'power', 20, 20);
-    var k0 = nd(c, 'const', 20, 200); G.gCfg(c, k0, 'value', 0);
-    var k2 = nd(c, 'const', 20, 340); G.gCfg(c, k2, 'value', 200);
-    var cLo = nd(c, 'cmp', 240, 60); G.gCfg(c, cLo, 'op', '<');
-    var cHi = nd(c, 'cmp', 240, 260); G.gCfg(c, cHi, 'op', '>');
-    G.gLink(c, p, 3, cLo, 0); G.gLink(c, k0, 0, cLo, 1);      // 포트3 = 여유kW
-    G.gLink(c, p, 3, cHi, 0); G.gLink(c, k2, 0, cHi, 1);
-    var tm = nd(c, 'timer', 240, 420); G.gCfg(c, tm, 'period', 30);
-    var an = nd(c, 'bool', 430, 340); G.gCfg(c, an, 'op', 'AND');
-    G.gLink(c, cHi, 0, an, 0); G.gLink(c, tm, 0, an, 1);
-    var la = nd(c, 'latch', 620, 160);
-    G.gLink(c, cLo, 0, la, 0); G.gLink(c, an, 0, la, 1);       // RESET 은 타이머를 거친다
-    var nt = nd(c, 'bool', 800, 160); G.gCfg(c, nt, 'op', 'NOT A');
-    G.gLink(c, la, 0, nt, 0);
-    var en = nd(c, 'enable', 980, 160); G.gCfg(c, en, 'ent', lab);
-    G.gLink(c, nt, 0, en, 0);
-    var dp = nd(c, 'display', 980, 340); G.gCfg(c, dp, 'label', '여유kW');
-    G.gLink(c, p, 3, dp, 0);
+    // **문장으로 쓴다.** 플레이어가 실제로 만나는 길이 이것이고, 노드를 직접
+    // 배선하면 그 길은 한 번도 안 지나간다. 컴파일 결과는 회로이므로 심화
+    // 튜토리얼 판정(전력→래치→가동, RESET 이 타이머를 거치는가)도 그대로 받는다.
+    //
+    //   만약 [전기 여유] 가 [0kW] [보다 작으면] → [연구소] 를 [끈다]
+    //   다시 [200kW] [보다 크면] 되돌리되, 되돌리기는 [30초]에 한 번만
+    //
+    // 되돌리는 쪽만 늦춘다 — 끊는 쪽까지 늦추면 전기가 모자란 채로 버틴다.
+    rule(c, { name: '전기부족',
+      when: { src: 'powerHead', cmp: '<', value: 0 },
+      memo: { kind: 'latch', resetCmp: '>', resetValue: 200, everySec: 30 },
+      then: { act: 'run', ent: lab, onWhenTrue: false } },
+      ['power', 'const', 'cmp', 'latch', 'timer', 'bool', 'enable']);
+    rule(c, { when: { src: 'powerHead', cmp: '>=', value: -1e9 },
+              then: { act: 'display', label: '여유kW' } }, ['display']);
+    G.ruleCompile(c);
+    verifyRuleKinds(c, ['power', 'const', 'cmp', 'latch', 'timer', 'bool', 'enable', 'display']);
     // 기초 8단계는 "편집기를 열었는가"를 플래그로 본다 — 상태로는 못 보는 사건이다
     try { G.ui.openLogic(c); G.ui.closeLogic(); } catch (e) { void e; }
     note('제어기1: 부하 차단 (여유kW·래치·타이머)');
@@ -972,26 +994,26 @@
   function stageCtrl2() {
     if (ctrl2) return true;
     if (!tutChest || !tutBelt) return false;
+    // 재고 히스테리시스도 래치를 쓰고, 벨트 게이트는 논리 III 가 필요하다
+    if (!researched('logic-mem') || !researched('logic-ctrl')) return false;
     if (!afford('controller')) return false;
     var c = placeIn('controller', CORE_RC, 0);
     if (!c || c === 'mat' || c === 'tech') { c = spiral('controller', 84, 78, 0, 8); }
     if (!c) return false;
     ctrl2 = c; ctrlIds.push(c);
-    var ch = nd(c, 'chest', 20, 20); G.gCfg(c, ch, 'ent', tutChest); G.gCfg(c, ch, 'item', 'iron-plate');
-    var lo = nd(c, 'const', 20, 200); G.gCfg(c, lo, 'value', 50);
-    var hi = nd(c, 'const', 20, 340); G.gCfg(c, hi, 'value', 200);
-    var c1 = nd(c, 'cmp', 240, 60); G.gCfg(c, c1, 'op', '<');
-    var c2 = nd(c, 'cmp', 240, 260); G.gCfg(c, c2, 'op', '>');
-    G.gLink(c, ch, 0, c1, 0); G.gLink(c, lo, 0, c1, 1);
-    G.gLink(c, ch, 0, c2, 0); G.gLink(c, hi, 0, c2, 1);
-    var la2 = nd(c, 'latch', 460, 160);
-    G.gLink(c, c1, 0, la2, 0); G.gLink(c, c2, 0, la2, 1);
-    var lamp = nd(c, 'lamp', 660, 320); G.gCfg(c, lamp, 'label', '철판 부족');
-    G.gLink(c, c1, 0, lamp, 0);
-    // 벨트 게이트 — 재고가 넘치면 벨트를 닫는다 (논리 III)
-    var gt = nd(c, 'gate', 660, 160); G.gCfg(c, gt, 'ent', tutBelt);
-    var ng = nd(c, 'bool', 460, 320); G.gCfg(c, ng, 'op', 'NOT A');
-    G.gLink(c, c2, 0, ng, 0); G.gLink(c, ng, 0, gt, 0);
+    // 재고 히스테리시스 · 경보 · 벨트 게이트 — 셋 다 문장 세 줄이다.
+    rule(c, { name: '철판부족',
+      when: { src: 'chest', ent: tutChest, item: 'iron-plate', cmp: '<', value: 50 },
+      memo: { kind: 'latch', resetCmp: '>', resetValue: 200 },
+      then: { act: 'lamp', label: '철판 부족' } },
+      ['chest', 'const', 'cmp', 'latch', 'lamp']);
+    // 재고가 넘치면 벨트를 막는다 (논리 III). 조건이 참일 때 '막는다' 이므로
+    // 컴파일러가 NOT 한 단을 대신 넣는다 — 문장에는 그 말이 안 나온다.
+    rule(c, { when: { src: 'chest', ent: tutChest, item: 'iron-plate', cmp: '>', value: 200 },
+              then: { act: 'gate', ent: tutBelt, onWhenTrue: false } },
+      ['bool', 'gate']);
+    G.ruleCompile(c);
+    verifyRuleKinds(c, ['chest', 'const', 'cmp', 'latch', 'lamp', 'bool', 'gate']);
     note('제어기2: 재고 히스테리시스 + 경보 + 벨트 게이트');
     return true;
   }
@@ -1109,18 +1131,14 @@
   var lastPoll = -1, lastSnap = -1, inCombat = false, engaged = false;
   var peakEnemies = 0, worstSat = 1;
 
-  function pump() {
-    var st = G.state(), t = st.t;
-    if (t - lastPoll >= (st.enemies > 0 ? 0.5 : 2)) {
-      // **물류 횟수를 흐른 게임 시간에 비례시킨다.** pump 는 벽시계 40ms 마다 도는데,
-      // 배속이 높으면 그 사이에 게임 시간이 더 흐른다 — 한 번만 돌리면 게임 시간당
-      // 물류가 줄어 공장이 굶는다. 실제로 같은 드라이버가 배속 12 에서 연구 7/8,
-      // 배속 60 에서 6/8 을 냈다. 측정이 배속 손잡이에 딸려 가면 안 된다.
-      var iters = Math.max(1, Math.min(8, Math.round((t - lastPoll) / 2)));
-      lastPoll = t;
-      try { for (var it = 0; it < iters; it++) logistics(); }
-      catch (e) { out.fails.push('logistics: ' + (e && e.message)); }
-      nextTech();                                   // 끝나면 바로 다음 연구
+  // 한 사이클이 담당하는 **게임 시간**. 이 값이 곧 "공장이 얼마나 자주 손을
+  // 쓰는가" 이고, 여기가 벽시계에 묶이면 측정이 프레임 속도에 딸려 간다.
+  var CYCLE_T = 2, CYCLE_T_COMBAT = 0.5, MAX_CATCHUP = 40;
+
+  // pump 의 뒷일 — 카메라·스냅샷·종료 판정. 사이클을 돈 뒤 한 번만 한다.
+  // 두 경로(드라이버가 미는 쪽 / rAF 가 미는 쪽)가 **같은 코드**를 쓰게 뺐다 —
+  // 갈라 두면 둘이 어긋나고, 어느 쪽을 잰 건지 알 수 없게 된다.
+  function afterCycles(st, t) {
       if (st.enemies > peakEnemies) peakEnemies = st.enemies;
       if (t >= 60 && st.power.sat < worstSat) worstSat = st.power.sat;
 
@@ -1185,12 +1203,81 @@
                                   sat: +(st.power.sat * 100).toFixed(0),
                                   sup: Math.round(st.power.supply), dem: Math.round(st.power.demand),
                                   coal: (st.inventory['coal'] || 0),
+                                  // 부하 차단이 실제로 무엇을 끄고 있는지 — 제어기가
+                                  // 살아난 뒤 연구가 느려졌다면 여기서 갈린다.
+                                  labOn: (function () {
+                                    var ls = findAll('lab'), on = 0;
+                                    for (var q = 0; q < ls.length; q++) {
+                                      var le = G.ent(ls[q]); if (le && le.enabled) on++;
+                                    }
+                                    return on + '/' + ls.length;
+                                  })(),
+                                  beltShut: (function () {
+                                    if (!tutBelt) return '-';
+                                    var gs = G.gateState(tutBelt);
+                                    return gs === false ? '막힘' : '열림';
+                                  })(),
                                   red: (st.inventory['sci-red'] || 0),
                                   grn: (st.inventory['sci-green'] || 0),
                                   ammo: (st.inventory['ammo'] || 0),
                                   furn: furnDiag() });
       }
+      }
+
+  // **드라이버가 시뮬을 직접 민다 (기본값).**
+  //
+  // 예전에는 게임의 rAF 루프가 시간을 밀고 드라이버는 setTimeout 으로 따라갔다.
+  // 그러면 드라이버가 행동하는 **게임 시각이 프레임 경계에 딸려 간다** — 한 프레임이
+  // 2.67초를 밀면 10.0초가 아니라 12.67초에 손을 쓴다. 그 어긋남이 누적돼 같은
+  // 코드가 녹색 연구팩 78과 260을 냈다. 머신이 한가한지를 잰 셈이다.
+  //
+  // 이제 게임 루프를 세우고 드라이버가 `G.run(quant)` 로 정확히 quant 초씩 민 뒤
+  // 한 사이클을 돈다. 행동 시각이 2, 4, 6… 으로 정확히 떨어져 부하와 무관해진다.
+  // 녹화(CINEMA)에서는 사람이 봐야 하므로 예전처럼 rAF 가 민다.
+  // **여기서 G.pause 를 부르면 안 된다** — 이 줄은 스크립트가 읽히는 순간 돌고,
+  // 그때 G 는 아직 undefined 다(부팅을 기다린 뒤 run() 안에서 대입된다).
+  // 그렇게 뒀다가 드라이버가 통째로 죽어 결과가 한 줄도 안 나왔다.
+  var DRIVE = !CINEMA;
+  var PUMP_CYCLES = 12;              // 한 pump 에 밀 사이클 수 (페이지가 숨 쉬게)
+
+  function pump() {
+    var st = G.state(), t = st.t;
+    var quant = (st.enemies > 0 ? CYCLE_T_COMBAT : CYCLE_T);
+    if (DRIVE) {
+      for (var d = 0; d < PUMP_CYCLES && G.state().t < END_T; d++) {
+        var s2 = G.state();
+        G.run(s2.enemies > 0 ? CYCLE_T_COMBAT : CYCLE_T);
+        try { logistics(); } catch (e1) { out.fails.push('logistics: ' + (e1 && e1.message)); }
+        nextTech();
+      }
+      st = G.state(); t = st.t;
+      lastPoll = t;
+      afterCycles(st, t);
+      if (t < END_T) setTimeout(pump, 0); else finish();
+      return;
     }
+    // **밀린 게임 시간을 따라잡는다.** pump 는 벽시계 40ms 마다 도는데, 한 번 돌 때
+    // 한 사이클만 하면 게임 시간당 작업량이 프레임 속도에 딸려 간다 — 같은 코드가
+    // 녹색 연구팩 58과 237을 냈다(스냅샷 필드 두 개를 더한 것 말고는 차이가 없었다).
+    // 이제 사이클 수는 흐른 게임 시간 ÷ CYCLE_T 로 정확히 정해진다.
+    var cycles = 0;
+    while (t - lastPoll >= quant && cycles < MAX_CATCHUP) {
+      lastPoll += quant;
+      cycles++;
+      try { logistics(); } catch (e) { out.fails.push('logistics: ' + (e && e.message)); }
+      nextTech();
+    }
+    // **밀려서 버린 게임 시간을 센다.** 여기서 버리면 그만큼 공장이 손을 덜 쓴 것이고,
+    // 그게 곧 "측정이 머신 부하에 딸려 갔다"는 뜻이다 — 실제로 브라우저 5개를 동시에
+    // 돌렸더니 같은 코드가 녹색 연구팩 260 대신 74를 냈다. 조용히 넘어가면 그 판의
+    // 숫자를 믿을 수 없다는 사실 자체가 안 보인다.
+    if (cycles >= MAX_CATCHUP) {
+      out.measured.skippedT = (out.measured.skippedT || 0) + (t - lastPoll);
+      out.measured.skippedN = (out.measured.skippedN || 0) + 1;
+      lastPoll = t;                            // 나선 방지
+    }
+    if (cycles > 0) afterCycles(st, t);
+
     if (t >= END_T) { finish(); return; }
     setTimeout(pump, 40);
   }
@@ -1212,7 +1299,13 @@
       var kinds = G.gKinds(ctrlIds[c]) || [];
       for (var k = 0; k < kinds.length; k++) seenNodes[kinds[k]] = 1;
     }
-    for (var uk in usedNodes) seenNodes[uk] = 1;   // 철거·파괴된 제어기의 노드도 '배선했다'
+    // **적어 낸 것을 세지 않는다.** 예전엔 여기서 usedNodes(내가 '쓸 것'이라고
+    // 표시한 목록)를 그냥 합쳤다. 그래서 규칙이 연구 부족으로 컴파일조차 안 된
+    // 판에서도 25/25 로 통과했다 — 주장을 세는 게이트는 주장을 통과시킨다.
+    // 살아 있는 그래프에서 실제로 센 것만 남긴다.
+    //
+    // 파괴된 제어기의 노드는 못 세지만, 그건 "안 세는 쪽으로 틀리는" 것이라 안전하다.
+    var claimedOnly = Object.keys(usedNodes).filter(function (k) { return !seenNodes[k]; });
     var allKinds = G.nodeKinds();
     var missingN = allKinds.filter(function (k) { return !seenNodes[k]; });
 
@@ -1221,6 +1314,7 @@
       research: st.research.done, techCount: st.research.done.length,
       buildingsBuilt: Object.keys(built).length, missingBuildings: missingB,
       nodeKindsWired: Object.keys(seenNodes).length, missingNodes: missingN,
+      claimedButNotWired: claimedOnly,
       waves: st.waves.waves, killed: st.waves.killed, lost: st.waves.lost,
       peakEnemies: peakEnemies, worstSat: +(worstSat * 100).toFixed(1),
       evolution: +(st.evolution * 100).toFixed(1),
@@ -1243,6 +1337,19 @@
     chk('clear.allBuildingsUsed', missingB.length === 0,
       '건물 ' + Object.keys(built).length + '/' + allTypes.length + '종 사용' +
       (missingB.length ? ' · 안 쓴 것: ' + missingB.join(',') : ''));
+    // 적어만 내고 실제로 안 생긴 것이 있으면 그 자체가 실패다 — 조용히 넘어가면
+    // "쓴 셈 치자"가 되고, 그게 바로 위에서 고친 거짓 통과다.
+    // **이 주행을 믿어도 되는가.** 드라이버가 밀려서 게임 시간을 버렸다면 공장이
+    // 그만큼 손을 덜 쓴 것이고, 그 판의 생산량은 코드가 아니라 그때 머신이 얼마나
+    // 한가했는지를 잰 것이다. 조용히 통과시키면 그 뒤의 모든 비교가 무의미해진다.
+    var skT = out.measured.skippedT || 0;
+    chk('clear.measurementNotStarved', skT < 30,
+      '밀려서 버린 게임 시간 ' + Math.round(skT) + 's (' + (out.measured.skippedN || 0) +
+      '회) — 30s 이상이면 이 주행의 생산량은 코드가 아니라 머신 부하를 잰 것이다. ' +
+      '브라우저를 동시에 여러 개 돌리지 말 것');
+    chk('clear.noPhantomNodeClaims', claimedOnly.length === 0,
+      '쓴다고 적었지만 살아 있는 회로에 없는 노드 ' + claimedOnly.length + '종' +
+      (claimedOnly.length ? ': ' + claimedOnly.join(',') : ''));
     chk('clear.allNodeKindsWired', missingN.length === 0,
       '노드 ' + Object.keys(seenNodes).length + '/' + allKinds.length + '종 배선' +
       (missingN.length ? ' · 안 쓴 것: ' + missingN.join(',') : ''));
@@ -1284,6 +1391,8 @@
       look(80, 80, 0.8);
       makePlan();
       nextTech();
+      // 드라이버가 시뮬을 직접 민다 — 게임 루프는 세운다 (녹화 때는 안 세운다)
+      if (DRIVE) G.pause(true);
       pump();
     } catch (e) { out.fatal = (e && e.stack) ? e.stack : String(e); emit(out); }
   }
