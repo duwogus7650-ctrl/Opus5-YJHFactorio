@@ -331,9 +331,37 @@
         '건물 탭 → 인스펙터가 화면 안=' + onScreen(insp) +
         (insp ? ' · ' + JSON.stringify(insp.getBoundingClientRect()) : ''));
 
-      // ---------- 8. 노드 편집기를 손가락으로 쓸 수 있는가 -----------------
+      // ---------- 8. 제어기 — 문장 화면부터 (폰에서 이게 기본이다) ---------
       var ctrl = G.place('controller', 86, 86, 0);
       G.ui.openLogic(ctrl);
+      // 문장 화면이 폰 화면 안에 들어오는가. 여기가 안 보이면 폰에서는 제어기가
+      // 아예 없는 기능이 된다 — 데스크톱 게이트는 이걸 하나도 안 지난다.
+      var rp = document.getElementById('rulePane');
+      var cardEl = rp ? rp.querySelector('.c[data-card]') : null;
+      chk('mobile.ruleEditorOnScreen', !!rp && rp.classList.contains('on') && onScreen(cardEl),
+        '문장 화면이 먼저 열리고 카드가 화면 안에 = ' +
+        (!!cardEl ? JSON.stringify(cardEl.getBoundingClientRect().toJSON ?
+                                   { w: Math.round(cardEl.getBoundingClientRect().width),
+                                     h: Math.round(cardEl.getBoundingClientRect().height) } : 'n/a') : 'none'));
+      // 손가락으로 카드를 눌러 규칙이 만들어지는가 (진짜 TouchEvent)
+      var rulesBefore = G.ruleList(ctrl).length;
+      if (cardEl) {
+        var cr = cardEl.getBoundingClientRect();
+        tap(cardEl, cr.left + cr.width / 2, cr.top + cr.height / 2);
+      }
+      chk('mobile.ruleCardByTouch', G.ruleList(ctrl).length === rulesBefore + 1,
+        '카드를 손가락으로 탭 → 규칙 ' + rulesBefore + ' → ' + G.ruleList(ctrl).length + '개');
+      // 드롭다운이 손가락으로 누를 만한 크기인가 (44px 은 접근성 관례)
+      var selEl = document.querySelector('#rulePane .rline select');
+      var selH = selEl ? Math.round(selEl.getBoundingClientRect().height) : 0;
+      chk('mobile.ruleControlsTappable', selH >= 24,
+        '문장 드롭다운 높이 ' + selH + 'px (24px 이상이어야 손가락으로 누른다)');
+      // 회로 검사는 **새 제어기**에서 한다. 위에서 카드를 탭해 규칙이 생겼고,
+      // 그 규칙이 컴파일한 노드가 회로에 들어와 있어서 '첫 번째 .node' 가
+      // 우리가 만든 노드가 아니게 된다 — 앞 검사가 뒤 검사의 무대를 바꾼 것이다.
+      ctrl = G.place('controller', 90, 86, 0);
+      G.ui.openLogic(ctrl);
+      G.ui.showGraph();
       var n1 = G.gAdd(ctrl, 'const', 20, 20);
       var n2 = G.gAdd(ctrl, 'display', 20, 200);
       G.ui.renderGraph();
