@@ -134,5 +134,16 @@ function fmtTime(s) {
   return m + ':' + (ss < 10 ? '0' : '') + ss;
 }
 
+// 얕은 병합으로는 규칙의 when/then 을 통째로 덮어써 나머지 칸이 사라진다.
+function deepMerge(dst, src) {
+  for (var k in src) {
+    var v = src[k];
+    if (v && typeof v === 'object' && !Array.isArray(v) &&
+        dst[k] && typeof dst[k] === 'object' && !Array.isArray(dst[k])) deepMerge(dst[k], v);
+    else dst[k] = v;
+  }
+  return dst;
+}
+
 function idx(x, y) { return y * W + x; }
 function inBounds(x, y) { return x >= 0 && y >= 0 && x < W && y < H; }

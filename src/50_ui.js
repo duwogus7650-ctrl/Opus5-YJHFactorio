@@ -405,6 +405,14 @@ function startPick(ctrlId, nid, key, filter) {
   document.getElementById('logic').style.display = 'none';
   document.getElementById('pickBanner').style.display = 'block';
 }
+// 문장 편집기용 — 노드가 아니라 콜백에 돌려준다. 고르는 **경로는 같은 코드**를 쓴다.
+// (원장: 같은 것을 고르는 규칙이 두 곳에 있으면 반드시 갈린다)
+function startPickFor(filter, cb) {
+  pickMode = { ctrl: curCtrl ? curCtrl.id : null, nid: null, key: null,
+               filter: filter || null, cb: cb || null };
+  document.getElementById('logic').style.display = 'none';
+  document.getElementById('pickBanner').style.display = 'block';
+}
 function cancelPick() {
   pickMode = null;
   document.getElementById('pickBanner').style.display = 'none';
@@ -422,13 +430,17 @@ function doPick() {
     return;
   }
   var ctrl = entities[pickMode.ctrl];
-  if (ctrl && ctrl.graph) {
+  var cb = pickMode.cb;
+  if (!cb && ctrl && ctrl.graph) {
     var n = graphNode(ctrl.graph, pickMode.nid);
     if (n) { n.cfg[pickMode.key] = e.id; ctrl.graph.dirty = true; }
   }
   var save = pickMode; pickMode = null;
   document.getElementById('pickBanner').style.display = 'none';
-  if (logicOpen) { document.getElementById('logic').style.display = 'block'; renderGraph(); }
+  if (logicOpen) {
+    document.getElementById('logic').style.display = 'block';
+    if (cb) cb(e.id); else renderGraph();
+  }
   void save;
 }
 

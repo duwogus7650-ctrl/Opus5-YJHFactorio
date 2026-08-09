@@ -22,8 +22,8 @@ DIST = os.path.join(ROOT, 'dist')
 
 FILES = [
     '00_core.js', '05_data.js', '10_world.js', '20_belt.js', '25_entity.js',
-    '30_power.js', '35_logic.js', '40_enemy.js', '45_render.js',
-    '50_ui.js', '52_tutorial.js', '55_logicui.js', '60_game.js',
+    '30_power.js', '35_logic.js', '37_rules.js', '40_enemy.js', '45_render.js',
+    '50_ui.js', '52_tutorial.js', '55_logicui.js', '57_ruleui.js', '60_game.js',
 ]
 MARK = '<!--GAME_INLINE-->'
 OUT_NAME = 'Logic-Foundry.html'

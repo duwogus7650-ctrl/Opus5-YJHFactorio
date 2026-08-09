@@ -127,6 +127,44 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 .qrow span{position:relative;z-index:1}
 .qrow:hover{border-color:var(--stop)}
 .qrow .qx{color:var(--ink-2);font-family:var(--mono)}
+/* --- 문장(규칙) 편집기 ------------------------------------------------ */
+#rulePane{position:absolute;left:0;right:0;top:38px;bottom:0;overflow:auto;
+  padding:14px 18px;background:var(--face);display:none}
+#rulePane.on{display:block}
+#logic.rules #pal,#logic.rules #graphWrap{display:none}
+.rcard{border:1px solid var(--rule);background:var(--face-hi);margin:0 0 10px;padding:10px 12px}
+.rcard.off{opacity:.5}
+.rcard.blocked{border-color:var(--stop)}
+.rhead{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.rhead .rnum{font:700 10px var(--label);letter-spacing:.1em;color:var(--ink-3)}
+.rhead input.rname{font:600 12px var(--body);width:130px;padding:2px 5px;
+  border:1px solid var(--rule);background:var(--face)}
+.rhead .sp{flex:1}
+.rline{display:flex;flex-wrap:wrap;align-items:center;gap:5px;
+  font:13px/2.0 var(--body);color:var(--ink)}
+.rline .kw{color:var(--ink-3);font-weight:600}
+/* 문장으로 읽히려면 각 칸이 **내용 폭**이어야 한다. flex 안에서 늘어나게 두면
+   드롭다운이 화면 끝까지 벌어져 문장이 아니라 표로 보인다.
+   #rulePane 으로 특정성을 올린다 — 아래 `select,input[type=number]{flex:1}` 이
+   같은 특정성이면서 뒤에 있어 그냥 `.rline input` 으로는 진다(실측: flex 1 1 0%). */
+#rulePane .rline select,#rulePane .rline input{font:12px var(--body);padding:2px 4px;
+  flex:0 0 auto;max-width:230px;border:1px solid var(--rule);
+  background:var(--face);color:var(--ink)}
+#rulePane .rline button{flex:0 0 auto}
+#rulePane .rline input.num{width:72px;font-family:var(--mono);text-align:right}
+#rulePane .rhead input.rname{flex:0 0 auto}
+.rline .pick{cursor:pointer;border-style:dashed}
+.rnow{margin-top:6px;font:11.5px var(--body);color:var(--ink-2)}
+.rnow b{font-family:var(--mono)}
+.rwhy{margin-top:6px;font:11.5px var(--body);color:var(--stop)}
+.rcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:9px}
+.rcards .c{border:1px solid var(--rule);background:var(--face-hi);padding:10px 12px;cursor:pointer}
+.rcards .c:hover{border-color:var(--steel)}
+.rcards .c.locked{opacity:.45;cursor:not-allowed}
+.rcards .c b{display:block;font:600 13px var(--body);margin-bottom:3px}
+.rcards .c span{font:11.5px/1.5 var(--body);color:var(--ink-2)}
+.rlocked{border:1px solid var(--stop);background:var(--face-hi);padding:12px 14px;
+  font:12.5px/1.7 var(--body)}
 .qcap{font:600 9.5px/1.6 var(--label);letter-spacing:.08em;text-transform:uppercase;
   color:var(--ink-3);border-bottom:1px solid var(--rule);margin-bottom:3px}
 #craftList{max-height:200px;overflow-y:auto;padding:5px 8px;scrollbar-width:thin}
@@ -440,7 +478,9 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
     <span class="ttl">Controller <span id="ctrlName" class="num"></span></span>
     <span class="hint">출력 → 입력으로 끌어 배선 · 입력 포트 클릭 = 해제 · 배경 드래그 = 이동 · 휠 = 확대 · <b>참 = 0.5 이상</b> (0.4는 거짓) · 값 옆 <b>↑n</b> = 지금까지 올라간 횟수</span>
     <span id="cycleInfo" class="num" style="color:var(--stop)"></span>
-    <button onclick="loadExample()">예제 불러오기</button>
+    <button id="btnToGraph" onclick="ruleToGraph()">회로로 펼치기</button>
+    <button id="btnToRules" onclick="graphToRules()">문장으로</button>
+    <button id="btnExample" onclick="loadExample()">예제 불러오기</button>
     <button class="pri" onclick="closeLogic()">닫기 (ESC)</button>
   </div>
   <div id="pal"></div>
@@ -449,6 +489,9 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
       <svg id="links"></svg>
     </div>
   </div>
+  <!-- 문장(규칙) 화면. 제어기를 열면 **이쪽이 먼저** 나온다 — 빈 캔버스에 노드를
+       놓는 것은 무엇을 만들지 이미 아는 사람만 할 수 있는 일이다. -->
+  <div id="rulePane"></div>
 </div>
 
 <div id="pickBanner">지도에서 대상을 클릭하세요 &nbsp;·&nbsp; ESC 취소</div>

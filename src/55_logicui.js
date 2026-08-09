@@ -23,7 +23,10 @@ function openLogic(e) {
   document.getElementById('ctrlName').textContent = '#' + e.id;
   tutorial.flags.openedEditor = true;    // 상태로는 못 보는 사건이라 여기서 표시한다
   renderPalette();
-  renderGraph();
+  // **문장 화면이 먼저다.** 빈 캔버스에 노드를 놓는 일은 무엇을 만들지 이미 아는
+  // 사람만 할 수 있고, 그게 이 게임에서 가장 높은 벽이었다. 회로를 손으로 고친
+  // 제어기만 그래프로 연다.
+  showRules(!e.handEdited);
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = setInterval(updateLive, 140);
 }
@@ -65,6 +68,7 @@ function renderPalette() {
     items[j].onclick = (function (kind) {
       return function () {
         if (!nodeAvailable(kind)) { toast(TECHS[NODE_DEFS[kind].tech].name + ' 연구가 필요하다', 'bad'); return; }
+        markGraphHandEdited();
         var wrap = document.getElementById('graphWrap');
         var nx = (wrap.clientWidth / 2 - gpan.x) / gpan.z + (curCtrl.graph.nodes.length % 4) * 14;
         var ny = (wrap.clientHeight / 2 - gpan.y) / gpan.z + (curCtrl.graph.nodes.length % 5) * 16;
@@ -124,7 +128,8 @@ function updateCycleInfo(g) {
 // 뜻이 뒤집혔는지 보인다. 게이트·필터·사격허가도 같은 함정이 있어 같이 다룬다.
 function entName(id) {
   var e = entities[id];
-  if (!e) return null;
+  // **'null' 을 화면에 내보내지 않는다.** 문장에 null 이 박히면 그건 문장이 아니다.
+  if (!e) return '(대상 고르기)';
   return BUILDINGS[e.type].name + ' #' + e.id;
 }
 function outputMeaning(g, n) {
@@ -136,7 +141,10 @@ function outputMeaning(g, n) {
   var who = (n.kind === 'lamp' || n.kind === 'display') ? null : entName(n.cfg.ent);
 
   // 대상이 없으면 이 노드는 장식이다. 이것이 "배선했는데 아무 반응이 없다" 의 정체다.
-  if (n.kind !== 'lamp' && n.kind !== 'display' && !who) {
+  // **판정은 이름 문자열이 아니라 대상 자체로 한다.** entName 이 사람이 읽을 문구를
+  // 돌려주도록 바꾼 순간 `!who` 가 영원히 거짓이 돼 이 검사가 통째로 죽었다 —
+  // 표시용 함수를 술어로 쓰면 표시를 고칠 때 판정이 조용히 따라 바뀐다.
+  if (n.kind !== 'lamp' && n.kind !== 'display' && !entities[n.cfg.ent]) {
     return { bad: true, text: '대상이 비어 있다 — 배선해도 아무 일도 하지 않는다' };
   }
   if (!fed) {
@@ -276,6 +284,7 @@ function buildNodeDom(inner, g, n) {
   // --- 상호작용 ---
   head.querySelector('.x').onclick = function (ev) {
     ev.stopPropagation();
+    markGraphHandEdited();
     graphRemoveNode(g, n.nid);
     renderGraph();
   };
@@ -387,6 +396,7 @@ function buildNodeDom(inner, g, n) {
       return function (ev) {
         ev.stopPropagation();
         if (linking) {
+          markGraphHandEdited();
           if (!graphLink(curCtrl.graph, linking.nid, linking.port, nid, port)) toast('자기 자신에는 연결할 수 없다', 'bad');
           linking = null; renderGraph();
         }
@@ -396,6 +406,7 @@ function buildNodeDom(inner, g, n) {
       return function (ev) {
         ev.stopPropagation();
         if (linking) return;
+        markGraphHandEdited();
         graphUnlink(curCtrl.graph, nid, port);
         renderGraph();
       };

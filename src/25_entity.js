@@ -130,6 +130,12 @@ function placeEntity(type, tx, ty, dir, free) {
   } else if (type === 'controller') {
     e.graph = newGraph();
     e.lastEval = null;
+    // 문장(규칙)이 1급 표현이고 그래프는 그것을 컴파일한 결과다. handEdited 는
+    // "그래프를 손으로 고쳤다" — 그 순간부터 문장 화면을 잠근다. 양쪽을 다
+    // 편집하게 두면 반드시 갈린다(원장: 인서터 peek≠take).
+    e.rules = [];
+    e.nextRuleId = 1;
+    e.handEdited = false;
   } else if (type === 'lab') {
     e.researching = 0;
   }

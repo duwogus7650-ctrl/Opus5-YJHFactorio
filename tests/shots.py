@@ -81,7 +81,44 @@ G.run(1.6);                      // 첫 항목이 절반쯤 진행된 순간
 G.ui.refresh();
 """
 
+# 문장(규칙) 편집기 — 이 세션의 핵심 산출물이다. 게이트는 값이 맞는지만 보고
+# **어떻게 보이는지**는 안 본다.
+RULEUI = r"""
+var G = window.__GAME;
+G.reset(424242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+G.ui.closeHelp(); G.ui.closeTutor();
+G.research('logic-mem'); G.research('logic-ctrl');
+for (var y=75;y<=85;y+=5) for (var x=75;x<=85;x+=5) G.place('pole', x, y, 0);
+var gen = G.place('generator', 76, 81, 0); G.setFuel(gen, 4000*600);
+var chest = G.place('chest', 77, 76, 0); G.fillChest(chest, 'iron-plate', 34);
+var asm = G.place('assembler', 81, 76, 1); G.setRecipe(asm, 'gear');
+var ctl = G.place('controller', 81, 81, 0);
+G.run(1);
+G.ruleFromCard(ctl, 'stock');
+var rs = G.ruleList(ctl);
+G.ruleSet(ctl, rs[0].id, { when: { ent: chest, item: 'iron-plate' }, then: { ent: asm } });
+G.ruleFromCard(ctl, 'shed');
+G.ruleCompile(ctl);
+G.run(1);
+G.ui.openLogic(ctl);
+G.run(0.5);
+"""
+
+RULECARDS = r"""
+var G = window.__GAME;
+G.reset(424242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+G.ui.closeHelp(); G.ui.closeTutor();
+G.research('logic-mem');
+for (var y=75;y<=85;y+=5) for (var x=75;x<=85;x+=5) G.place('pole', x, y, 0);
+var ctl2 = G.place('controller', 81, 81, 0);
+G.run(1);
+G.ui.openLogic(ctl2);
+G.run(0.5);
+"""
+
 SCENES = [
+    ('06-rule-editor.png', '1400,900', RULEUI),
+    ('07-rule-cards.png', '1400,900', RULECARDS),
     ('05-handcraft-queue.png', '1400,900', HANDQ),
     ('01-factory.png', '1600,1000', FACTORY),
     ('02-logic-editor.png', '1600,1000', LOGIC),

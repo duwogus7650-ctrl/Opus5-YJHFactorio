@@ -468,6 +468,7 @@
       G.run(1);
       G.gAdd(offCtrl, 'power', 10, 10);
       G.ui.openLogic(offCtrl);
+      G.ui.showGraph();          // 제어기는 이제 문장 화면이 먼저 열린다
       var offTxt = document.getElementById('cycleInfo').textContent;
       chk('ui.offGridControllerWarns',
         G.ent(offCtrl).net < 0 && offTxt.indexOf('전력망 밖') >= 0,
@@ -549,6 +550,7 @@
       var edC = G.place('controller', 60, 60, 0);
       var edC2 = G.place('controller', 66, 60, 0);
       G.ui.openLogic(edC);
+      G.ui.showGraph();
       var e1 = G.gAdd(edC, 'const', 40, 40);
       var e2 = G.gAdd(edC, 'display', 40, 220);
       G.ui.renderGraph();
@@ -624,6 +626,83 @@
         '노드를 좌상단으로 끌기 → 평가순서 [' + ordBefore + '] → [' + ordAfter +
         '] (같으면 끌기가 재컴파일을 안 걸어 배치가 규칙이라는 말이 거짓이 된다)');
 
+      // (b3) **문장 편집기 — 실제 클릭으로.** 모델 게이트는 클릭 경로를 하나도
+      // 안 지난다(tasks/lessons/05). 카드를 눌러 규칙을 만들고, 드롭다운을 바꾸고,
+      // 그 결과가 회로로 컴파일돼 세계가 움직이는지까지 DOM 경로로 확인한다.
+      G.reset(9300); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(true); G.research('logic-mem');
+      var uBox = G.place('chest', 60, 60, 0);
+      var uAsm = G.place('assembler', 64, 60, 0); G.setRecipe(uAsm, 'gear');
+      var uCtl = G.place('controller', 68, 60, 0);
+      G.ui.openLogic(uCtl);
+      var pane = document.getElementById('rulePane');
+      chk('ui.rulesShowFirst',
+        !!pane && pane.classList.contains('on') &&
+        document.getElementById('logic').classList.contains('rules'),
+        '제어기를 열면 문장 화면이 먼저 — rulePane.on=' +
+        (pane ? pane.classList.contains('on') : 'none') +
+        ' (회로가 먼저 나오면 비코더는 여기서 멈춘다)');
+
+      var cardEls = pane.querySelectorAll('.c[data-card]');
+      chk('ui.ruleCardsListed', cardEls.length >= 5,
+        '하고싶은일 카드 ' + cardEls.length + '장 (5장 이상이어야)');
+
+      // 첫 카드('재고가 넘치면 기계 쉬게 하기')를 클릭
+      var before = G.ruleList(uCtl).length;
+      cardEls[0].click();
+      var afterN = G.ruleList(uCtl).length;
+      chk('ui.cardClickMakesRule', before === 0 && afterN === 1,
+        '카드 클릭 → 규칙 ' + before + ' → ' + afterN + '개');
+
+      // 대상이 비어 있으니 문장에 '(대상 고르기)' 가 보여야 한다 — null 이 보이면 안 된다
+      var sentence = pane.querySelector('[data-now]');
+      var sTxt = sentence ? sentence.textContent : '';
+      chk('ui.noNullInSentence', sTxt.indexOf('null') < 0 && sTxt.indexOf('대상 고르기') >= 0,
+        '대상 미지정 문장: "' + sTxt.slice(0, 60) + '" (null 이 보이면 문장이 아니다)');
+
+      // 대상을 붙이고 값을 바꿔 실제로 세계가 움직이는지
+      var rid0 = G.ruleList(uCtl)[0].id;
+      G.ruleSet(uCtl, rid0, { when: { ent: uBox, item: 'iron-plate', value: 100 },
+                              then: { ent: uAsm } });
+      G.ui.openLogic(uCtl);                       // 다시 그린다
+      var selEls = document.querySelectorAll('#rulePane .rline select');
+      chk('ui.ruleControlsRendered', selEls.length >= 3,
+        '드롭다운 ' + selEls.length + '개 (읽을 것·행동·기억 최소 3개)');
+
+      // 드롭다운을 **실제로 바꿔** 컴파일이 다시 도는지 — change 이벤트 경로
+      var kindSel = null;
+      for (var q = 0; q < selEls.length; q++) {
+        if (selEls[q].getAttribute('data-k') === 'when.cmp') kindSel = selEls[q];
+      }
+      var nodesBefore = G.gInfo(uCtl).nodes;
+      if (kindSel) {
+        kindSel.value = '<';
+        kindSel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      G.fillChest(uBox, 'iron-plate', 10);
+      G.run(0.3);
+      chk('ui.dropdownRecompiles',
+        !!kindSel && G.gInfo(uCtl).nodes >= nodesBefore && G.ent(uAsm).enabled === false,
+        '비교를 "보다 작으면"으로 바꾸고 철판 10개 → 조립기 ' +
+        (G.ent(uAsm).enabled ? '켜짐' : '꺼짐') + ' (카드가 "넘치면 끈다"이므로 꺼져야)');
+
+      // **한 방향이다** — 회로로 펼친 뒤 노드를 손대면 문장으로 못 돌아온다
+      document.getElementById('btnToGraph').click();
+      var inGraph = !document.getElementById('rulePane').classList.contains('on');
+      var canGoBack = document.getElementById('btnToRules').style.display !== 'none';
+      // **플레이어가 하는 대로** 팔레트를 클릭해 노드를 하나 추가한다.
+      // 그 경로가 markGraphHandEdited 를 부른다 — 함수를 직접 부르면 배선이
+      // 끊겨도 통과하는 검사가 된다.
+      var palItem = document.querySelector('#pal .pitem:not(.locked)');
+      if (palItem) palItem.click();
+      var lockedAfter = G.ruleHandEdited(uCtl);
+      var backHidden = document.getElementById('btnToRules').style.display === 'none';
+      chk('ui.graphEditLocksRules',
+        inGraph && canGoBack && lockedAfter === true && backHidden,
+        '회로로 펼침(문장화면=' + (inGraph ? '숨김' : '보임') + ') · 돌아가기 버튼 ' +
+        (canGoBack ? '있음' : '없음') + ' → 노드를 손대면 잠김=' + lockedAfter +
+        ' · 버튼 ' + (backHidden ? '사라짐' : '남음'));
+
       // (c) **다른 제어기를 열면 화면이 처음으로 돌아가야 한다.**
       //     예전에는 이전 위치가 남아 노드가 있는데도 빈 화면만 보였다.
       G.ui.panGraph(-4000, -3000);
@@ -647,6 +726,7 @@
         ') → (' + Math.round(kept1.x) + ',' + Math.round(kept1.y) + ') 유지');
 
       // (d) 편집기 안내줄이 참/거짓 문턱과 펄스 표기를 말해야 한다.
+      G.ui.showGraph();     // 안내줄은 화면마다 다르다 — 회로 화면의 것을 본다
       var hintTxt = document.querySelector('#logicBar .hint');
       chk('ui.editorHintExplainsThreshold',
         !!hintTxt && hintTxt.textContent.indexOf('0.5') >= 0 &&

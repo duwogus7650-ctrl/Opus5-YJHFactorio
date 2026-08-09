@@ -127,6 +127,44 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 .qrow span{position:relative;z-index:1}
 .qrow:hover{border-color:var(--stop)}
 .qrow .qx{color:var(--ink-2);font-family:var(--mono)}
+/* --- 문장(규칙) 편집기 ------------------------------------------------ */
+#rulePane{position:absolute;left:0;right:0;top:38px;bottom:0;overflow:auto;
+  padding:14px 18px;background:var(--face);display:none}
+#rulePane.on{display:block}
+#logic.rules #pal,#logic.rules #graphWrap{display:none}
+.rcard{border:1px solid var(--rule);background:var(--face-hi);margin:0 0 10px;padding:10px 12px}
+.rcard.off{opacity:.5}
+.rcard.blocked{border-color:var(--stop)}
+.rhead{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.rhead .rnum{font:700 10px var(--label);letter-spacing:.1em;color:var(--ink-3)}
+.rhead input.rname{font:600 12px var(--body);width:130px;padding:2px 5px;
+  border:1px solid var(--rule);background:var(--face)}
+.rhead .sp{flex:1}
+.rline{display:flex;flex-wrap:wrap;align-items:center;gap:5px;
+  font:13px/2.0 var(--body);color:var(--ink)}
+.rline .kw{color:var(--ink-3);font-weight:600}
+/* 문장으로 읽히려면 각 칸이 **내용 폭**이어야 한다. flex 안에서 늘어나게 두면
+   드롭다운이 화면 끝까지 벌어져 문장이 아니라 표로 보인다.
+   #rulePane 으로 특정성을 올린다 — 아래 `select,input[type=number]{flex:1}` 이
+   같은 특정성이면서 뒤에 있어 그냥 `.rline input` 으로는 진다(실측: flex 1 1 0%). */
+#rulePane .rline select,#rulePane .rline input{font:12px var(--body);padding:2px 4px;
+  flex:0 0 auto;max-width:230px;border:1px solid var(--rule);
+  background:var(--face);color:var(--ink)}
+#rulePane .rline button{flex:0 0 auto}
+#rulePane .rline input.num{width:72px;font-family:var(--mono);text-align:right}
+#rulePane .rhead input.rname{flex:0 0 auto}
+.rline .pick{cursor:pointer;border-style:dashed}
+.rnow{margin-top:6px;font:11.5px var(--body);color:var(--ink-2)}
+.rnow b{font-family:var(--mono)}
+.rwhy{margin-top:6px;font:11.5px var(--body);color:var(--stop)}
+.rcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:9px}
+.rcards .c{border:1px solid var(--rule);background:var(--face-hi);padding:10px 12px;cursor:pointer}
+.rcards .c:hover{border-color:var(--steel)}
+.rcards .c.locked{opacity:.45;cursor:not-allowed}
+.rcards .c b{display:block;font:600 13px var(--body);margin-bottom:3px}
+.rcards .c span{font:11.5px/1.5 var(--body);color:var(--ink-2)}
+.rlocked{border:1px solid var(--stop);background:var(--face-hi);padding:12px 14px;
+  font:12.5px/1.7 var(--body)}
 .qcap{font:600 9.5px/1.6 var(--label);letter-spacing:.08em;text-transform:uppercase;
   color:var(--ink-3);border-bottom:1px solid var(--rule);margin-bottom:3px}
 #craftList{max-height:200px;overflow-y:auto;padding:5px 8px;scrollbar-width:thin}
@@ -440,7 +478,9 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
     <span class="ttl">Controller <span id="ctrlName" class="num"></span></span>
     <span class="hint">출력 → 입력으로 끌어 배선 · 입력 포트 클릭 = 해제 · 배경 드래그 = 이동 · 휠 = 확대 · <b>참 = 0.5 이상</b> (0.4는 거짓) · 값 옆 <b>↑n</b> = 지금까지 올라간 횟수</span>
     <span id="cycleInfo" class="num" style="color:var(--stop)"></span>
-    <button onclick="loadExample()">예제 불러오기</button>
+    <button id="btnToGraph" onclick="ruleToGraph()">회로로 펼치기</button>
+    <button id="btnToRules" onclick="graphToRules()">문장으로</button>
+    <button id="btnExample" onclick="loadExample()">예제 불러오기</button>
     <button class="pri" onclick="closeLogic()">닫기 (ESC)</button>
   </div>
   <div id="pal"></div>
@@ -449,6 +489,9 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
       <svg id="links"></svg>
     </div>
   </div>
+  <!-- 문장(규칙) 화면. 제어기를 열면 **이쪽이 먼저** 나온다 — 빈 캔버스에 노드를
+       놓는 것은 무엇을 만들지 이미 아는 사람만 할 수 있는 일이다. -->
+  <div id="rulePane"></div>
 </div>
 
 <div id="pickBanner">지도에서 대상을 클릭하세요 &nbsp;·&nbsp; ESC 취소</div>
@@ -604,6 +647,17 @@ function fmtShort(n) {
 function fmtTime(s) {
   var m = Math.floor(s / 60), ss = Math.floor(s % 60);
   return m + ':' + (ss < 10 ? '0' : '') + ss;
+}
+
+// 얕은 병합으로는 규칙의 when/then 을 통째로 덮어써 나머지 칸이 사라진다.
+function deepMerge(dst, src) {
+  for (var k in src) {
+    var v = src[k];
+    if (v && typeof v === 'object' && !Array.isArray(v) &&
+        dst[k] && typeof dst[k] === 'object' && !Array.isArray(dst[k])) deepMerge(dst[k], v);
+    else dst[k] = v;
+  }
+  return dst;
 }
 
 function idx(x, y) { return y * W + x; }
@@ -1464,6 +1518,12 @@ function placeEntity(type, tx, ty, dir, free) {
   } else if (type === 'controller') {
     e.graph = newGraph();
     e.lastEval = null;
+    // 문장(규칙)이 1급 표현이고 그래프는 그것을 컴파일한 결과다. handEdited 는
+    // "그래프를 손으로 고쳤다" — 그 순간부터 문장 화면을 잠근다. 양쪽을 다
+    // 편집하게 두면 반드시 갈린다(원장: 인서터 peek≠take).
+    e.rules = [];
+    e.nextRuleId = 1;
+    e.handEdited = false;
   } else if (type === 'lab') {
     e.researching = 0;
   }
@@ -2638,6 +2698,389 @@ function stepLogic(dt) {
   });
   logicDirty = false;
 }
+
+/* ===================== 37_rules.js ===================== */
+// ===========================================================================
+//  37_rules.js — 문장(규칙) → 노드 그래프 컴파일러
+//
+//  제어기 편집기는 사실상 프로그래밍 언어다: 빈 캔버스에 노드 25종을 놓고 선을
+//  잇는다. 코딩을 안 해 본 사람은 **무엇을 만들지 이미 알아야** 시작할 수 있고,
+//  거기서 멈춘다. 그래서 같은 것을 문장으로도 쓸 수 있게 한다:
+//
+//      만약 [상자 #7] 의 [철판] 이 [50개 미만] 이면
+//      그래서 [조립기 #3] 을 [켠다]
+//      다시  [200개 넘으면] 끈다
+//
+//  **문장은 두 번째 런타임이 아니다.** 여기서 하는 일은 노드와 배선을 대신 놓아
+//  주는 것뿐이고, 평가는 여전히 35_logic.js 하나가 한다. 그래서 저장·튜토리얼
+//  판정·전투 로직이 전부 그대로 통한다 — 문장으로 만든 회로도 "회로"다.
+//
+//  설계 규칙 (원장에서 옮겨온 것):
+//   * **한 방향이다.** 문장 → 그래프만 있고 그래프 → 문장은 없다. 양쪽을 다
+//     편집하게 두면 반드시 갈린다 (인서터 peek≠take 가 그 실패의 원형이다).
+//     그래프를 손으로 고치면 그 제어기의 문장 화면은 잠근다.
+//   * **좌표를 결정론적으로 준다.** 노드 좌표가 곧 평가 순서라서(graphCompile),
+//     같은 문장이 늘 같은 좌표를 받아야 늘 같게 돈다.
+//   * **연구 안 된 노드로 컴파일하지 않는다.** evalNode 는 잠긴 노드를 조용히 0
+//     으로 만든다 — 문장은 맞는데 아무 일도 안 일어나는 상태가 된다.
+// ===========================================================================
+
+// --- 문장의 부품표 ---------------------------------------------------------
+// 읽기: 무엇을 볼 것인가. node = 만들 노드, port = 그 노드의 몇 번째 출구.
+var RULE_SOURCES = {
+  'chest':     { label: '재고',     node: 'chest',    port: 0, needs: ['ent', 'item'],
+                 entFilter: ['chest'], unit: '개' },
+  'stock':     { label: '내 보유 자재',    node: 'invsense', port: 0, needs: ['item'], unit: '개' },
+  'belt':      { label: '올라온 개수',    node: 'belt',     port: 0, needs: ['ent', 'item'],
+                 entFilter: ['belt', 'splitter'], unit: '개' },
+  'machineRun':{ label: '지금 도는가',   node: 'machine',  port: 0, needs: ['ent'],
+                 entFilter: ['miner','furnace','assembler','lab','generator','turret','inserter'],
+                 bool: true },
+  'machineStall':{ label: '멈춰 있는가', node: 'machine', port: 1, needs: ['ent'],
+                 entFilter: ['miner','furnace','assembler','lab','generator','turret','inserter'],
+                 bool: true },
+  'machineProg':{ label: '진행률',    node: 'machine',  port: 2, needs: ['ent'],
+                 entFilter: ['miner','furnace','assembler','lab','generator','turret','inserter'],
+                 unit: '%' },
+  'powerSat':  { label: '전기 만족도',     node: 'power',    port: 0, needs: [], unit: '%' },
+  'powerHead': { label: '전기 여유',       node: 'power',    port: 3, needs: [], unit: 'kW' },
+  'powerSup':  { label: '전기 공급',       node: 'power',    port: 1, needs: [], unit: 'kW' },
+  'powerDem':  { label: '전기 수요',       node: 'power',    port: 2, needs: [], unit: 'kW' },
+  'researchP': { label: '연구 진행률',     node: 'research', port: 0, needs: [], unit: '%' },
+  'enemyN':    { label: '가까이 온 적 수', node: 'enemy',    port: 0, needs: ['radius'],
+                 unit: '마리', tech: 'defense-ai' },
+  'enemyDist': { label: '가장 가까운 적까지', node: 'enemy',  port: 1, needs: ['radius'],
+                 unit: '칸', tech: 'defense-ai' }
+};
+var RULE_SOURCE_IDS = Object.keys(RULE_SOURCES);
+
+// 행동: 무엇을 시킬 것인가.
+var RULE_ACTIONS = {
+  'run':    { label: '켠다 / 끈다', node: 'enable', verbOn: '켠다', verbOff: '끈다',
+              entFilter: ['miner','furnace','assembler','lab','generator','turret','inserter'] },
+  'gate':   { label: '벨트를 연다 / 막는다', node: 'gate', verbOn: '연다', verbOff: '막는다',
+              entFilter: ['belt', 'splitter'], tech: 'logic-ctrl' },
+  'fire':   { label: '터렛 사격을 허가 / 금지', node: 'fire', verbOn: '쏘게 한다', verbOff: '멈추게 한다',
+              entFilter: ['turret'], tech: 'defense-ai' },
+  'lamp':   { label: '경보를 켠다', node: 'lamp', verbOn: '켠다', verbOff: '끈다', text: 'label' },
+  'display':{ label: '화면에 숫자를 띄운다', node: 'display', text: 'label', value: true },
+  'filter': { label: '인서터가 집을 것을 바꾼다', node: 'filter', entFilter: ['inserter'],
+              tech: 'logic-ctrl', twoItems: true }
+};
+var RULE_ACTION_IDS = Object.keys(RULE_ACTIONS);
+
+var RULE_CMPS = [
+  { op: '<',  label: '보다 작으면' },
+  { op: '<=', label: '이하면' },
+  { op: '>',  label: '보다 크면' },
+  { op: '>=', label: '이상이면' },
+  { op: '==', label: '와 같으면' },
+  { op: '!=', label: '와 다르면' }
+];
+var RULE_MATHS = [
+  { op: '-', label: '에서 뺀 값' }, { op: '+', label: '을 더한 값' },
+  { op: '*', label: '을 곱한 값' }, { op: '/', label: '으로 나눈 값' },
+  { op: 'min', label: '과 둘 중 작은 값' }, { op: 'max', label: '과 둘 중 큰 값' }
+];
+
+// 기억(memory) — 문장 뒤에 붙는 선택지. 각각 어떤 노드가 필요한지 함께 적는다.
+// tech 가 있는 것은 연구 전에는 **고를 수 없게** 한다 (잠긴 노드는 조용히 0을 낸다).
+var RULE_MEMOS = {
+  'none':    { label: '(그때그때 판단)', nodes: [] },
+  'latch':   { label: '한 번 참이면 유지하고, 따로 정한 조건에서만 되돌린다',
+               nodes: ['latch'], tech: 'logic-mem' },
+  'edge':    { label: '참이 되는 그 순간에만',  nodes: ['edge'], tech: 'logic-mem' },
+  'count':   { label: '몇 번 일어났는지 세어서', nodes: ['counter', 'cmp'], tech: 'logic-mem' },
+  'hold':    { label: '그때의 값을 기억해서',    nodes: ['hold'], tech: 'logic-mem' }
+};
+
+// --- 규칙 하나의 모양 -------------------------------------------------------
+// {
+//   id, name,                       // name 은 다른 규칙이 참조할 이름 (없으면 참조 불가)
+//   when: { src, ent, item, radius, // 무엇을 읽나
+//           math: {op, b},          // (선택) 계산 한 단
+//           cmp, value,             // 어떻게 판단하나
+//           and: [ {…같은 모양…} ], // (선택) 그리고/또는로 묶인 추가 조건
+//           andMode: 'AND'|'OR',
+//           refName },              // (선택) 다른 규칙의 이름을 읽는다
+//   memo: { kind, resetCmp, resetValue, everySec, times },
+//   then: { act, ent, item2, label, onWhenTrue }
+// }
+function newRule(id) {
+  return { id: id, name: '', enabled: true,
+           when: { src: 'chest', ent: null, item: 'iron-plate', radius: 30,
+                   math: null, cmp: '<', value: 50, and: [], andMode: 'AND', refName: null },
+           memo: { kind: 'none', resetCmp: '>', resetValue: 200, everySec: 0, times: 3 },
+           then: { act: 'run', ent: null, item2: null, label: '', onWhenTrue: true } };
+}
+
+// 규칙이 지금 연구 상태로 컴파일 가능한가. 안 되면 이유를 돌려준다.
+// **컴파일해 놓고 조용히 0을 내게 두지 않는다** — 그게 이 게임에서 제일 나쁜 실패다.
+function ruleBlockedReason(r) {
+  var s = RULE_SOURCES[r.when.src];
+  if (s && s.tech && !techDone[s.tech]) return TECHS[s.tech].name + ' 연구가 필요하다';
+  var a = RULE_ACTIONS[r.then.act];
+  if (a && a.tech && !techDone[a.tech]) return TECHS[a.tech].name + ' 연구가 필요하다';
+  var m = RULE_MEMOS[r.memo.kind];
+  if (m && m.tech && !techDone[m.tech]) return TECHS[m.tech].name + ' 연구가 필요하다';
+  if (r.memo.kind === 'latch' && r.memo.everySec > 0 && !techDone['logic-mem']) {
+    return TECHS['logic-mem'].name + ' 연구가 필요하다';
+  }
+  return null;
+}
+
+// --- 컴파일 -----------------------------------------------------------------
+// 규칙 목록 → 노드 그래프. **좌표는 규칙 번호와 열 번호로 결정한다.**
+// 좌표가 평가 순서를 정하므로(graphCompile), 여기서 흔들리면 같은 문장이
+// 판마다 다르게 돈다.
+var RULE_COL = 210;     // 열 간격(px)
+var RULE_ROW = 190;     // 규칙 한 줄의 세로 간격
+var RULE_SUB = 62;      // 한 규칙 안에서 부품을 세로로 벌리는 간격
+
+function compileRules(e) {
+  var g = newGraph();
+  if (!e.rules || !e.rules.length) { e.graph = g; return { nodes: 0, skipped: [] }; }
+  var skipped = [];
+  var named = {};                    // 규칙 이름 -> 그 규칙의 '판단 결과' 노드 nid
+
+  for (var i = 0; i < e.rules.length; i++) {
+    var r = e.rules[i];
+    if (!r.enabled) { skipped.push({ name: r.name || ('규칙 ' + (i + 1)), why: '꺼 둠' }); continue; }
+    var why = ruleBlockedReason(r);
+    if (why) { skipped.push({ name: r.name || ('규칙 ' + (i + 1)), why: why }); continue; }
+    var y0 = 20 + i * RULE_ROW;
+    var out = compileOneRule(g, r, y0, named);
+    if (out && r.name) named[r.name] = out;
+  }
+  e.graph = g;
+  return { nodes: g.nodes.length, skipped: skipped };
+}
+
+// 조건 하나(읽기 → (계산) → 비교)를 만들고 '참/거짓' 노드의 nid 를 돌려준다.
+function compileCondition(g, w, x0, y0, named) {
+  // 다른 규칙의 결과를 읽는 조건이면 노드를 새로 만들지 않고 그 결과를 그대로 쓴다.
+  // 배선 없이 규칙을 엮는 길이 이것이다.
+  if (w.refName && named[w.refName]) return { nid: named[w.refName], port: 0, isBool: true };
+
+  var s = RULE_SOURCES[w.src];
+  if (!s) return null;
+  var src = graphAddNode(g, s.node, x0, y0);
+  if (s.needs.indexOf('ent') >= 0) src.cfg.ent = w.ent || null;
+  if (s.needs.indexOf('item') >= 0) src.cfg.item = w.item || null;
+  if (s.needs.indexOf('radius') >= 0) src.cfg.radius = +w.radius || 30;
+
+  var vNid = src.nid, vPort = s.port, x = x0 + RULE_COL;
+
+  // 계산 한 단 (선택) — "공급kW 에서 수요kW 를 뺀 값" 같은 것
+  if (w.math && w.math.op) {
+    var mb = graphAddNode(g, 'const', x0, y0 + RULE_SUB);
+    mb.cfg.value = +w.math.b || 0;
+    var mm = graphAddNode(g, 'math', x, y0);
+    mm.cfg.op = w.math.op;
+    graphLink(g, vNid, vPort, mm.nid, 0);
+    graphLink(g, mb.nid, 0, mm.nid, 1);
+    vNid = mm.nid; vPort = 0; x += RULE_COL;
+  }
+
+  // 참/거짓을 내는 읽기(기계가 도는가 등)를 그대로 조건으로 쓰면 비교가 필요 없다.
+  if (s.bool && (w.cmp === '==' || !w.cmp)) return { nid: vNid, port: vPort, isBool: true };
+
+  var kv = graphAddNode(g, 'const', x0, y0 + RULE_SUB * 2);
+  kv.cfg.value = +w.value || 0;
+  var c = graphAddNode(g, 'cmp', x, y0);
+  c.cfg.op = w.cmp || '<';
+  graphLink(g, vNid, vPort, c.nid, 0);
+  graphLink(g, kv.nid, 0, c.nid, 1);
+  return { nid: c.nid, port: 0, isBool: true, x: x };
+}
+
+function compileOneRule(g, r, y0, named) {
+  var w = r.when;
+  var cond = compileCondition(g, w, 20, y0, named);
+  if (!cond) return null;
+  var condNid = cond.nid, condPort = cond.port;
+  var x = (cond.x || 20 + RULE_COL) + RULE_COL;
+
+  // 그리고 / 또는 로 묶인 추가 조건
+  for (var a = 0; a < (w.and || []).length; a++) {
+    var sub = compileCondition(g, w.and[a], 20, y0 + RULE_SUB * (3 + a * 3), named);
+    if (!sub) continue;
+    var b = graphAddNode(g, 'bool', x, y0);
+    b.cfg.op = (w.andMode === 'OR') ? 'OR' : 'AND';
+    graphLink(g, condNid, condPort, b.nid, 0);
+    graphLink(g, sub.nid, sub.port, b.nid, 1);
+    condNid = b.nid; condPort = 0; x += RULE_COL;
+  }
+
+  // 기억 한 단
+  var m = r.memo || { kind: 'none' };
+  if (m.kind === 'edge') {
+    var ed = graphAddNode(g, 'edge', x, y0);
+    ed.cfg.mode = '상승';
+    graphLink(g, condNid, condPort, ed.nid, 0);
+    condNid = ed.nid; condPort = 0; x += RULE_COL;
+
+  } else if (m.kind === 'latch') {
+    // "한 번 참이면 유지하고, 따로 정한 조건에서 되돌린다" = SR 래치.
+    // 되돌리는 쪽은 같은 값을 반대 문턱으로 다시 비교한다 — 이게 히스테리시스다.
+    var rc = compileCondition(g, { src: w.src, ent: w.ent, item: w.item, radius: w.radius,
+                                   math: w.math, cmp: m.resetCmp, value: m.resetValue },
+                              20, y0 + RULE_SUB * 6, named);
+    var la = graphAddNode(g, 'latch', x, y0);
+    graphLink(g, condNid, condPort, la.nid, 0);
+    if (rc) {
+      var resetNid = rc.nid, resetPort = rc.port;
+      // "되돌리는 건 N초에 한 번만" — 되먹임이 있는 계는 문턱만 벌려서는 안 멈춘다.
+      // 끊는 쪽은 즉시, 되돌리는 쪽만 늦춘다.
+      if (m.everySec > 0) {
+        var tm = graphAddNode(g, 'timer', 20, y0 + RULE_SUB * 8);
+        tm.cfg.period = +m.everySec;
+        var an = graphAddNode(g, 'bool', x - RULE_COL, y0 + RULE_SUB * 7);
+        an.cfg.op = 'AND';
+        graphLink(g, resetNid, resetPort, an.nid, 0);
+        graphLink(g, tm.nid, 0, an.nid, 1);
+        resetNid = an.nid; resetPort = 0;
+      }
+      graphLink(g, resetNid, resetPort, la.nid, 1);
+    }
+    condNid = la.nid; condPort = 0; x += RULE_COL;
+
+  } else if (m.kind === 'count') {
+    var cn = graphAddNode(g, 'counter', x, y0);
+    graphLink(g, condNid, condPort, cn.nid, 0);
+    var tv = graphAddNode(g, 'const', x, y0 + RULE_SUB * 2);
+    tv.cfg.value = +m.times || 1;
+    var cc = graphAddNode(g, 'cmp', x + RULE_COL, y0);
+    cc.cfg.op = '>=';
+    graphLink(g, cn.nid, 0, cc.nid, 0);
+    graphLink(g, tv.nid, 0, cc.nid, 1);
+    condNid = cc.nid; condPort = 0; x += RULE_COL * 2;
+
+  } else if (m.kind === 'hold') {
+    var hd = graphAddNode(g, 'hold', x, y0);
+    graphLink(g, condNid, condPort, hd.nid, 1);        // 조건이 '샘플' 신호
+    condNid = hd.nid; condPort = 0; x += RULE_COL;
+  }
+
+  // 행동
+  var t = r.then, ad = RULE_ACTIONS[t.act];
+  if (!ad) return condNid;
+  var actIn = condNid, actPort = condPort;
+  // "조건이 참일 때 끈다"는 뒤집기 한 단이 필요하다
+  if (ad.verbOn && t.onWhenTrue === false) {
+    var nt = graphAddNode(g, 'bool', x, y0);
+    nt.cfg.op = 'NOT A';
+    graphLink(g, actIn, actPort, nt.nid, 0);
+    actIn = nt.nid; actPort = 0; x += RULE_COL;
+  }
+  var an2 = graphAddNode(g, ad.node, x, y0);
+  if (ad.entFilter) an2.cfg.ent = t.ent || null;
+  if (ad.text) an2.cfg.label = t.label || (r.name || '');
+  if (ad.twoItems) { an2.cfg.a = t.item || null; an2.cfg.b = t.item2 || null; }
+  graphLink(g, actIn, actPort, an2.nid, 0);
+  return condNid;
+}
+
+// --- 문장을 사람 말로 되읽기 -------------------------------------------------
+// 화면에도 쓰고, 시험에서 "무엇을 만들었다고 주장하는가"를 재는 데도 쓴다.
+function ruleSentence(r) {
+  var w = r.when, s = RULE_SOURCES[w.src];
+  var parts = [];
+  if (w.refName) parts.push('만약 [' + w.refName + '] 이면');
+  else if (s) {
+    // 주어가 "상자 #14 의 상자의 재고(철판)" 처럼 겹치면 문장이 아니라 경로가 된다.
+    // 품목이 있으면 품목을 주어로 세운다 — "상자 #14 의 철판".
+    var subj = s.label;
+    if (s.needs.indexOf('item') >= 0 && w.item && ITEMS[w.item]) subj = ITEMS[w.item].name;
+    if (s.needs.indexOf('ent') >= 0) subj = entName(w.ent) + ' 의 ' + subj;
+    var mtxt = '';
+    if (w.math && w.math.op) {
+      var mm = null;
+      for (var i = 0; i < RULE_MATHS.length; i++) if (RULE_MATHS[i].op === w.math.op) mm = RULE_MATHS[i];
+      mtxt = ' 에 ' + w.math.b + (mm ? mm.label : '');
+    }
+    var ct = null;
+    for (var c = 0; c < RULE_CMPS.length; c++) if (RULE_CMPS[c].op === w.cmp) ct = RULE_CMPS[c];
+    if (s.bool && (!w.cmp || w.cmp === '==')) parts.push('만약 ' + subj + ' 이면');
+    else parts.push('만약 ' + subj + mtxt + ' 이 ' + w.value + (s.unit || '') +
+                    ' ' + (ct ? ct.label : w.cmp));
+  }
+  for (var a = 0; a < (w.and || []).length; a++) {
+    parts.push((w.andMode === 'OR' ? '또는 ' : '그리고 ') + condPhrase(w.and[a]));
+  }
+  var m = r.memo || { kind: 'none' };
+  var t = r.then, ad = RULE_ACTIONS[t.act];
+  var verb = ad ? (ad.verbOn ? (t.onWhenTrue === false ? ad.verbOff : ad.verbOn) : ad.label) : '';
+  var obj = (ad && ad.entFilter) ? entName(t.ent) + ' 을 ' : '';
+  parts.push('그래서 ' + obj + verb);
+  if (m.kind === 'latch') {
+    var rct = null;
+    for (var k = 0; k < RULE_CMPS.length; k++) if (RULE_CMPS[k].op === m.resetCmp) rct = RULE_CMPS[k];
+    parts.push('다시 ' + m.resetValue + (s ? (s.unit || '') : '') + ' ' +
+               (rct ? rct.label : m.resetCmp) + ' 되돌린다' +
+               (m.everySec > 0 ? ' (되돌리는 건 ' + m.everySec + '초에 한 번만)' : ''));
+  } else if (m.kind === 'edge') parts.push('— 그 순간에만');
+  else if (m.kind === 'count') parts.push('— ' + m.times + '번 넘게 일어났을 때');
+  else if (m.kind === 'hold') parts.push('— 그때 값을 기억해서');
+  return parts.join(' ');
+}
+function condPhrase(w) {
+  var s = RULE_SOURCES[w.src];
+  if (!s) return '?';
+  var subj = s.label;
+  if (s.needs.indexOf('item') >= 0 && w.item && ITEMS[w.item]) subj = ITEMS[w.item].name;
+  if (s.needs.indexOf('ent') >= 0) subj = entName(w.ent) + ' 의 ' + subj;
+  var ct = null;
+  for (var c = 0; c < RULE_CMPS.length; c++) if (RULE_CMPS[c].op === w.cmp) ct = RULE_CMPS[c];
+  if (s.bool && (!w.cmp || w.cmp === '==')) return subj + ' 이면';
+  return subj + ' 이 ' + w.value + (s.unit || '') + ' ' + (ct ? ct.label : w.cmp);
+}
+
+// --- 하고 싶은 일 카드 -------------------------------------------------------
+// 빈 문장도 막막할 수 있으니, 흔한 목적을 골라 절반쯤 채워진 문장으로 연다.
+// 여기 값들은 심화 튜토리얼이 가르치는 것과 같은 회로다.
+var RULE_CARDS = [
+  { id: 'stock', title: '재고가 넘치면 기계 쉬게 하기',
+    why: '상자가 가득 차면 만들어 봐야 갈 데가 없다. 전기와 광석만 쓴다.',
+    make: function (r) {
+      r.name = '재고충분';
+      r.when.src = 'chest'; r.when.cmp = '>'; r.when.value = 200;
+      r.memo.kind = 'none';
+      r.then.act = 'run'; r.then.onWhenTrue = false;
+    } },
+  { id: 'shed', title: '전기가 모자라면 덜 급한 것부터 끄기',
+    why: '전기가 모자라면 <b>모든</b> 기계가 같이 느려진다. 하나를 꺼서 나머지를 살린다.',
+    need: 'logic-mem',
+    make: function (r) {
+      r.name = '전기부족';
+      r.when.src = 'powerHead'; r.when.cmp = '<'; r.when.value = 0;
+      r.memo.kind = 'latch'; r.memo.resetCmp = '>'; r.memo.resetValue = 200; r.memo.everySec = 30;
+      r.then.act = 'run'; r.then.onWhenTrue = false;
+    } },
+  { id: 'defend', title: '적이 오면 생산 멈추기',
+    why: '습격 중엔 전기를 터렛에 몰아주는 편이 낫다.',
+    need: 'defense-ai',
+    make: function (r) {
+      r.name = '습격중';
+      r.when.src = 'enemyN'; r.when.cmp = '>'; r.when.value = 0; r.when.radius = 30;
+      r.then.act = 'run'; r.then.onWhenTrue = false;
+    } },
+  { id: 'alarm', title: '탄약이 줄면 경보 울리기',
+    why: '빈 터렛은 조용히 빈다. 숫자를 안 보고 있으면 습격 때 알게 된다.',
+    make: function (r) {
+      r.name = '탄약부족';
+      r.when.src = 'stock'; r.when.item = 'ammo'; r.when.cmp = '<'; r.when.value = 40;
+      r.then.act = 'lamp'; r.then.label = '탄약 부족'; r.then.onWhenTrue = true;
+    } },
+  { id: 'watch', title: '숫자를 화면에 띄워 보기',
+    why: '무엇이 벌어지는지 먼저 보는 게 순서다. 판단은 그 다음이다.',
+    make: function (r) {
+      r.name = '';
+      r.when.src = 'powerHead'; r.when.cmp = '>='; r.when.value = 0;
+      r.then.act = 'display'; r.then.label = '전기 여유';
+    } },
+  { id: 'blank', title: '빈 문장으로 직접 만들기', why: '', make: function () {} }
+];
 
 /* ===================== 40_enemy.js ===================== */
 // ===========================================================================
@@ -4057,6 +4500,14 @@ function startPick(ctrlId, nid, key, filter) {
   document.getElementById('logic').style.display = 'none';
   document.getElementById('pickBanner').style.display = 'block';
 }
+// 문장 편집기용 — 노드가 아니라 콜백에 돌려준다. 고르는 **경로는 같은 코드**를 쓴다.
+// (원장: 같은 것을 고르는 규칙이 두 곳에 있으면 반드시 갈린다)
+function startPickFor(filter, cb) {
+  pickMode = { ctrl: curCtrl ? curCtrl.id : null, nid: null, key: null,
+               filter: filter || null, cb: cb || null };
+  document.getElementById('logic').style.display = 'none';
+  document.getElementById('pickBanner').style.display = 'block';
+}
 function cancelPick() {
   pickMode = null;
   document.getElementById('pickBanner').style.display = 'none';
@@ -4074,13 +4525,17 @@ function doPick() {
     return;
   }
   var ctrl = entities[pickMode.ctrl];
-  if (ctrl && ctrl.graph) {
+  var cb = pickMode.cb;
+  if (!cb && ctrl && ctrl.graph) {
     var n = graphNode(ctrl.graph, pickMode.nid);
     if (n) { n.cfg[pickMode.key] = e.id; ctrl.graph.dirty = true; }
   }
   var save = pickMode; pickMode = null;
   document.getElementById('pickBanner').style.display = 'none';
-  if (logicOpen) { document.getElementById('logic').style.display = 'block'; renderGraph(); }
+  if (logicOpen) {
+    document.getElementById('logic').style.display = 'block';
+    if (cb) cb(e.id); else renderGraph();
+  }
   void save;
 }
 
@@ -5383,7 +5838,10 @@ function openLogic(e) {
   document.getElementById('ctrlName').textContent = '#' + e.id;
   tutorial.flags.openedEditor = true;    // 상태로는 못 보는 사건이라 여기서 표시한다
   renderPalette();
-  renderGraph();
+  // **문장 화면이 먼저다.** 빈 캔버스에 노드를 놓는 일은 무엇을 만들지 이미 아는
+  // 사람만 할 수 있고, 그게 이 게임에서 가장 높은 벽이었다. 회로를 손으로 고친
+  // 제어기만 그래프로 연다.
+  showRules(!e.handEdited);
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = setInterval(updateLive, 140);
 }
@@ -5425,6 +5883,7 @@ function renderPalette() {
     items[j].onclick = (function (kind) {
       return function () {
         if (!nodeAvailable(kind)) { toast(TECHS[NODE_DEFS[kind].tech].name + ' 연구가 필요하다', 'bad'); return; }
+        markGraphHandEdited();
         var wrap = document.getElementById('graphWrap');
         var nx = (wrap.clientWidth / 2 - gpan.x) / gpan.z + (curCtrl.graph.nodes.length % 4) * 14;
         var ny = (wrap.clientHeight / 2 - gpan.y) / gpan.z + (curCtrl.graph.nodes.length % 5) * 16;
@@ -5484,7 +5943,8 @@ function updateCycleInfo(g) {
 // 뜻이 뒤집혔는지 보인다. 게이트·필터·사격허가도 같은 함정이 있어 같이 다룬다.
 function entName(id) {
   var e = entities[id];
-  if (!e) return null;
+  // **'null' 을 화면에 내보내지 않는다.** 문장에 null 이 박히면 그건 문장이 아니다.
+  if (!e) return '(대상 고르기)';
   return BUILDINGS[e.type].name + ' #' + e.id;
 }
 function outputMeaning(g, n) {
@@ -5496,7 +5956,10 @@ function outputMeaning(g, n) {
   var who = (n.kind === 'lamp' || n.kind === 'display') ? null : entName(n.cfg.ent);
 
   // 대상이 없으면 이 노드는 장식이다. 이것이 "배선했는데 아무 반응이 없다" 의 정체다.
-  if (n.kind !== 'lamp' && n.kind !== 'display' && !who) {
+  // **판정은 이름 문자열이 아니라 대상 자체로 한다.** entName 이 사람이 읽을 문구를
+  // 돌려주도록 바꾼 순간 `!who` 가 영원히 거짓이 돼 이 검사가 통째로 죽었다 —
+  // 표시용 함수를 술어로 쓰면 표시를 고칠 때 판정이 조용히 따라 바뀐다.
+  if (n.kind !== 'lamp' && n.kind !== 'display' && !entities[n.cfg.ent]) {
     return { bad: true, text: '대상이 비어 있다 — 배선해도 아무 일도 하지 않는다' };
   }
   if (!fed) {
@@ -5636,6 +6099,7 @@ function buildNodeDom(inner, g, n) {
   // --- 상호작용 ---
   head.querySelector('.x').onclick = function (ev) {
     ev.stopPropagation();
+    markGraphHandEdited();
     graphRemoveNode(g, n.nid);
     renderGraph();
   };
@@ -5747,6 +6211,7 @@ function buildNodeDom(inner, g, n) {
       return function (ev) {
         ev.stopPropagation();
         if (linking) {
+          markGraphHandEdited();
           if (!graphLink(curCtrl.graph, linking.nid, linking.port, nid, port)) toast('자기 자신에는 연결할 수 없다', 'bad');
           linking = null; renderGraph();
         }
@@ -5756,6 +6221,7 @@ function buildNodeDom(inner, g, n) {
       return function (ev) {
         ev.stopPropagation();
         if (linking) return;
+        markGraphHandEdited();
         graphUnlink(curCtrl.graph, nid, port);
         renderGraph();
       };
@@ -5985,6 +6451,359 @@ function loadExample() {
   else toast('예제 배선 완료 — 상자 #' + chest.id + ' 재고로 조립기 #' + asm.id + ' 를 켜고 끈다', 'good');
 }
 
+/* ===================== 57_ruleui.js ===================== */
+// ===========================================================================
+//  57_ruleui.js — 문장(규칙) 편집기 화면
+//
+//  제어기를 열면 **이 화면이 먼저** 나온다. 빈 캔버스에 노드를 놓는 일은 무엇을
+//  만들지 이미 아는 사람만 할 수 있고, 그게 이 게임에서 가장 높은 벽이었다.
+//
+//  규율:
+//   * 문장 → 회로는 되고 회로 → 문장은 안 된다. 그래프를 손대는 순간 그 제어기의
+//     문장 화면은 잠근다. 양쪽을 편집하게 두면 반드시 갈린다(원장: peek≠take).
+//   * 블로킹 모달을 쓰지 않는다. 헤드리스가 통째로 서고 제품 UX 도 나쁘다.
+//   * 고를 수 없는 것은 **왜 못 고르는지** 보여 준다. 연구가 안 됐으면 그렇게 적는다.
+// ===========================================================================
+
+var ruleEditT = null;                 // 값 갱신 타이머
+
+function rulesOn() {
+  // 손으로 회로를 고친 제어기는 문장으로 되돌리지 않는다
+  return !!(curCtrl && !curCtrl.handEdited);
+}
+
+function showRules(on) {
+  var lg = document.getElementById('logic'), rp = document.getElementById('rulePane');
+  if (!lg || !rp) return;
+  if (on) { lg.classList.add('rules'); rp.classList.add('on'); renderRules(); }
+  else { lg.classList.remove('rules'); rp.classList.remove('on'); renderGraph(); }
+  // 안내문도 화면에 맞춰 바꾼다 — 문장 화면에서 "출력을 끌어 배선"이라고 적혀
+  // 있으면 그 자체가 거짓말이다.
+  var hint = document.querySelector('#logicBar .hint');
+  if (hint) {
+    hint.innerHTML = on
+      ? '드롭다운을 골라 문장을 완성하면 그게 그대로 회로가 된다 · <b>대상</b>을 누르면 지도에서 고른다 · 규칙에 <b>이름</b>을 주면 다른 규칙이 그 이름을 조건으로 쓴다'
+      : '출력 → 입력으로 끌어 배선 · 입력 포트 클릭 = 해제 · 배경 드래그 = 이동 · 휠 = 확대 · <b>참 = 0.5 이상</b> (0.4는 거짓) · 값 옆 <b>↑n</b> = 지금까지 올라간 횟수';
+  }
+  var bg = document.getElementById('btnToGraph'), br = document.getElementById('btnToRules');
+  var bx = document.getElementById('btnExample');
+  if (bg) bg.style.display = on ? '' : 'none';
+  if (br) br.style.display = (!on && rulesOn()) ? '' : 'none';
+  if (bx) bx.style.display = on ? 'none' : '';
+}
+
+// 문장 → 회로. 되돌아올 수 있다(아직 손대지 않았으므로).
+function ruleToGraph() {
+  if (!curCtrl) return;
+  compileRules(curCtrl);
+  markLogicDirty();
+  showRules(false);
+  toast('문장이 만든 회로다. 여기서 손대면 문장 화면은 잠긴다.', 'bad');
+}
+function graphToRules() {
+  if (!curCtrl || curCtrl.handEdited) return;
+  showRules(true);
+}
+
+// 그래프를 손으로 고쳤다 — 55_logicui.js 의 편집 경로가 부른다.
+// **여기서 되돌아가는 길을 끊는다.** 조용히 두 표현이 갈리는 것보다 낫다.
+function markGraphHandEdited() {
+  if (!curCtrl || curCtrl.handEdited) return;
+  if (!curCtrl.rules || !curCtrl.rules.length) { curCtrl.handEdited = true; return; }
+  curCtrl.handEdited = true;
+  toast('회로를 직접 고쳤다 — 이 제어기는 이제 문장으로 못 돌아간다', 'bad');
+  var br = document.getElementById('btnToRules');
+  if (br) br.style.display = 'none';
+}
+
+// --- 그리기 -----------------------------------------------------------------
+function renderRules() {
+  var host = document.getElementById('rulePane');
+  if (!host || !curCtrl) return;
+  if (curCtrl.handEdited) {
+    host.innerHTML = '<div class="rlocked"><b>이 제어기는 회로로 직접 편집했다.</b><br>' +
+      '문장과 회로가 서로 다른 말을 하는 것을 막으려고 문장 화면을 잠갔다. ' +
+      '문장으로 다시 하려면 <b>회로의 노드를 전부 지우고</b> 제어기를 다시 열어라.</div>';
+    return;
+  }
+  if (!curCtrl.rules) { curCtrl.rules = []; curCtrl.nextRuleId = 1; }
+  var h = [];
+  if (!curCtrl.rules.length) {
+    h.push('<div class="rnow" style="margin:0 0 10px">무엇을 시키고 싶은지 고르면 문장이 절반쯤 채워져 나온다.</div>');
+    h.push('<div class="rcards">');
+    var cards = RULE_CARDS;
+    for (var c = 0; c < cards.length; c++) {
+      var lock = cards[c].need && !techDone[cards[c].need];
+      h.push('<div class="c' + (lock ? ' locked' : '') + '" data-card="' + cards[c].id + '">' +
+        '<b>' + cards[c].title + '</b><span>' +
+        (lock ? TECHS[cards[c].need].name + ' 연구가 필요하다' : (cards[c].why || '')) +
+        '</span></div>');
+    }
+    h.push('</div>');
+  } else {
+    for (var i = 0; i < curCtrl.rules.length; i++) h.push(ruleCardHtml(curCtrl.rules[i], i));
+    h.push('<button id="rAdd" style="margin-top:2px">+ 규칙 추가</button>');
+  }
+  host.innerHTML = h.join('');
+  bindRuleControls(host);
+  // 머리말은 두 화면이 함께 쓰는 자리다. 문장 화면에서 갱신을 빼먹으면
+  // **직전에 열었던 제어기의 경고가 그대로 남아** 거짓말을 한다(실측).
+  updateCycleInfo(curCtrl.graph);
+  if (ruleEditT) clearInterval(ruleEditT);
+  ruleEditT = setInterval(updateRuleNow, 300);
+}
+
+function selHtml(cls, key, rid, opts, cur) {
+  var o = ['<select class="' + cls + '" data-r="' + rid + '" data-k="' + key + '">'];
+  for (var i = 0; i < opts.length; i++) {
+    o.push('<option value="' + opts[i][0] + '"' + (opts[i][0] === cur ? ' selected' : '') +
+           (opts[i][2] ? ' disabled' : '') + '>' + opts[i][1] + '</option>');
+  }
+  o.push('</select>');
+  return o.join('');
+}
+function numHtml(key, rid, val) {
+  return '<input class="num" type="number" data-r="' + rid + '" data-k="' + key + '" value="' + val + '">';
+}
+function entHtml(key, rid, id, filter) {
+  return '<button class="pick" data-r="' + rid + '" data-pick="' + key + '" data-f="' +
+         filter.join(',') + '">' + entName(id) + '</button>';
+}
+
+function ruleCardHtml(r, i) {
+  var w = r.when, s = RULE_SOURCES[w.src], why = ruleBlockedReason(r);
+  var h = ['<div class="rcard' + (r.enabled ? '' : ' off') + (why ? ' blocked' : '') +
+           '" data-rc="' + r.id + '">'];
+  h.push('<div class="rhead"><span class="rnum">규칙 ' + (i + 1) + '</span>' +
+    '<input class="rname" data-r="' + r.id + '" data-k="name" value="' + (r.name || '') +
+    '" placeholder="이름 (다른 규칙이 부를 때)">' +
+    '<span class="sp"></span>' +
+    '<button data-r="' + r.id + '" data-act="toggle">' + (r.enabled ? '끄기' : '켜기') + '</button>' +
+    '<button data-r="' + r.id + '" data-act="del">삭제</button></div>');
+
+  // 만약 —
+  var srcOpts = RULE_SOURCE_IDS.map(function (k) {
+    var d = RULE_SOURCES[k];
+    return [k, d.label + (d.tech && !techDone[d.tech] ? ' (연구 필요)' : ''), d.tech && !techDone[d.tech]];
+  });
+  h.push('<div class="rline"><span class="kw">만약</span>');
+  if (w.refName) {
+    h.push('<b>[' + w.refName + ']</b> 이면');
+    h.push('<button data-r="' + r.id + '" data-act="unref">다른 것을 보기</button>');
+  } else {
+    h.push(selHtml('', 'when.src', r.id, srcOpts, w.src));
+    if (s && s.needs.indexOf('ent') >= 0) h.push('<span class="kw">중</span>' + entHtml('when.ent', r.id, w.ent, s.entFilter));
+    if (s && s.needs.indexOf('item') >= 0) {
+      h.push(selHtml('', 'when.item', r.id, ITEM_IDS.map(function (k) { return [k, ITEMS[k].name]; }), w.item));
+    }
+    if (s && s.needs.indexOf('radius') >= 0) { h.push('반경'); h.push(numHtml('when.radius', r.id, w.radius)); h.push('칸'); }
+    if (!(s && s.bool)) {
+      h.push('이');
+      h.push(numHtml('when.value', r.id, w.value));
+      h.push('<span class="kw">' + (s ? (s.unit || '') : '') + '</span>');
+      h.push(selHtml('', 'when.cmp', r.id, RULE_CMPS.map(function (c) { return [c.op, c.label]; }), w.cmp));
+    } else h.push('<span class="kw">이면</span>');
+  }
+  h.push('</div>');
+
+  // 그래서 —
+  var t = r.then, ad = RULE_ACTIONS[t.act];
+  var actOpts = RULE_ACTION_IDS.map(function (k) {
+    var d = RULE_ACTIONS[k];
+    return [k, d.label + (d.tech && !techDone[d.tech] ? ' (연구 필요)' : ''), d.tech && !techDone[d.tech]];
+  });
+  h.push('<div class="rline"><span class="kw">그래서</span>');
+  if (ad && ad.entFilter) h.push(entHtml('then.ent', r.id, t.ent, ad.entFilter) + '<span class="kw">을</span>');
+  h.push(selHtml('', 'then.act', r.id, actOpts, t.act));
+  if (ad && ad.verbOn) {
+    h.push(selHtml('', 'then.onWhenTrue', r.id,
+      [['1', ad.verbOn], ['0', ad.verbOff]], t.onWhenTrue === false ? '0' : '1'));
+  }
+  if (ad && ad.text) {
+    h.push('<input data-r="' + r.id + '" data-k="then.label" value="' + (t.label || '') +
+           '" placeholder="화면에 쓸 이름">');
+  }
+  if (ad && ad.twoItems) {
+    h.push('평소' + selHtml('', 'when.item', r.id, ITEM_IDS.map(function (k) { return [k, ITEMS[k].name]; }), w.item));
+    h.push('조건이면' + selHtml('', 'then.item2', r.id, ITEM_IDS.map(function (k) { return [k, ITEMS[k].name]; }), t.item2));
+  }
+  h.push('</div>');
+
+  // 기억 —
+  var memOpts = [];
+  for (var mk in RULE_MEMOS) {
+    var md = RULE_MEMOS[mk];
+    memOpts.push([mk, md.label + (md.tech && !techDone[md.tech] ? ' (연구 필요)' : ''),
+                  md.tech && !techDone[md.tech]]);
+  }
+  h.push('<div class="rline"><span class="kw">기억</span>' +
+    selHtml('', 'memo.kind', r.id, memOpts, r.memo.kind));
+  if (r.memo.kind === 'latch') {
+    h.push('<span class="kw">되돌리는 건</span>');
+    h.push(numHtml('memo.resetValue', r.id, r.memo.resetValue));
+    h.push(selHtml('', 'memo.resetCmp', r.id, RULE_CMPS.map(function (c) { return [c.op, c.label]; }), r.memo.resetCmp));
+    h.push('<span class="kw">· 되돌리기는</span>');
+    h.push(numHtml('memo.everySec', r.id, r.memo.everySec));
+    h.push('<span class="kw">초에 한 번만 (0 = 즉시)</span>');
+  } else if (r.memo.kind === 'count') {
+    h.push(numHtml('memo.times', r.id, r.memo.times) + '<span class="kw">번 넘게</span>');
+  }
+  h.push('</div>');
+
+  h.push('<div class="rnow" data-now="' + r.id + '">' + ruleSentence(r) + '</div>');
+  if (why) h.push('<div class="rwhy">지금은 안 돈다 — ' + why + '</div>');
+  h.push('</div>');
+  return h.join('');
+}
+
+// 지금 이 규칙이 무엇을 보고 무엇을 하고 있는지. 값은 회로에서 직접 읽는다 —
+// 문장이 따로 계산하면 그게 두 번째 런타임이 되고, 반드시 갈린다.
+function updateRuleNow() {
+  if (!curCtrl || !curCtrl.rules || curCtrl.handEdited) return;
+  for (var i = 0; i < curCtrl.rules.length; i++) {
+    var r = curCtrl.rules[i];
+    var el = document.querySelector('[data-now="' + r.id + '"]');
+    if (!el) continue;
+    var txt = ruleSentence(r);
+    var w = r.when, s = RULE_SOURCES[w.src], live = '';
+    if (s && !w.refName) {
+      var v = ruleLiveValue(w);
+      if (v !== null) live = ' &nbsp;·&nbsp; 지금 <b>' + fmt(v, 1) + (s.unit || '') + '</b>';
+    }
+    el.innerHTML = txt + live;
+  }
+}
+// 조건이 읽는 값을 지금 한 번 재 본다 (표시 전용).
+function ruleLiveValue(w) {
+  var s = RULE_SOURCES[w.src];
+  if (!s) return null;
+  var e = w.ent ? entities[w.ent] : null;
+  switch (s.node) {
+    case 'chest': return e ? invCount(e.inv, w.item) : null;
+    case 'invsense': return inventory[w.item] || 0;
+    case 'belt': {
+      if (!e || !e.cells) return null;
+      var acc = {};
+      for (var c = 0; c < e.cells.length; c++) beltContents(e.cells[c], acc);
+      return acc[w.item] || 0;
+    }
+    case 'machine': {
+      if (!e) return null;
+      return s.port === 0 ? (e.working ? 1 : 0)
+           : s.port === 1 ? (e.stallT > 1.5 ? 1 : 0)
+           : Math.round((e.progress || 0) * 100);
+    }
+    case 'power': {
+      var np = netPowerOf(curCtrl);
+      return s.port === 0 ? Math.round(netSatOf(curCtrl) * 100)
+           : s.port === 1 ? Math.round(np.supply)
+           : s.port === 2 ? Math.round(np.demand) : Math.round(np.head);
+    }
+    case 'research': return currentResearch ? Math.round(researchFrac() * 100) : 0;
+    case 'enemy': {
+      var R = Math.max(1, +w.radius || 30), cx = curCtrl.tx + 1, cy = curCtrl.ty + 1, n = 0, near = R;
+      for (var i = 0; i < enemies.length; i++) {
+        var d = dist(enemies[i].x, enemies[i].y, cx, cy);
+        if (d <= R) { n++; if (d < near) near = d; }
+      }
+      return s.port === 0 ? n : Math.round(near * 10) / 10;
+    }
+  }
+  return null;
+}
+
+// --- 조작 -------------------------------------------------------------------
+function ruleById(id) {
+  if (!curCtrl || !curCtrl.rules) return null;
+  for (var i = 0; i < curCtrl.rules.length; i++) if (curCtrl.rules[i].id === id) return curCtrl.rules[i];
+  return null;
+}
+function setPath(obj, path, val) {
+  var ks = path.split('.');
+  while (ks.length > 1) { obj = obj[ks.shift()]; if (!obj) return; }
+  obj[ks[0]] = val;
+}
+// 값이 바뀔 때마다 **곧바로 다시 컴파일한다.** 저장 버튼을 따로 두면 "고쳤는데
+// 왜 안 되지"가 생긴다 — 문장이 곧 회로여야 그 질문 자체가 사라진다.
+function ruleChanged() {
+  compileRules(curCtrl);
+  markLogicDirty();
+  renderRules();
+}
+
+function bindRuleControls(host) {
+  var sels = host.querySelectorAll('select[data-r]');
+  for (var i = 0; i < sels.length; i++) {
+    sels[i].onchange = function () {
+      var r = ruleById(+this.getAttribute('data-r')); if (!r) return;
+      var k = this.getAttribute('data-k'), v = this.value;
+      if (k === 'then.onWhenTrue') v = (v === '1');
+      setPath(r, k, v);
+      ruleChanged();
+    };
+  }
+  var nums = host.querySelectorAll('input[data-r]');
+  for (var j = 0; j < nums.length; j++) {
+    nums[j].onchange = function () {
+      var r = ruleById(+this.getAttribute('data-r')); if (!r) return;
+      var k = this.getAttribute('data-k');
+      setPath(r, k, this.type === 'number' ? (+this.value || 0) : this.value);
+      ruleChanged();
+    };
+  }
+  var btns = host.querySelectorAll('button[data-act]');
+  for (var b = 0; b < btns.length; b++) {
+    btns[b].onclick = function () {
+      var r = ruleById(+this.getAttribute('data-r')); if (!r) return;
+      var act = this.getAttribute('data-act');
+      if (act === 'toggle') r.enabled = !r.enabled;
+      else if (act === 'del') {
+        for (var k = curCtrl.rules.length - 1; k >= 0; k--) {
+          if (curCtrl.rules[k].id === r.id) curCtrl.rules.splice(k, 1);
+        }
+      } else if (act === 'unref') r.when.refName = null;
+      ruleChanged();
+    };
+  }
+  // 대상 고르기 — 지도에서 클릭한다 (노드 편집기와 같은 경로를 쓴다)
+  var picks = host.querySelectorAll('button[data-pick]');
+  for (var p = 0; p < picks.length; p++) {
+    picks[p].onclick = function () {
+      var rid = +this.getAttribute('data-r'), key = this.getAttribute('data-pick');
+      var filter = this.getAttribute('data-f').split(',');
+      startPickFor(filter, function (entId) {
+        var r = ruleById(rid); if (!r) return;
+        setPath(r, key, entId);
+        ruleChanged();
+      });
+    };
+  }
+  var cards = host.querySelectorAll('.c[data-card]');
+  for (var c = 0; c < cards.length; c++) {
+    cards[c].onclick = function () {
+      if (this.classList.contains('locked')) {
+        toast('이 카드는 연구가 먼저다', 'bad'); return;
+      }
+      var id = this.getAttribute('data-card');
+      for (var k = 0; k < RULE_CARDS.length; k++) {
+        if (RULE_CARDS[k].id !== id) continue;
+        if (!curCtrl.rules) { curCtrl.rules = []; curCtrl.nextRuleId = 1; }
+        var r = newRule(curCtrl.nextRuleId++);
+        RULE_CARDS[k].make(r);
+        curCtrl.rules.push(r);
+        ruleChanged();
+        return;
+      }
+    };
+  }
+  var add = document.getElementById('rAdd');
+  if (add) add.onclick = function () {
+    if (!curCtrl.rules) { curCtrl.rules = []; curCtrl.nextRuleId = 1; }
+    curCtrl.rules.push(newRule(curCtrl.nextRuleId++));
+    ruleChanged();
+  };
+}
+
 /* ===================== 60_game.js ===================== */
 // ===========================================================================
 //  60_game.js — 부팅, 고정 스텝 루프, 저장/불러오기, 테스트 API
@@ -6147,6 +6966,11 @@ function serializeEntity(e) {
   if (e.type === 'splitter') o.prio = e.outPrio;
   if (e.type === 'lab') o.res = e.researching;
   if (e.type === 'inserter') { o.ph = e.phase; o.tt = e.t; o.held = e.held; }
+  if (e.type === 'controller') {
+    o.rules = e.rules || [];
+    o.nrid = e.nextRuleId || 1;
+    o.he = !!e.handEdited;
+  }
   if (e.type === 'controller' && e.graph) {
     o.g = {
       nextNid: e.graph.nextNid,
@@ -6262,6 +7086,11 @@ function loadGame(raw) {
       e.filter = e.playerFilter;
       e.inv = o.inv || {}; e.out = o.out || {}; e.recipe = o.rec || null; e.progress = o.prog || 0;
       if (o.lrec) e.lastRecipe = o.lrec;
+      if (e.type === 'controller') {
+        e.rules = o.rules || [];          // 예전 저장본엔 없다 — 그래프만 있는 제어기가 된다
+        e.nextRuleId = o.nrid || (e.rules.length + 1);
+        e.handEdited = !!o.he || (!e.rules.length && !!(o.g && o.g.nodes && o.g.nodes.length));
+      }
       if (o.fuel !== undefined) e.fuel = o.fuel;
       if (o.ammo !== undefined) e.ammo = o.ammo;
       if (o.prio !== undefined) e.outPrio = o.prio;
@@ -6357,6 +7186,9 @@ window.closeTech = closeTech;
 window.closeHelp = closeHelp;
 window.closeLogic = closeLogic;
 window.loadExample = loadExample;
+// 인라인 onclick 은 **전역만 본다** — IIFE 안에 두면 클릭이 조용히 죽는다.
+window.ruleToGraph = ruleToGraph;
+window.graphToRules = graphToRules;
 window.saveGame = saveGame;
 window.loadGame = loadGame;
 
@@ -6431,6 +7263,71 @@ window.__GAME = {
   },
 
   // 로직 그래프 조작 (테스트가 배선을 직접 짠다)
+  // --- 규칙(문장) ---------------------------------------------------------
+  ruleAdd: function (ctrlId, patch) {
+    var e = entities[ctrlId]; if (!e || e.type !== 'controller') return null;
+    if (!e.rules) { e.rules = []; e.nextRuleId = 1; }
+    var r = newRule(e.nextRuleId++);
+    if (patch) deepMerge(r, patch);
+    e.rules.push(r);
+    return r.id;
+  },
+  ruleSet: function (ctrlId, rid, patch) {
+    var e = entities[ctrlId]; if (!e || !e.rules) return false;
+    for (var i = 0; i < e.rules.length; i++) {
+      if (e.rules[i].id === rid) { deepMerge(e.rules[i], patch); return true; }
+    }
+    return false;
+  },
+  ruleRemove: function (ctrlId, rid) {
+    var e = entities[ctrlId]; if (!e || !e.rules) return false;
+    for (var i = e.rules.length - 1; i >= 0; i--) if (e.rules[i].id === rid) { e.rules.splice(i, 1); return true; }
+    return false;
+  },
+  ruleList: function (ctrlId) {
+    var e = entities[ctrlId]; if (!e || !e.rules) return null;
+    return e.rules.map(function (r) {
+      return { id: r.id, name: r.name, enabled: r.enabled,
+               sentence: ruleSentence(r), blocked: ruleBlockedReason(r) };
+    });
+  },
+  ruleCompile: function (ctrlId) {
+    var e = entities[ctrlId]; if (!e || e.type !== 'controller') return null;
+    var res = compileRules(e);
+    markLogicDirty();
+    return res;
+  },
+  ruleHandEdited: function (ctrlId) {
+    var e = entities[ctrlId]; return e ? !!e.handEdited : null;
+  },
+  ruleCards: function () {
+    return RULE_CARDS.map(function (c) {
+      return { id: c.id, title: c.title, why: c.why || '',
+               locked: !!(c.need && !techDone[c.need]) };
+    });
+  },
+  ruleFromCard: function (ctrlId, cardId) {
+    var e = entities[ctrlId]; if (!e || e.type !== 'controller') return null;
+    for (var i = 0; i < RULE_CARDS.length; i++) {
+      if (RULE_CARDS[i].id !== cardId) continue;
+      if (RULE_CARDS[i].need && !techDone[RULE_CARDS[i].need]) return null;
+      if (!e.rules) { e.rules = []; e.nextRuleId = 1; }
+      var r = newRule(e.nextRuleId++);
+      RULE_CARDS[i].make(r);
+      e.rules.push(r);
+      return r.id;
+    }
+    return null;
+  },
+
+  // 노드의 좌표까지 본다 — 좌표가 곧 평가 순서라 배치가 흔들리면 회로가 달라진다
+  gNodes: function (ctrlId) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return [];
+    return e.graph.nodes.map(function (n) {
+      return { nid: n.nid, kind: n.kind, x: Math.round(n.x), y: Math.round(n.y) };
+    });
+  },
+
   gAdd: function (ctrlId, kind, x, y) {
     var e = entities[ctrlId]; if (!e || !e.graph) return null;
     return graphAddNode(e.graph, kind, x || 0, y || 0).nid;
@@ -6858,6 +7755,13 @@ window.__GAME = {
     closeHelp: function () { closeHelp(); },
     openHelp: function () { document.getElementById('help').style.display = 'block'; },
     openLogic: function (id) { var e = entities[id]; if (!e) return false; openLogic(e); return true; },
+    // 제어기는 문장 화면이 먼저 열린다. 회로 DOM 을 보는 시험은 이걸로 전환한다.
+    showGraph: function () { showRules(false); return true; },
+    showRules: function () { showRules(true); return true; },
+    rulesVisible: function () {
+      var rp = document.getElementById('rulePane');
+      return !!rp && rp.classList.contains('on');
+    },
     closeLogic: function () { closeLogic(); },
     loadExample: function () { loadExample(); return curCtrl ? curCtrl.graph.nodes.length : 0; },
     openTech: function () { document.getElementById('tech').style.display = 'block'; renderTech(); },

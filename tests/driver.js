@@ -1685,6 +1685,128 @@
       chk('build.chargesCost', G.state().inventory['brick'] === beforeB - 5,
         '용광로 build → 벽돌 ' + beforeB + ' → ' + G.state().inventory['brick'] + ' (5 차감돼야)');
 
+      // ================= 8.35 문장(규칙)이 진짜 회로가 되는가 ===============
+      // 문장 편집기는 **두 번째 런타임이 아니다** — 노드를 대신 놓아 줄 뿐이다.
+      // 그러니 판정도 "문장을 만들었나"가 아니라 **세계가 실제로 움직였나**로 한다.
+      G.reset(8100); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(true); G.research('logic-mem');
+      var rc1 = G.place('controller', 40, 40, 0);
+      var rBox = G.place('chest', 44, 40, 0);
+      var rAsm = G.place('assembler', 48, 40, 0);
+      G.setRecipe(rAsm, 'gear');
+      // "상자의 철판이 50개 미만이면 조립기를 켠다, 다시 200개 넘으면 끈다"
+      var r1 = G.ruleAdd(rc1, { name: '철판부족',
+        when: { src: 'chest', ent: rBox, item: 'iron-plate', cmp: '<', value: 50 },
+        memo: { kind: 'latch', resetCmp: '>', resetValue: 200 },
+        then: { act: 'run', ent: rAsm, onWhenTrue: true } });
+      var comp = G.ruleCompile(rc1);
+      chk('rule.compilesToNodes', comp && comp.nodes >= 6 && comp.skipped.length === 0,
+        '규칙 1개 → 노드 ' + (comp ? comp.nodes : 0) + '개 · 건너뛴 것 ' +
+        (comp ? comp.skipped.length : '?') + ' (상자센서·상수2·비교2·래치·가동 = 최소 7)');
+
+      // 상자를 비운 채 돌리면 조립기가 켜져야 한다
+      G.fillChest(rBox, 'iron-plate', 10);
+      G.run(0.2);
+      var onWhenLow = G.ent(rAsm).enabled;
+      // 200개를 넘기면 꺼져야 한다 — 히스테리시스의 반대 방향
+      G.fillChest(rBox, 'iron-plate', 300);
+      G.run(0.2);
+      var offWhenHigh = G.ent(rAsm).enabled;
+      chk('rule.worldActuallyMoves', onWhenLow === true && offWhenHigh === false,
+        '철판 10개 → 조립기 ' + (onWhenLow ? '켜짐' : '꺼짐') + '(켜져야) · 310개 → ' +
+        (offWhenHigh ? '켜짐' : '꺼짐') + '(꺼져야) · 문장이 실제로 세계를 움직였는가');
+
+      // **음성 대조군** — 규칙을 끄면 지배가 풀려 기계가 플레이어 설정으로 돌아온다.
+      // 이게 안 되면 위 검사는 "원래 그 상태였다"를 통과시킨 것일 수 있다.
+      G.ruleSet(rc1, r1, { enabled: false });
+      G.ruleCompile(rc1);
+      G.run(0.2);
+      chk('rule.disabledReleasesControl',
+        G.ent(rAsm).enabled === true && G.gInfo(rc1).nodes === 0,
+        '규칙을 끄면 → 노드 ' + G.gInfo(rc1).nodes + '개(0이어야) · 조립기 ' +
+        (G.ent(rAsm).enabled ? '켜짐' : '꺼짐') + '(플레이어 설정인 켜짐으로 돌아와야)');
+
+      // **한 규칙의 배치는 그 규칙의 자리만 보고 정해져야 한다.**
+      // 좌표가 곧 평가 순서라(graphCompile), 앞 규칙이 커졌다고 뒤 규칙이 밀리면
+      // 손도 안 댄 규칙의 평가 순서가 조용히 바뀐다 — 노드를 지웠다 다시 만들면
+      // 순서가 뒤로 밀리던 그 버그와 같은 부류다.
+      // (처음엔 "같은 문장 두 번 컴파일" 로만 쟀는데, 그건 규칙이 하나면 아무것도
+      //  구별하지 못했다. 돌연변이 검정에서 SURVIVED 로 드러났다.)
+      function ruleTwoY(firstMemo) {
+        G.reset(8101); G.clearEntities(); G.giveAll(9999); G.research('logic-mem');
+        var c = G.place('controller', 40, 40, 0);
+        var b2 = G.place('chest', 44, 40, 0);
+        var a2 = G.place('assembler', 48, 40, 0);
+        // 규칙 1 — memo 에 따라 노드 수가 달라진다
+        G.ruleAdd(c, { when: { src: 'chest', ent: b2, item: 'iron-plate', cmp: '<', value: 50 },
+                       memo: { kind: firstMemo, resetCmp: '>', resetValue: 200 },
+                       then: { act: 'run', ent: a2 } });
+        // 규칙 2 — 두 판에서 **완전히 동일**하다
+        var r2 = G.ruleAdd(c, { when: { src: 'powerSat', cmp: '<', value: 95 },
+                                then: { act: 'run', ent: a2, onWhenTrue: false } });
+        G.ruleCompile(c);
+        // 규칙 2 가 만든 노드들의 좌표 (규칙 1 의 크기와 무관해야 한다)
+        var ys = G.gNodes(c).filter(function (n) { return n.y >= 190; })
+                            .map(function (n) { return n.x + ',' + n.y; }).sort().join(' | ');
+        return { ys: ys, order: G.gInfo(c).order.join(','), r2: r2 };
+      }
+      var thin = ruleTwoY('none');       // 규칙 1 이 작을 때
+      var fat = ruleTwoY('latch');       // 규칙 1 이 클 때
+      chk('rule.layoutIndependentOfOtherRules',
+        thin.ys.length > 0 && thin.ys === fat.ys,
+        '규칙 1 을 크게 바꿔도 규칙 2 의 노드 좌표는 그대로여야 한다
+' +
+        '        작을 때 [' + thin.ys + ']
+        클 때  [' + fat.ys + ']');
+      // 음성 대조군 — 같은 문장을 두 번 컴파일하면 완전히 같아야 한다.
+      // 이게 없으면 위 검사는 "좌표를 아예 안 본다" 도 통과시킨다.
+      var again = ruleTwoY('none');
+      chk('rule.deterministicLayout', again.ys === thin.ys && again.order === thin.order,
+        '같은 문장 두 번 컴파일 → 좌표·순서 동일=' +
+        (again.ys === thin.ys && again.order === thin.order) +
+        ' · 순서 [' + thin.order + ']');
+
+      // 연구 안 된 노드로는 컴파일하지 않는다 — 잠긴 노드는 evalNode 가 조용히 0을
+      // 낸다. "문장은 맞는데 아무 일도 안 일어남"이 이 게임에서 제일 나쁜 실패다.
+      G.reset(8102); G.clearEntities(); G.giveAll(9999);   // logic-mem 연구 안 함
+      var rc2 = G.place('controller', 40, 40, 0);
+      var box2 = G.place('chest', 44, 40, 0);
+      G.ruleAdd(rc2, { when: { src: 'chest', ent: box2, item: 'iron-plate', cmp: '<', value: 50 },
+                       memo: { kind: 'latch' }, then: { act: 'run', ent: box2 } });
+      var comp2 = G.ruleCompile(rc2);
+      var lst = G.ruleList(rc2);
+      chk('rule.locksBehindResearch',
+        comp2.skipped.length === 1 && comp2.nodes === 0 && !!lst[0].blocked,
+        '기억소자 연구 전 래치 규칙 → 건너뜀 ' + comp2.skipped.length + '건 · 노드 ' +
+        comp2.nodes + '개 · 이유 "' + (lst[0].blocked || '없음') + '" (조용히 0을 내면 안 된다)');
+      G.research('logic-mem');
+      var comp3 = G.ruleCompile(rc2);
+      chk('rule.unlocksAfterResearch', comp3.skipped.length === 0 && comp3.nodes > 0,
+        '연구 후 다시 컴파일 → 노드 ' + comp3.nodes + '개 (조건 발생 확인)');
+
+      // 규칙끼리 이름으로 잇기 — 배선 없이 조합하는 길
+      G.reset(8103); G.clearEntities(); G.giveAll(9999); G.powerCheat(true);
+      var rc3 = G.place('controller', 40, 40, 0);
+      var lab3 = G.place('lab', 48, 44, 0);
+      G.ruleAdd(rc3, { name: '전기부족',
+        when: { src: 'powerHead', cmp: '<', value: 999999 },   // 항상 참
+        then: { act: 'display', label: '전기부족' } });
+      G.ruleAdd(rc3, { when: { refName: '전기부족' },
+                       then: { act: 'run', ent: lab3, onWhenTrue: false } });
+      G.ruleCompile(rc3);
+      G.run(0.2);
+      chk('rule.rulesReferenceByName', G.ent(lab3).enabled === false,
+        '규칙2가 규칙1의 이름을 읽어 연구소를 끔 → ' +
+        (G.ent(lab3).enabled ? '켜짐(실패)' : '꺼짐(성공)'));
+
+      // 저장/복원에 문장이 실린다 — 안 실으면 불러오기 한 번에 회로만 남는다
+      var svR2 = G.save();
+      G.reset(8103); G.load(svR2);
+      var after = G.ruleList(rc3);
+      chk('rule.survivesSave', !!after && after.length === 2 && after[0].name === '전기부족',
+        '저장→복원 후 규칙 ' + (after ? after.length : 0) + '개 · 첫 규칙 이름 "' +
+        (after && after[0] ? after[0].name : '') + '"');
+
       // ================= 8.4 철거 환급은 단위를 지킨다 =====================
       // 터렛의 e.ammo 는 **발** 단위(탄창 1개 = 10발)인데 환급은 그 숫자를 그대로
       // 탄창으로 돌려줬다 — 철거가 10배 복사기였다. 발전기는 반대로 e.fuel 이

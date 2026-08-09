@@ -159,6 +159,11 @@ function serializeEntity(e) {
   if (e.type === 'splitter') o.prio = e.outPrio;
   if (e.type === 'lab') o.res = e.researching;
   if (e.type === 'inserter') { o.ph = e.phase; o.tt = e.t; o.held = e.held; }
+  if (e.type === 'controller') {
+    o.rules = e.rules || [];
+    o.nrid = e.nextRuleId || 1;
+    o.he = !!e.handEdited;
+  }
   if (e.type === 'controller' && e.graph) {
     o.g = {
       nextNid: e.graph.nextNid,
@@ -274,6 +279,11 @@ function loadGame(raw) {
       e.filter = e.playerFilter;
       e.inv = o.inv || {}; e.out = o.out || {}; e.recipe = o.rec || null; e.progress = o.prog || 0;
       if (o.lrec) e.lastRecipe = o.lrec;
+      if (e.type === 'controller') {
+        e.rules = o.rules || [];          // 예전 저장본엔 없다 — 그래프만 있는 제어기가 된다
+        e.nextRuleId = o.nrid || (e.rules.length + 1);
+        e.handEdited = !!o.he || (!e.rules.length && !!(o.g && o.g.nodes && o.g.nodes.length));
+      }
       if (o.fuel !== undefined) e.fuel = o.fuel;
       if (o.ammo !== undefined) e.ammo = o.ammo;
       if (o.prio !== undefined) e.outPrio = o.prio;
@@ -369,6 +379,9 @@ window.closeTech = closeTech;
 window.closeHelp = closeHelp;
 window.closeLogic = closeLogic;
 window.loadExample = loadExample;
+// 인라인 onclick 은 **전역만 본다** — IIFE 안에 두면 클릭이 조용히 죽는다.
+window.ruleToGraph = ruleToGraph;
+window.graphToRules = graphToRules;
 window.saveGame = saveGame;
 window.loadGame = loadGame;
 
@@ -443,6 +456,71 @@ window.__GAME = {
   },
 
   // 로직 그래프 조작 (테스트가 배선을 직접 짠다)
+  // --- 규칙(문장) ---------------------------------------------------------
+  ruleAdd: function (ctrlId, patch) {
+    var e = entities[ctrlId]; if (!e || e.type !== 'controller') return null;
+    if (!e.rules) { e.rules = []; e.nextRuleId = 1; }
+    var r = newRule(e.nextRuleId++);
+    if (patch) deepMerge(r, patch);
+    e.rules.push(r);
+    return r.id;
+  },
+  ruleSet: function (ctrlId, rid, patch) {
+    var e = entities[ctrlId]; if (!e || !e.rules) return false;
+    for (var i = 0; i < e.rules.length; i++) {
+      if (e.rules[i].id === rid) { deepMerge(e.rules[i], patch); return true; }
+    }
+    return false;
+  },
+  ruleRemove: function (ctrlId, rid) {
+    var e = entities[ctrlId]; if (!e || !e.rules) return false;
+    for (var i = e.rules.length - 1; i >= 0; i--) if (e.rules[i].id === rid) { e.rules.splice(i, 1); return true; }
+    return false;
+  },
+  ruleList: function (ctrlId) {
+    var e = entities[ctrlId]; if (!e || !e.rules) return null;
+    return e.rules.map(function (r) {
+      return { id: r.id, name: r.name, enabled: r.enabled,
+               sentence: ruleSentence(r), blocked: ruleBlockedReason(r) };
+    });
+  },
+  ruleCompile: function (ctrlId) {
+    var e = entities[ctrlId]; if (!e || e.type !== 'controller') return null;
+    var res = compileRules(e);
+    markLogicDirty();
+    return res;
+  },
+  ruleHandEdited: function (ctrlId) {
+    var e = entities[ctrlId]; return e ? !!e.handEdited : null;
+  },
+  ruleCards: function () {
+    return RULE_CARDS.map(function (c) {
+      return { id: c.id, title: c.title, why: c.why || '',
+               locked: !!(c.need && !techDone[c.need]) };
+    });
+  },
+  ruleFromCard: function (ctrlId, cardId) {
+    var e = entities[ctrlId]; if (!e || e.type !== 'controller') return null;
+    for (var i = 0; i < RULE_CARDS.length; i++) {
+      if (RULE_CARDS[i].id !== cardId) continue;
+      if (RULE_CARDS[i].need && !techDone[RULE_CARDS[i].need]) return null;
+      if (!e.rules) { e.rules = []; e.nextRuleId = 1; }
+      var r = newRule(e.nextRuleId++);
+      RULE_CARDS[i].make(r);
+      e.rules.push(r);
+      return r.id;
+    }
+    return null;
+  },
+
+  // 노드의 좌표까지 본다 — 좌표가 곧 평가 순서라 배치가 흔들리면 회로가 달라진다
+  gNodes: function (ctrlId) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return [];
+    return e.graph.nodes.map(function (n) {
+      return { nid: n.nid, kind: n.kind, x: Math.round(n.x), y: Math.round(n.y) };
+    });
+  },
+
   gAdd: function (ctrlId, kind, x, y) {
     var e = entities[ctrlId]; if (!e || !e.graph) return null;
     return graphAddNode(e.graph, kind, x || 0, y || 0).nid;
@@ -870,6 +948,13 @@ window.__GAME = {
     closeHelp: function () { closeHelp(); },
     openHelp: function () { document.getElementById('help').style.display = 'block'; },
     openLogic: function (id) { var e = entities[id]; if (!e) return false; openLogic(e); return true; },
+    // 제어기는 문장 화면이 먼저 열린다. 회로 DOM 을 보는 시험은 이걸로 전환한다.
+    showGraph: function () { showRules(false); return true; },
+    showRules: function () { showRules(true); return true; },
+    rulesVisible: function () {
+      var rp = document.getElementById('rulePane');
+      return !!rp && rp.classList.contains('on');
+    },
     closeLogic: function () { closeLogic(); },
     loadExample: function () { loadExample(); return curCtrl ? curCtrl.graph.nodes.length : 0; },
     openTech: function () { document.getElementById('tech').style.display = 'block'; renderTech(); },
