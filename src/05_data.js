@@ -119,6 +119,16 @@ var BUILDINGS = {
   'boiler':    { name: '보일러', w: 2, h: 2, cost: { 'pipe-item': 4, 'brick': 5, 'iron-plate': 4 },
                  tech: 'steel', fluid: true,
                  desc: '석탄을 태워 물 60/s 를 증기 60/s 로. 1.8 MW 를 먹는다 — 증기기관 2대분.' },
+  // --- 철도 (강철 제련으로 함께 열린다) --------------------------------------
+  'rail':      { name: '레일', w: 1, h: 1, cost: { 'steel': 1, 'stone': 1 }, tech: 'steel',
+                 desc: '열차가 다니는 길. 맞닿은 레일이 이어진다 — 직각 코너까지 된다.' },
+  'station':   { name: '역', w: 1, h: 1, cost: { 'steel': 2, 'circuit': 2, 'iron-plate': 5 }, tech: 'steel',
+                 desc: '레일 옆에 세운다. 열차가 여기 서고, 인서터로 싣고 내린다. ' +
+                       '제어기의 [열차 출발]을 물리면 배차를 회로로 정할 수 있다.' },
+  'train':     { name: '열차', w: 1, h: 1, cost: { 'steel': 10, 'gear': 10, 'circuit': 4 }, tech: 'steel',
+                 onRail: true,
+                 desc: '★ 레일 위에 놓는다. 역을 순서대로 돌며 2000개까지 나른다. ' +
+                       '8 타일/s — 벨트보다 4배 빠르다.' },
   'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
                  tech: 'steel', fluid: true,
                  desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
@@ -147,6 +157,12 @@ var SPEC = {
   engineSteam: 30,            // 증기/s (steam engine)
   engineOutput: 900,          // kW    (steam engine)
   fluidPerTile: 100,          // 한 칸이 담는 유체 (pipe)
+  // 기차 — **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
+  // 160타일이라 그대로 쓰면 2초에 횡단한다. 8 타일/s 면 횡단에 20초 — 벨트(1.875)보다
+  // 4.3배 빠르고, 먼 광맥을 쓸 이유가 되면서 화면에서 눈으로 따라갈 수 있다.
+  trainSpeed: 8,              // 타일/s
+  trainCargoCap: 2000,        // 화차 한 칸 (상자 600의 3.3배 — 한 번에 옮길 값이 있어야 한다)
+  trainDwell: 5,              // 정차 후 자동 출발까지(초). 제어기가 물리면 그쪽이 이긴다
   poleSupply: 2,              // 중심에서 ±2 → 5x5
   poleReach: 7.5,             // 전주끼리 연결되는 거리(타일)
   chestCap: 600,

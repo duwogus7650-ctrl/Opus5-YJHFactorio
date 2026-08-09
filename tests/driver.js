@@ -2754,6 +2754,180 @@
         '저장→복원 후 청사진 ' + (bpAfter ? bpAfter.count + '개 · ' + bpAfter.w + 'x' + bpAfter.h : '없음') +
         ' (3개 7x7 이어야)');
 
+      // ================= 11.8 기차 =======================================
+      // 오라클: 속도 8타일/s(설계값, SPEC.trainSpeed) · 화물 상한 2000 ·
+      // 정차 후 자동 출발 5초. 그리고 **화물은 옮겨지는 것이지 생기는 것이 아니다.**
+      function trainRig(seed, len) {
+        G.reset(seed); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+        G.powerCheat(true); G.research('logistics'); G.research('steel');
+        var r = { rails: [] };
+        for (var i = 0; i < len; i++) r.rails.push(G.place('rail', 40 + i, 40, 0));
+        r.stA = G.place('station', 40, 41, 0);            // (40,40) 레일에 붙는다
+        r.stB = G.place('station', 40 + len - 1, 41, 0);  // 반대쪽 끝
+        r.train = G.trainAdd(40, 40);
+        return r;
+      }
+      var trR = trainRig(8400, 21);      // 40..60 → 20타일 구간
+      // 모델 쪽 검사를 **UI 를 거치지 않고** 직접 잰다. 클릭 경로에도 같은 검사가
+      // 있어서(이중 방어), 한쪽만 깨면 다른 쪽이 가려 준다 — 그러면 어느 쪽도
+      // 검정되지 않는다. 각 층을 그 층에서 잰다.
+      var badTrain = G.trainAdd(70, 70);            // 레일이 아닌 빈 땅
+      var afterBadAdd = G.trainList().length;
+      var trList0 = G.trainList();
+      chk('train.addRejectsNonRail',
+        badTrain === null && afterBadAdd === 1,
+        '빈 땅에 열차 추가 → ' + JSON.stringify(badTrain) + ' (null 이어야) · 열차 수 ' +
+        afterBadAdd + '대 (레일 위 1대만 남아야)');
+      chk('train.rigBuilt',
+        !!trR.stA && !!trR.stB && !!trR.train && trList0.length === 1 &&
+        G.stationInfo(trR.stA).hasTrain === true,
+        '레일 21칸 + 역 2개 + 열차 1대 → 열차 ' + trList0.length + '대 · A역에 정차 ' +
+        G.stationInfo(trR.stA).hasTrain + ' (레일 옆 역에 붙어야 한다)');
+
+      // **속도 오라클.** 정차 5초 뒤 자동 출발 → 20타일을 8타일/s 로 2.5초.
+      // 출발 시점을 정확히 알기 위해 틱 단위로 지켜본다.
+      var moveStart = -1, arrive = -1;
+      for (var tt2 = 0; tt2 < 900; tt2++) {
+        G.tickOnce();
+        var tl = G.trainList()[0];
+        if (moveStart < 0 && tl.moving) moveStart = tt2;
+        if (moveStart >= 0 && !tl.moving && arrive < 0) { arrive = tt2; break; }
+      }
+      var travelSec = (arrive - moveStart) / 60;
+      // **오라클은 게임 밖에 있어야 한다.** 처음엔 SP.trainSpeed 로 기대값을 만들었는데,
+      // 그건 게임의 상수를 게임과 대조하는 것이라 값을 8에서 12로 바꿔도 양변이 같이
+      // 움직여 영원히 통과한다(돌연변이 MISS 로 확인). 설계값 8·5 를 여기 **숫자로**
+      // 박는다 — 게임의 수치를 바꾸려면 이 줄도 같이 고치라는 뜻이고, 그게 오라클이다.
+      var TRAIN_SPEED_ORACLE = 8, TRAIN_DWELL_ORACLE = 5;
+      chk('train.speedMatchesSpec',
+        moveStart >= 0 && arrive > moveStart &&
+        Math.abs(travelSec - 20 / TRAIN_SPEED_ORACLE) < 0.12 &&
+        Math.abs(moveStart / 60 - TRAIN_DWELL_ORACLE) < 0.2,
+        '20타일 주행 ' + travelSec.toFixed(3) + '초 (오라클 20 ÷ ' + TRAIN_SPEED_ORACLE + ' = ' +
+        (20 / TRAIN_SPEED_ORACLE).toFixed(3) + ') · 출발까지 ' + (moveStart / 60).toFixed(2) +
+        '초 (오라클 ' + TRAIN_DWELL_ORACLE + '초)');
+      var trEnd = G.trainList()[0];
+      chk('train.arrivesAtNextStation',
+        Math.round(trEnd.x) === 60 && Math.round(trEnd.y) === 40,
+        '도착 위치 (' + Math.round(trEnd.x) + ',' + Math.round(trEnd.y) +
+        ') — B역 앞 (60,40) 이어야');
+
+      // dt 를 곱했는가 — 같은 게임시간을 다르게 쪼개도 같은 거리
+      function trainRunDist(seed, big) {
+        var r = trainRig(seed, 41);
+        for (var w = 0; w < 320; w++) { G.tickOnce(); if (G.trainList()[0].moving) break; }
+        var x0 = G.trainList()[0].x;
+        if (big) { for (var q = 0; q < 4; q++) G.tickWith(0.25); }
+        else G.run(1);
+        return G.trainList()[0].x - x0;
+      }
+      var trFine = trainRunDist(8401, false), trCoarse = trainRunDist(8402, true);
+      chk('train.dtInvariant',
+        Math.abs(trFine - trCoarse) < 0.05 && Math.abs(trFine - 8) < 0.3,
+        '1초를 60틱으로 → ' + trFine.toFixed(3) + '타일 · 4틱으로 → ' + trCoarse.toFixed(3) +
+        ' (둘 다 8 이어야 · 다르면 dt 를 안 곱한 것)');
+
+      // **화물은 옮겨지는 것이지 생기는 것이 아니다.** 인서터로 싣고, 반대편에서
+      // 내려서, 세계 총량이 그대로인지 본다.
+      var trC = trainRig(8403, 11);
+      // 상자(40,38) → 인서터(40,39, 남향) → 레일(40,40) 위 열차
+      var srcChest = G.place('chest', 40, 38, 0);
+      G.fillChest(srcChest, 'iron-plate', 40);
+      var loadIns = G.place('inserter', 40, 39, 2);
+      var polT = G.place('pole', 41, 39, 0);
+      var srcBefore = G.ent(srcChest).inv['iron-plate'] || 0;
+      void trC;
+      G.run(6);                                          // 싣는다 (정차 5초 + 여유)
+      var carried = G.trainList()[0].cargo;
+      var srcAfter = G.ent(srcChest).inv['iron-plate'] || 0;
+      chk('train.inserterLoadsMovesNotCreates',
+        !!loadIns && !!polT && carried > 0 && (srcBefore - srcAfter) === carried,
+        '상자 ' + srcBefore + ' → ' + srcAfter + '개 · 열차 화물 ' + carried +
+        '개 (줄어든 만큼만 실려야 · 복제면 여기가 어긋난다)');
+
+      // 음성 대조군 — 움직이는 동안에는 못 싣는다(허공에 넣으면 텔레포트다).
+      // **몇 초 뒤일 거라고 짐작하지 않고** 실제로 움직이는 순간을 기다려 잡는다 —
+      // 처음엔 4초 뒤라고 가정했다가 이미 도착해 버린 상태를 재고 있었다.
+      // **노선 한가운데**에 인서터를 둔다. 출발 타일에서만 재면 열차가 그 칸을
+      // 떠나기까지 0.125초(8타일/s)뿐이라, '움직여도 싣는' 구현이 그 창을 대부분
+      // 비켜 간다 — 실제로 그 돌연변이가 살아남았다. 지나가는 칸에 두고 여러 왕복을
+      // 돌리면, 결정론적 시뮬이라 실으려는 구현은 반드시 한 번은 싣는다.
+      var midChest = G.place('chest', 45, 38, 0);
+      G.fillChest(midChest, 'iron-plate', 60);
+      G.place('inserter', 45, 39, 2);          // (45,38) → (45,40) 레일 = 노선 한가운데
+      G.place('pole', 46, 39, 0);
+      var midBefore = G.ent(midChest).inv['iron-plate'] || 0;
+      var sawMoving = 0;
+      for (var mv = 0; mv < 3600; mv++) {      // 60초 = 여러 왕복
+        G.tickOnce();
+        if (G.trainList()[0].moving) sawMoving++;
+      }
+      var midAfter = G.ent(midChest).inv['iron-plate'] || 0;
+      chk('train.noLoadingWhileMoving',
+        !!midChest && sawMoving > 300 && midAfter === midBefore,
+        '노선 한가운데 인서터 · 60초(이동 ' + sawMoving + '틱 관측) → 그 상자 ' +
+        midBefore + ' → ' + midAfter + '개 (안 줄어야 · 지나가는 열차에 실으면 텔레포트다)');
+
+      // **제어기가 붙잡을 수 있는가** — 이 계를 이 게임에 넣는 이유다.
+      // 기본값이 '언젠가는 간다' 이므로, 기본값과 **반대 방향**으로 잰다:
+      // 출발 허가를 거짓으로 물려 두면 정차 시간이 한참 지나도 못 떠나야 한다.
+      var trH = trainRig(8404, 11);
+      var hCtl = G.place('controller', 44, 43, 0);
+      var hZero = G.gAdd(hCtl, 'const', 10, 10); G.gCfg(hCtl, hZero, 'value', 0);
+      var hGo = G.gAdd(hCtl, 'traingo', 300, 10); G.gCfg(hCtl, hGo, 'ent', trH.stA);
+      G.gLink(hCtl, hZero, 0, hGo, 0);
+      G.run(12);                                         // 정차 5초의 두 배 넘게
+      var heldTrain = G.trainList()[0];
+      var stInfo = G.stationInfo(trH.stA);
+      chk('train.controllerCanHold',
+        heldTrain.moving === false && Math.round(heldTrain.x) === 40 &&
+        stInfo.ctl === true && stInfo.hold === true,
+        '출발 허가 거짓으로 12초 → 이동중 ' + heldTrain.moving + ' · 위치 x=' +
+        Math.round(heldTrain.x) + ' (40에 붙잡혀야 · 기본값은 5초 뒤 출발이다) · ' +
+        '역 지배중 ' + stInfo.ctl + ' 보류 ' + stInfo.hold);
+
+      // 허가를 참으로 바꾸면 곧바로 떠난다 (조건 발생 확인)
+      G.gCfg(hCtl, hZero, 'value', 1);
+      G.run(0.5);
+      chk('train.controllerCanRelease',
+        G.trainList()[0].moving === true,
+        '허가를 참으로 → 이동중 ' + G.trainList()[0].moving + ' (즉시 떠나야)');
+
+      // 노드를 지우면 지배가 풀린다 — 유령 지배 방지(다른 출력 축과 같은 규약)
+      G.gRemove(hCtl, hGo);
+      G.run(0.2);
+      chk('train.releasesControlWhenNodeRemoved',
+        G.stationInfo(trH.stA).ctl === false,
+        '출발 노드를 지우면 역 지배중 ' + G.stationInfo(trH.stA).ctl + ' (false 여야)');
+
+      // 레일이 끊기면 안 간다 — 억지로 가로지르지 않는다
+      var trX = trainRig(8405, 11);
+      G.remove(trX.rails[5], false);                     // 가운데를 끊는다
+      G.run(8);
+      var stuck = G.trainList()[0];
+      // 사유는 '경로 없음' 이 아니라 '갈 곳이 없다(역 1개)' 다 — 역 목록 자체가
+      // **닿을 수 있는 역만** 담기 때문이다. 그쪽이 더 정확한 진단이라 그대로 둔다
+      // (railPath 뒤의 '경로 없음' 분기는 그 사이에 레일이 철거되는 경우의 방어다).
+      chk('train.brokenRailStopsIt',
+        stuck.moving === false && Math.round(stuck.x) === 40 &&
+        stuck.why.indexOf('갈 곳이 없다') >= 0,
+        '레일 한 칸 철거 → 이동중 ' + stuck.moving + ' · 위치 x=' + Math.round(stuck.x) +
+        ' · 사유 "' + stuck.why + '" (닿는 역이 없어야 · 끊긴 길을 건너뛰면 안 된다)');
+
+      // 저장은 열차와 화물을 들고 가야 한다
+      var trS = trainRig(8406, 11);
+      var sChest = G.place('chest', 40, 38, 0);
+      G.fillChest(sChest, 'iron-plate', 30);
+      G.place('inserter', 40, 39, 2); G.place('pole', 41, 39, 0);
+      G.run(4);
+      var beforeCargo = G.trainList()[0].cargo;
+      var rawT = G.saveRaw(); G.load(rawT); G.run(0.05);
+      var afterList = G.trainList();
+      chk('train.survivesSave',
+        beforeCargo > 0 && afterList.length === 1 && afterList[0].cargo === beforeCargo,
+        '저장 전 화물 ' + beforeCargo + ' → 복원 후 열차 ' + afterList.length + '대 · 화물 ' +
+        (afterList[0] ? afterList[0].cargo : '없음') + ' (같아야)');
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

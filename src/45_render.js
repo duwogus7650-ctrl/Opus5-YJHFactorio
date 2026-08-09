@@ -331,6 +331,36 @@ function drawEntity(e) {
     // 파이프는 벨트처럼 1칸짜리라 그림자·몸통 규격을 안 쓴다. 이웃한 유체 설비
     // 쪽으로만 목을 뻗어, **어디가 이어졌는지 화면에서 바로 보이게** 한다 —
     // 유체망은 맞닿음이 규칙이므로 그게 곧 규칙의 시각화다.
+    case 'rail': {
+      // 침목 + 두 줄 레일. 이웃한 레일 쪽으로 이어 그려서 **연결이 눈에 보이게** 한다 —
+      // 맞닿음이 규칙이므로 그림이 곧 규칙의 설명이다.
+      ctx.fillStyle = '#4a4238';
+      for (var rs = 0; rs < 3; rs++) ctx.fillRect(x + 0.12, y + 0.18 + rs * 0.28, 0.76, 0.1);
+      ctx.fillStyle = '#8d949c';
+      var rN = isRail(x, y - 1), rS = isRail(x, y + 1);
+      var rW = isRail(x - 1, y), rE = isRail(x + 1, y);
+      if (rN || rS || (!rW && !rE)) {
+        ctx.fillRect(x + 0.28, y + (rN ? 0 : 0.1), 0.07, 1 - (rN ? 0 : 0.1) - (rS ? 0 : 0.1));
+        ctx.fillRect(x + 0.65, y + (rN ? 0 : 0.1), 0.07, 1 - (rN ? 0 : 0.1) - (rS ? 0 : 0.1));
+      }
+      if (rW || rE) {
+        ctx.fillRect(x + (rW ? 0 : 0.1), y + 0.28, 1 - (rW ? 0 : 0.1) - (rE ? 0 : 0.1), 0.07);
+        ctx.fillRect(x + (rW ? 0 : 0.1), y + 0.65, 1 - (rW ? 0 : 0.1) - (rE ? 0 : 0.1), 0.07);
+      }
+      return;
+    }
+    case 'station': {
+      ctx.fillStyle = '#5a4a3a'; ctx.fillRect(x + 0.04, y + 0.04, 0.92, 0.92);
+      ctx.fillStyle = '#c9a227'; ctx.fillRect(x + 0.12, y + 0.12, 0.76, 0.2);
+      ctx.fillStyle = '#8d949c'; ctx.fillRect(x + 0.16, y + 0.42, 0.68, 0.42);
+      // 열차가 서 있으면 초록, 붙잡혀 있으면 호박색 — 배차 상태가 지도에서 보인다
+      var stTr = trainAtStation(e);
+      ctx.fillStyle = stTr ? (e.holdTrain ? COL.amber : '#3fae5a') : '#3a3f45';
+      ctx.fillRect(x + 0.34, y + 0.52, 0.32, 0.22);
+      ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.05;
+      ctx.strokeRect(x + 0.04, y + 0.04, 0.92, 0.92);
+      return;
+    }
     case 'pipe': {
       ctx.fillStyle = '#59636b';
       ctx.fillRect(x + 0.28, y + 0.28, 0.44, 0.44);
@@ -652,6 +682,25 @@ function drawWires() {
 }
 
 // --- 적 ----------------------------------------------------------------------
+// 열차는 점유맵 밖에 있고 엔티티 목록에도 없다 — 따로 그린다.
+function drawTrains() {
+  for (var i = 0; i < trains.length; i++) {
+    var t = trains[i];
+    ctx.fillStyle = 'rgba(0,0,0,0.30)';
+    ctx.fillRect(t.x + 0.14, t.y + 0.22, 0.86, 0.72);
+    ctx.fillStyle = '#2c5470';
+    rr(t.x + 0.06, t.y + 0.12, 0.88, 0.76, 0.14); ctx.fill();
+    ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.06; ctx.stroke();
+    ctx.fillStyle = '#aeb8c0';
+    ctx.fillRect(t.x + 0.18, t.y + 0.24, 0.64, 0.2);
+    // 화물 게이지 — 얼마나 실렸는지가 지도에서 보여야 배차를 눈으로 판단한다
+    var f = clamp(trainCargo(t) / SPEC.trainCargoCap, 0, 1);
+    ctx.fillStyle = '#20232a'; ctx.fillRect(t.x + 0.18, t.y + 0.58, 0.64, 0.18);
+    ctx.fillStyle = f > 0.02 ? COL.amber : '#3a3f45';
+    ctx.fillRect(t.x + 0.19, t.y + 0.59, 0.62 * f, 0.16);
+  }
+}
+
 function drawEnemies(b) {
   for (var i = 0; i < corpses.length; i++) {
     var c = corpses[i];
@@ -775,6 +824,7 @@ function render() {
     if (e.tx < b.x0 - 4 || e.tx > b.x1 + 4 || e.ty < b.y0 - 4 || e.ty > b.y1 + 4) return;
     guard('draw:' + e.type, function () { drawEntity(e); });
   });
+  drawTrains();
   drawEnemies(b);
 
   if (typeof drawOverlays === 'function') guard('overlays', drawOverlays);

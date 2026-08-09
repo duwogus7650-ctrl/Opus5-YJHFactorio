@@ -31,6 +31,7 @@ function newGame(seed) {
   ERRORS.length = 0;
   alarms.length = 0; displays.length = 0;
   busClear();                // 신호 버스도 판을 넘기지 않는다 — 결정성이 깨진다
+  trains.length = 0;         // 열차도 판에 딸린 물건이다
   blueprint = null;          // 청사진도 판에 딸린 물건이다
 
   generateWorld(worldSeed);
@@ -87,6 +88,7 @@ function tick(dt) {
   stepEntities(dt);
   stepHandCraft(dt);      // 손 조립도 시간이 든다 — 기계와 같은 틱에 진행한다
   stepBelts(dt);
+  stepTrains(dt);         // 벨트 뒤 — 인서터가 이번 틱에 실은 것이 실려서 떠난다
   stepPollution(dt);
   absorbByTrees(dt);
   stepNests(dt);
@@ -219,6 +221,11 @@ function saveGame() {
     // 청사진도 저장한다. 저장 한 번에 사라지면 '한 라인 잘 만들어 두고 늘리기'가
     // 성립하지 않는다 — 그게 이 기능의 전부다.
     bp: blueprint,
+    // 열차는 점유맵 밖에 있어서 엔티티 목록에 안 실린다 — 따로 담는다.
+    // 화물까지 담지 않으면 저장 한 번에 실어 둔 것이 사라진다.
+    trains: trains.map(function (t) {
+      return { x: t.x, y: t.y, inv: t.inv, w: t.waitT };
+    }),
     tut: { on: tutorial.on, track: tutorial.track, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
     prod: { smelted: prodStats.smelted, crafted: prodStats.crafted, byRecipe: prodStats.byRecipe }
   };
@@ -254,6 +261,7 @@ function loadGame(raw) {
     researchProgressBy = data.resBy || {};   // 예전 저장본엔 없다 — 빈 채로 두면 그만이다
     busRestore(data.bus);                    // 마찬가지로 없으면 전 채널 0 에서 시작한다
     blueprint = data.bp || null;             // 예전 저장본엔 없다 — 빈 채로 둔다
+    trains.length = 0;
     handQueue.length = 0;
     if (Array.isArray(data.hand)) {
       for (var hj = 0; hj < data.hand.length; hj++) {
@@ -342,6 +350,13 @@ function loadGame(raw) {
       toast('경고: 엔티티 ' + dropped.length + '건을 복원하지 못했다', 'bad');
     }
     nextEntId = Math.max(data.nextId || 0, maxId + 1);
+    // **열차는 엔티티를 다 복원한 뒤에 놓는다.** addTrain 은 레일 위인지 보는데,
+    // 엔티티 복원 전에 부르면 레일이 아직 없어서 전부 조용히 버려진다
+    // (실제로 그렇게 해서 복원 후 열차 0대가 나왔다).
+    (data.trains || []).forEach(function (t) {
+      var tr = addTrain(Math.round(t.x), Math.round(t.y));
+      if (tr) { tr.x = t.x; tr.y = t.y; tr.inv = t.inv || {}; tr.waitT = t.w || 0; }
+    });
 
     nests.length = 0;
     (data.nests || []).forEach(function (n) {
@@ -440,6 +455,22 @@ window.__GAME = {
              cost: blueprintCost() };
   },
   bpClear: function () { blueprint = null; return true; },
+  // 열차 — 시험도 플레이어와 같은 경로(레일 위 배치)로만 만든다
+  trainAdd: function (tx, ty) { var t = addTrain(tx, ty); return t ? t.id : null; },
+  trainList: function () {
+    return trains.map(function (t) {
+      return { id: t.id, x: t.x, y: t.y, moving: t.moving, cargo: trainCargo(t),
+               inv: JSON.parse(JSON.stringify(t.inv)), why: t.lastWhy };
+    });
+  },
+  stationInfo: function (id) {
+    var e = entities[id];
+    if (!e || e.type !== 'station') return null;
+    var rt = stationRailTile(e);
+    var tr = trainAtStation(e);
+    return { rail: rt, hasTrain: !!tr, cargo: tr ? trainCargo(tr) : 0,
+             ctl: !!e.trainCtl, hold: !!e.holdTrain };
+  },
   fluidNetCount: function () { if (fluidDirty) rebuildFluid(); return fluidNets.length; },
   // 신호 버스 — 지금 읽히는 값(직전 틱 합계)
   bus: function (ch) { return ch === undefined ? busSnapshot() : busRead(ch); },
@@ -1083,7 +1114,9 @@ window.__GAME = {
              turretRange: SPEC.turretRange, turretDps: SPEC.turretDps,
              pumpRate: SPEC.pumpRate, boilerFluid: SPEC.boilerFluid,
              boilerKw: SPEC.boilerPower, engineSteam: SPEC.engineSteam,
-             engineKw: SPEC.engineOutput, fluidPerTile: SPEC.fluidPerTile };
+             engineKw: SPEC.engineOutput, fluidPerTile: SPEC.fluidPerTile,
+             trainSpeed: SPEC.trainSpeed, trainCargoCap: SPEC.trainCargoCap,
+             trainDwell: SPEC.trainDwell };
   }
 };
 

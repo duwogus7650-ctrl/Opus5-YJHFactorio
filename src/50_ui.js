@@ -152,6 +152,26 @@ function selectTool(t) {
 
 function tryPlace(tx, ty) {
   if (!tool) return false;
+  // 열차는 **레일 위에** 놓는다. 그 칸은 이미 레일이 점유하고 있어서 보통
+  // 건물처럼은 못 세운다(한 칸에 id 하나) — 그래서 배치 경로를 여기서 가른다.
+  // 팔레트·단축키·비용은 다른 건물과 똑같이 지나간다.
+  if (BUILDINGS[tool] && BUILDINGS[tool].onRail) {
+    if (!isRail(tx, ty)) { toast('레일 위에만 놓을 수 있다', 'bad'); return false; }
+    if (trainAt(tx, ty)) { toast('여기 이미 열차가 있다', 'bad'); return false; }
+    var costT = BUILDINGS[tool].cost;
+    for (var ck in costT) {
+      if ((inventory[ck] || 0) < costT[ck]) {
+        var howT = howToGet(ck);
+        toast(ITEMS[ck].name + ' ' + costT[ck] + '개 필요 (지금 ' + (inventory[ck] || 0) + '개)' +
+              (howT ? ' — ' + howT : ''), 'bad');
+        return false;
+      }
+    }
+    for (var ck2 in costT) inventory[ck2] -= costT[ck2];
+    addTrain(tx, ty);
+    renderInv();
+    return true;
+  }
   var e = placeEntity(tool, tx, ty, toolDir, false);
   if (!e) {
     var chk = canPlace(tool, tx, ty, toolDir);
@@ -1038,6 +1058,19 @@ function fillHelp() {
     '되먹임이 있는 제어를 짤 때 늘 만나는 문제이고, 이 게임에서 가장 배울 것이 많은 지점이다.</li>',
     '<li><b>방어 자동화</b> — 적 근접 센서가 적을 감지하면 생산 라인을 끄고 그 전력을 방어에 몰아준다.</li>',
     '</ul>',
+    '<h4>기차 — 먼 광맥을 쓸 이유</h4>',
+    '<p>광맥은 멀수록 크고 풍부한데, 벨트로 60타일을 끌면 벨트값이 광석값을 넘는다.',
+    '기차는 그 거리를 값싸게 만든다 — <b>8 타일/s</b> 로 벨트(1.875)보다 4배 빠르다.</p>',
+    '<p><b>레일</b>을 깔고(드래그로 이어 깔린다), 레일 <b>옆</b>에 <b>역</b>을 세우고,',
+    '레일 <b>위</b>에 <b>열차</b>를 놓는다. 열차는 닿을 수 있는 역들을 지은 순서대로 돈다.',
+    '싣고 내리는 것은 인서터다 — 역에 선 열차는 <b>움직이는 상자</b>라, 상자에 하던 것을 그대로 하면 된다.</p>',
+    '<p><b>언제 떠나는가가 이 게임의 자리다.</b> 기본은 화물이 다 찼거나 5초가 지나면 간다.',
+    '그런데 역에 제어기의 <b>[열차 출발]</b> 노드를 물리면 <b>그 역은 제어기가 정한다</b> —',
+    '참이면 보내고 거짓이면 붙잡는다. <code>[역 상태]</code> 로 저쪽 역에 열차가 있는지,',
+    '이쪽 화물이 얼마나 찼는지 읽어서 배차를 회로로 짤 수 있다.',
+    '예: <b>도착지 상자가 빌 때까지 붙잡았다가 보낸다.</b></p>',
+    '<p class="dim">아직 없는 것: 신호기·다중 편성·교차 통제·대각선 곡선. 그래서 <b>한 노선에',
+    '열차 한 대</b>를 전제한다. 두 대를 같은 레일에 놓으면 서로를 통과한다 — 넣을 때는 신호기부터다.</p>',
     '<h4>청사진 — 잘 도는 라인을 통째로 늘린다</h4>',
     '<p><code>B</code> (폰은 아래 [청사진] 버튼) 를 누르고 <b>영역을 끌어서</b> 담는다.',
     '담으면 곧바로 붙여넣기 모드가 되고, <b>좌클릭</b> 한 번으로 그 자리에 지어진다.',

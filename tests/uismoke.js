@@ -898,6 +898,38 @@
         'B 로 모드 해제 후 같은 클릭 → 엔티티 ' + entsBefore2 + ' → ' +
         G.state().entityCount + ' (안 늘어야 · 조건 발생 확인)');
 
+      // (g) **열차의 진입점.** 열차는 점유맵 밖에 있어서 보통 건물과 배치 경로가
+      //     다르다(레일 위에만 선다) — 그 갈림길이 팔레트 클릭에서 실제로 먹히는지
+      //     본다. 모델 게이트는 G.trainAdd 를 직접 부르므로 이 경로를 안 지난다.
+      G.reset(424251); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(true); G.ui.closeHelp(); G.ui.closeLogic(); G.ui.clearTool();
+      G.research('logistics'); G.research('steel');
+      G.center(80, 80); G.setZoom(1); G.ui.refresh();
+      // 팔레트에서 레일을 골라 드래그로 깐다 — 벨트와 같은 손놀림이다
+      var railRow = document.querySelector('#buildList .bitem[data-b="rail"]');
+      if (railRow) railRow.click();
+      move(76, 80); down(76, 80, 0);
+      for (var rx = 77; rx <= 82; rx++) move(rx, 80);
+      up(0);
+      var railsLaid = 0;
+      for (var rq = 76; rq <= 82; rq++) if (G.entAtTile(rq, 80)) railsLaid++;
+      chk('ui.railDragLaysTrack',
+        !!railRow && railsLaid >= 6,
+        '팔레트에서 레일 선택 → 드래그 → 깔린 레일 ' + railsLaid + '칸 (6칸 이상이어야)');
+
+      // 열차는 레일 위에만 놓인다 — 빈 땅에 놓으면 거절돼야 한다(음성 대조군)
+      key('Escape');
+      var trainRow = document.querySelector('#buildList .bitem[data-b="train"]');
+      if (trainRow) trainRow.click();
+      click(76, 84, 0);                            // 레일이 아닌 빈 땅
+      var afterBad = G.trainList().length;
+      click(78, 80, 0);                            // 레일 위
+      var afterGood = G.trainList().length;
+      chk('ui.trainOnlyOnRail',
+        !!trainRow && afterBad === 0 && afterGood === 1,
+        '빈 땅 클릭 → 열차 ' + afterBad + '대(0이어야 · 조건 발생 확인) · ' +
+        '레일 위 클릭 → ' + afterGood + '대 (1이어야)');
+
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', G.ui.nodeCount() < 0, '노드 수가 음수일 리 없다', true);

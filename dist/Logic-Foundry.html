@@ -786,6 +786,16 @@ var BUILDINGS = {
   'boiler':    { name: '보일러', w: 2, h: 2, cost: { 'pipe-item': 4, 'brick': 5, 'iron-plate': 4 },
                  tech: 'steel', fluid: true,
                  desc: '석탄을 태워 물 60/s 를 증기 60/s 로. 1.8 MW 를 먹는다 — 증기기관 2대분.' },
+  // --- 철도 (강철 제련으로 함께 열린다) --------------------------------------
+  'rail':      { name: '레일', w: 1, h: 1, cost: { 'steel': 1, 'stone': 1 }, tech: 'steel',
+                 desc: '열차가 다니는 길. 맞닿은 레일이 이어진다 — 직각 코너까지 된다.' },
+  'station':   { name: '역', w: 1, h: 1, cost: { 'steel': 2, 'circuit': 2, 'iron-plate': 5 }, tech: 'steel',
+                 desc: '레일 옆에 세운다. 열차가 여기 서고, 인서터로 싣고 내린다. ' +
+                       '제어기의 [열차 출발]을 물리면 배차를 회로로 정할 수 있다.' },
+  'train':     { name: '열차', w: 1, h: 1, cost: { 'steel': 10, 'gear': 10, 'circuit': 4 }, tech: 'steel',
+                 onRail: true,
+                 desc: '★ 레일 위에 놓는다. 역을 순서대로 돌며 2000개까지 나른다. ' +
+                       '8 타일/s — 벨트보다 4배 빠르다.' },
   'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
                  tech: 'steel', fluid: true,
                  desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
@@ -814,6 +824,12 @@ var SPEC = {
   engineSteam: 30,            // 증기/s (steam engine)
   engineOutput: 900,          // kW    (steam engine)
   fluidPerTile: 100,          // 한 칸이 담는 유체 (pipe)
+  // 기차 — **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
+  // 160타일이라 그대로 쓰면 2초에 횡단한다. 8 타일/s 면 횡단에 20초 — 벨트(1.875)보다
+  // 4.3배 빠르고, 먼 광맥을 쓸 이유가 되면서 화면에서 눈으로 따라갈 수 있다.
+  trainSpeed: 8,              // 타일/s
+  trainCargoCap: 2000,        // 화차 한 칸 (상자 600의 3.3배 — 한 번에 옮길 값이 있어야 한다)
+  trainDwell: 5,              // 정차 후 자동 출발까지(초). 제어기가 물리면 그쪽이 이긴다
   poleSupply: 2,              // 중심에서 ±2 → 5x5
   poleReach: 7.5,             // 전주끼리 연결되는 거리(타일)
   chestCap: 600,
@@ -1943,16 +1959,22 @@ function stepLab(e, dt) {
 function inserterSource(e) { var d = dirOpp(e.dir); return { x: e.tx + DIR_DX[d], y: e.ty + DIR_DY[d] }; }
 function inserterTarget(e) { return { x: e.tx + DIR_DX[e.dir], y: e.ty + DIR_DY[e.dir] }; }
 
+// 열차는 점유맵 밖에 있어서 entityAt 으로 안 잡힌다(36_train.js 주석).
+// 대상 해석이 이 네 함수뿐이라, 여기서만 열차를 함께 보면 적재가 통째로 붙는다.
 function inserterCanPlace(e, itemId) {
   var t = inserterTarget(e);
   var c = cellAt(t.x, t.y);
   if (c) return laneHasRoom(c.lanes[0]) || laneHasRoom(c.lanes[1]);
+  var tt = trainAt(t.x, t.y);
+  if (tt) return trainCanAccept(tt, itemId);
   return canAccept(entityAt(t.x, t.y), itemId);
 }
 function inserterDoPlace(e, itemId) {
   var t = inserterTarget(e);
   var c = cellAt(t.x, t.y);
   if (c) return beltAccept(c, itemId);
+  var tt = trainAt(t.x, t.y);
+  if (tt) return trainGive(tt, itemId);
   var te = entityAt(t.x, t.y);
   if (te && canAccept(te, itemId)) return giveTo(te, itemId);
   return false;
@@ -1963,12 +1985,16 @@ function inserterPeekSource(e) {
   // beltPeek 은 beltTake 와 **같은 규칙**으로 고른다. 여기서 어긋나면
   // "놓을 수 있는지"를 A로 검사하고 B를 집어 영원히 쥔 채 굳는다.
   if (c) return beltPeek(c, e.filter);
+  var ts = trainAt(s.x, s.y);
+  if (ts) return trainPeek(ts, e.filter);
   return peekTake(entityAt(s.x, s.y), e.filter);
 }
 function inserterGrab(e) {
   var s = inserterSource(e);
   var c = cellAt(s.x, s.y);
   if (c) return beltTake(c, e.filter);
+  var tg = trainAt(s.x, s.y);
+  if (tg) { var pk = trainPeek(tg, e.filter); return (pk && trainTake(tg, pk)) ? pk : null; }
   return takeFrom(entityAt(s.x, s.y), e.filter);
 }
 
@@ -2706,6 +2732,13 @@ var NODE_DEFS = {
                        filter: ['pipe', 'pump', 'boiler', 'engine'] }],
                tech: 'steel' },
 
+  // 역 센서 — 배차를 회로로 짜려면 "지금 열차가 서 있나 · 얼마나 실렸나" 를
+  // 읽을 수 있어야 한다. 화물%는 임계값을 비율로 잡는 회로에 쓴다.
+  'station': { label: '역 상태', cat: 'in', ins: [],
+               outs: ['열차있음', '화물', '화물%'],
+               cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['station'] }],
+               tech: 'steel' },
+
   // ---- 연산 ----
   'cmp':     { label: '비교', cat: 'op', ins: ['A', 'B'], outs: ['참'],
                cfg: [{ k: 'op', t: 'opsel', label: '연산', opts: ['>', '>=', '<', '<=', '==', '!='], def: '>' }] },
@@ -2759,6 +2792,13 @@ var NODE_DEFS = {
                cfg: [{ k: 'label', t: 'text', label: '문구', def: '' }] },
   'display': { label: '수치 표시', cat: 'out', ins: ['값'], outs: [],
                cfg: [{ k: 'label', t: 'text', label: '이름', def: '' }] },
+  // 열차 출발 — **물리는 순간 그 역은 제어기 지배 하에 들어간다.** 입력이 참이면
+  // 보내고 거짓이면 붙잡는다. 안 물리면 기본 규칙(가득 차거나 정차 시간 초과)으로
+  // 돌아간다 — 배선 없이도 게임이 돌아야 하기 때문이다. 다른 출력 노드가 쓰는
+  // '안 물린 입력은 지배하지 않는다' 와 같은 규약이다.
+  'traingo': { label: '열차 출발', cat: 'out', ins: ['출발'], outs: [],
+               cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['station'] }],
+               tech: 'steel' },
   'bussend': { label: '신호 보내기', cat: 'out', ins: ['값'], outs: [],
                cfg: [{ k: 'ch', t: 'opsel', label: '채널', opts: BUS_CHANNELS, def: 'A' }],
                tech: 'logic-ctrl' }
@@ -3110,6 +3150,15 @@ function evalNode(g, n, dt, ctrl) {
     }
     case 'busrecv': n.out[0] = busRead(n.cfg.ch); break;
 
+    case 'station': {
+      var se = entities[n.cfg.ent];
+      var str = (se && se.type === 'station') ? trainAtStation(se) : null;
+      n.out[0] = str ? 1 : 0;
+      n.out[1] = str ? trainCargo(str) : 0;
+      n.out[2] = str ? (trainCargo(str) / SPEC.trainCargoCap) * 100 : 0;
+      break;
+    }
+
     case 'fluid': {
       var fe = entities[n.cfg.ent];
       var fi = fe ? fluidOf(fe) : null;
@@ -3192,6 +3241,17 @@ function evalNode(g, n, dt, ctrl) {
       displays.push({ label: String(n.cfg.label || ('값 #' + n.nid)), value: readIn(g, n, 0) });
       break;
     }
+    case 'traingo': {
+      if (!inputFed(g, n, 0)) break;         // 안 물리면 지배하지 않는다
+      var ts2 = entities[n.cfg.ent];
+      if (ts2 && ts2.type === 'station') {
+        noteAxisWriter(ts2, '열차출발', ctrl);
+        ts2.trainCtl = true;
+        ts2.holdTrain = !truthy(readIn(g, n, 0));
+        ts2.logicForced = true;
+      }
+      break;
+    }
     case 'bussend': {
       // 다른 출력 노드와 같은 형태를 유지한다. **다만 여기서는 값이 안 바뀐다** —
       // 합산 규약이라 0 을 한 몫 더해도 합계가 그대로다. 그래서 이 가드는 게이트로
@@ -3254,6 +3314,8 @@ function stepLogic(dt) {
   displays.length = 0;
   forEachEntity(function (e) {
     e.logicForced = false; e.fEnable = false; e.fGate = false; e.fFilter = false; e.fFire = false;
+    // 역의 출발 지배도 매 틱 푼다. 안 풀면 노드를 지운 뒤에도 열차가 영원히 붙잡힌다.
+    e.trainCtl = false; e.holdTrain = false;
     // 이번 틱에 이 축을 쓴 제어기가 누구인지 기억한다. 둘이 겹치면 나중에 평가된
     // 쪽이 조용히 이겨서, 한쪽 회로가 통째로 무시당하는 것처럼 보인다.
     e.axisBy = null; e.logicConflict = null;
@@ -3276,6 +3338,208 @@ function stepLogic(dt) {
   // 값을 보게 되어 순서 의존이 되살아난다.
   busSwap();
   logicDirty = false;
+}
+
+/* ===================== 36_train.js ===================== */
+// ===========================================================================
+//  36_train.js — 레일 · 역 · 열차
+//
+//  왜 넣었나: 광맥은 멀수록 크고 풍부한데(10_world.js), 벨트로 60타일을 끌면
+//  벨트값이 광석값을 넘는다. 기차는 **먼 광맥을 쓸 이유**를 만든다.
+//
+//  이 게임다운 부분은 마지막 한 가지다 — **출발 허가.** 열차는 세 조건 중 하나로
+//  떠난다: 화물이 다 찼거나, 정차 시간이 지났거나, **제어기가 보내라고 했을 때.**
+//  셋째가 있어서 "저쪽 상자가 비었을 때만 보낸다" 같은 배차가 회로가 된다.
+//
+//  v1 의 경계 (알려진 한계로 문서에도 적는다):
+//    · 레일은 격자 위 1×1 타일이고 방향이 없다. 직각 코너까지만 — 대각선·곡선 없음
+//    · 신호기·다중 편성·교차 통제 없음. 한 노선에 열차 한 대를 전제한다
+//    · 연료를 안 먹는다. 정전과 무관하게 돈다
+//  이 넷은 "아직 안 만든 것"이지 "안 되는 것"이 아니다. 넣을 때는 신호기부터다.
+//
+//  속도는 **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
+//  160타일이라 그대로 쓰면 2초에 횡단한다 — 숫자가 우스워진다. 8 타일/s 로 두어
+//  횡단에 20초가 걸리게 했다(SPEC.trainSpeed). 게이트는 그 값으로 정확히 잰다.
+// ===========================================================================
+
+var trains = [];           // 열차는 점유맵에 안 들어간다 (아래 주석 참고)
+var railDirty = true;
+function markRailDirty() { railDirty = true; }
+
+function isRail(tx, ty) {
+  var e = entityAt(tx, ty);
+  return !!(e && e.type === 'rail');
+}
+// 역은 레일 옆에 선다. 어느 레일 칸에 붙었는지가 곧 정차 위치다.
+function stationRailTile(st) {
+  for (var d = 0; d < 4; d++) {
+    var x = st.tx + DIR_DX[d], y = st.ty + DIR_DY[d];
+    if (isRail(x, y)) return { x: x, y: y };
+  }
+  return null;
+}
+
+// --- 경로 ------------------------------------------------------------------
+// 레일 그래프에서 두 칸 사이 최단 경로. 폭 우선 — 격자에 가중치가 없으므로
+// 그게 곧 최단이고, 무엇보다 **결정론적**이다(같은 배치면 늘 같은 경로).
+// 방문 순서를 DIR 순서로 고정해 두면 동점일 때도 흔들리지 않는다.
+function railPath(from, to) {
+  if (!from || !to) return null;
+  if (from.x === to.x && from.y === to.y) return [{ x: from.x, y: from.y }];
+  var prev = {}, seen = {};
+  var key = function (x, y) { return x + ',' + y; };
+  var q = [{ x: from.x, y: from.y }];
+  seen[key(from.x, from.y)] = 1;
+  var guard = 0;
+  while (q.length && guard++ < 40000) {
+    var cur = q.shift();
+    for (var d = 0; d < 4; d++) {
+      var nx = cur.x + DIR_DX[d], ny = cur.y + DIR_DY[d];
+      if (!inBounds(nx, ny) || seen[key(nx, ny)] || !isRail(nx, ny)) continue;
+      seen[key(nx, ny)] = 1;
+      prev[key(nx, ny)] = cur;
+      if (nx === to.x && ny === to.y) {
+        var path = [{ x: nx, y: ny }], p = cur;
+        while (p) { path.push({ x: p.x, y: p.y }); p = prev[key(p.x, p.y)]; }
+        path.reverse();
+        return path;
+      }
+      q.push({ x: nx, y: ny });
+    }
+  }
+  return null;      // 이어지지 않았다 — 열차는 안 움직인다(억지로 가로지르지 않는다)
+}
+
+// 이 열차가 설 수 있는 역 목록. **id 순**으로 돈다 — 화면에 안 나오는 순서로
+// 돌면 플레이어가 다음 목적지를 예측할 수 없다. id 는 건설 순서라 최소한
+// "먼저 지은 역부터"라고 설명할 수 있다.
+function trainStations(tr) {
+  var list = [];
+  forEachEntity(function (e) {
+    if (e.type !== 'station') return;
+    var rt = stationRailTile(e);
+    if (!rt) return;
+    if (!railPath({ x: tr.x, y: tr.y }, rt)) return;
+    list.push(e);
+  });
+  list.sort(function (a, b) { return a.id - b.id; });
+  return list;
+}
+
+// --- 열차 ------------------------------------------------------------------
+// **점유맵에 안 넣는다.** 한 칸에는 엔티티 id 하나만 들어가는데 그 자리는 이미
+// 레일이 쓰고 있다. 열차를 억지로 넣으면 지나갈 때마다 레일의 점유가 지워져
+// 철거·배치가 통째로 어긋난다. 대신 trainAt() 로 찾고, 인서터가 대상을 푸는
+// 한 곳에서만 그걸 본다.
+function addTrain(tx, ty) {
+  if (!isRail(tx, ty)) return null;
+  if (trainAt(tx, ty)) return null;
+  var tr = { id: 'T' + (trains.length + 1) + ':' + tx + ',' + ty,
+             x: tx, y: ty, path: null, step: 0, target: null,
+             inv: {}, waitT: 0, moving: false, lastWhy: '대기' };
+  trains.push(tr);
+  return tr;
+}
+function trainAt(tx, ty) {
+  for (var i = 0; i < trains.length; i++) {
+    if (Math.round(trains[i].x) === tx && Math.round(trains[i].y) === ty) return trains[i];
+  }
+  return null;
+}
+function trainCargo(tr) { var s = 0; for (var k in tr.inv) s += tr.inv[k]; return s; }
+
+// 이 역에 지금 정차 중인 열차 (제어기 센서와 인서터가 쓴다)
+function trainAtStation(st) {
+  var rt = stationRailTile(st);
+  if (!rt) return null;
+  var tr = trainAt(rt.x, rt.y);
+  return (tr && !tr.moving) ? tr : null;
+}
+
+function stepTrains(dt) {
+  for (var i = 0; i < trains.length; i++) {
+    var tr = trains[i];
+    var here = { x: Math.round(tr.x), y: Math.round(tr.y) };
+    if (!isRail(here.x, here.y)) { tr.lastWhy = '레일 없음'; tr.moving = false; continue; }
+
+    if (tr.moving && tr.path) {
+      // 경로를 타일 단위로 따라간다. 속도 × dt — 여기서 dt 를 빼면 60배가 된다.
+      var adv = SPEC.trainSpeed * dt;
+      while (adv > 0 && tr.step < tr.path.length - 1) {
+        var nxt = tr.path[tr.step + 1];
+        var dx = nxt.x - tr.x, dy = nxt.y - tr.y;
+        var dist = Math.abs(dx) + Math.abs(dy);
+        if (dist <= adv) {
+          tr.x = nxt.x; tr.y = nxt.y; tr.step++; adv -= dist;
+        } else {
+          tr.x += (dx === 0 ? 0 : (dx > 0 ? adv : -adv));
+          tr.y += (dy === 0 ? 0 : (dy > 0 ? adv : -adv));
+          adv = 0;
+        }
+      }
+      if (tr.step >= tr.path.length - 1) {
+        tr.x = tr.path[tr.path.length - 1].x;
+        tr.y = tr.path[tr.path.length - 1].y;
+        tr.moving = false; tr.waitT = 0; tr.path = null;
+        tr.lastWhy = '정차';
+      }
+      continue;
+    }
+
+    // 정차 중 — 떠날 이유를 찾는다
+    tr.waitT += dt;
+    var sts = trainStations(tr);
+    if (sts.length < 2) { tr.lastWhy = sts.length ? '갈 곳이 없다(역 1개)' : '역이 없다'; continue; }
+
+    // 지금 서 있는 역이 몇 번째인가 → 다음 역
+    var curIdx = -1;
+    for (var s = 0; s < sts.length; s++) {
+      var rt = stationRailTile(sts[s]);
+      if (rt && rt.x === here.x && rt.y === here.y) { curIdx = s; break; }
+    }
+    var nextSt = sts[(curIdx + 1) % sts.length];
+    var nrt = stationRailTile(nextSt);
+    if (!nrt) { tr.lastWhy = '역이 레일에 안 붙었다'; continue; }
+
+    // **출발 조건.** 이 역에 [열차 출발] 노드가 물려 있으면 **제어기가 전부 정한다** —
+    // 참이면 보내고 거짓이면 붙잡는다. 안 물려 있으면 기본 규칙으로 돌아간다:
+    // 화물이 다 찼거나(더 실을 게 없다) 정차 시간이 지났을 때. 배선 없이도 게임이
+    // 돌아야 하므로 기본값이 '언젠가는 간다' 여야 한다.
+    var curSt = (curIdx >= 0) ? sts[curIdx] : null;
+    if (curSt && curSt.trainCtl) {
+      if (curSt.holdTrain) { tr.lastWhy = '출발 보류(제어기)'; continue; }
+    } else {
+      var full = trainCargo(tr) >= SPEC.trainCargoCap;
+      var timeUp = tr.waitT >= SPEC.trainDwell;
+      if (!(full || timeUp)) { tr.lastWhy = '적재 중'; continue; }
+    }
+
+    var path = railPath(here, nrt);
+    if (!path) { tr.lastWhy = '경로 없음'; continue; }
+    tr.path = path; tr.step = 0; tr.moving = true;
+    tr.lastWhy = '이동 중';
+  }
+}
+
+// 열차 화물은 상자와 같은 규약으로 주고받는다 — 화차는 움직이는 상자다.
+function trainCanAccept(tr, itemId) {
+  return !!tr && !tr.moving && trainCargo(tr) < SPEC.trainCargoCap && !!itemId;
+}
+function trainGive(tr, itemId) {
+  if (!trainCanAccept(tr, itemId)) return false;
+  invAdd(tr.inv, itemId, 1);
+  return true;
+}
+function trainPeek(tr, filter) {
+  if (!tr || tr.moving) return null;
+  for (var k in tr.inv) {
+    if (tr.inv[k] > 0 && (!filter || k === filter)) return k;
+  }
+  return null;
+}
+function trainTake(tr, itemId) {
+  if (!tr || tr.moving) return false;
+  return invTake(tr.inv, itemId, 1);
 }
 
 /* ===================== 37_rules.js ===================== */
@@ -4372,6 +4636,36 @@ function drawEntity(e) {
     // 파이프는 벨트처럼 1칸짜리라 그림자·몸통 규격을 안 쓴다. 이웃한 유체 설비
     // 쪽으로만 목을 뻗어, **어디가 이어졌는지 화면에서 바로 보이게** 한다 —
     // 유체망은 맞닿음이 규칙이므로 그게 곧 규칙의 시각화다.
+    case 'rail': {
+      // 침목 + 두 줄 레일. 이웃한 레일 쪽으로 이어 그려서 **연결이 눈에 보이게** 한다 —
+      // 맞닿음이 규칙이므로 그림이 곧 규칙의 설명이다.
+      ctx.fillStyle = '#4a4238';
+      for (var rs = 0; rs < 3; rs++) ctx.fillRect(x + 0.12, y + 0.18 + rs * 0.28, 0.76, 0.1);
+      ctx.fillStyle = '#8d949c';
+      var rN = isRail(x, y - 1), rS = isRail(x, y + 1);
+      var rW = isRail(x - 1, y), rE = isRail(x + 1, y);
+      if (rN || rS || (!rW && !rE)) {
+        ctx.fillRect(x + 0.28, y + (rN ? 0 : 0.1), 0.07, 1 - (rN ? 0 : 0.1) - (rS ? 0 : 0.1));
+        ctx.fillRect(x + 0.65, y + (rN ? 0 : 0.1), 0.07, 1 - (rN ? 0 : 0.1) - (rS ? 0 : 0.1));
+      }
+      if (rW || rE) {
+        ctx.fillRect(x + (rW ? 0 : 0.1), y + 0.28, 1 - (rW ? 0 : 0.1) - (rE ? 0 : 0.1), 0.07);
+        ctx.fillRect(x + (rW ? 0 : 0.1), y + 0.65, 1 - (rW ? 0 : 0.1) - (rE ? 0 : 0.1), 0.07);
+      }
+      return;
+    }
+    case 'station': {
+      ctx.fillStyle = '#5a4a3a'; ctx.fillRect(x + 0.04, y + 0.04, 0.92, 0.92);
+      ctx.fillStyle = '#c9a227'; ctx.fillRect(x + 0.12, y + 0.12, 0.76, 0.2);
+      ctx.fillStyle = '#8d949c'; ctx.fillRect(x + 0.16, y + 0.42, 0.68, 0.42);
+      // 열차가 서 있으면 초록, 붙잡혀 있으면 호박색 — 배차 상태가 지도에서 보인다
+      var stTr = trainAtStation(e);
+      ctx.fillStyle = stTr ? (e.holdTrain ? COL.amber : '#3fae5a') : '#3a3f45';
+      ctx.fillRect(x + 0.34, y + 0.52, 0.32, 0.22);
+      ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.05;
+      ctx.strokeRect(x + 0.04, y + 0.04, 0.92, 0.92);
+      return;
+    }
     case 'pipe': {
       ctx.fillStyle = '#59636b';
       ctx.fillRect(x + 0.28, y + 0.28, 0.44, 0.44);
@@ -4693,6 +4987,25 @@ function drawWires() {
 }
 
 // --- 적 ----------------------------------------------------------------------
+// 열차는 점유맵 밖에 있고 엔티티 목록에도 없다 — 따로 그린다.
+function drawTrains() {
+  for (var i = 0; i < trains.length; i++) {
+    var t = trains[i];
+    ctx.fillStyle = 'rgba(0,0,0,0.30)';
+    ctx.fillRect(t.x + 0.14, t.y + 0.22, 0.86, 0.72);
+    ctx.fillStyle = '#2c5470';
+    rr(t.x + 0.06, t.y + 0.12, 0.88, 0.76, 0.14); ctx.fill();
+    ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.06; ctx.stroke();
+    ctx.fillStyle = '#aeb8c0';
+    ctx.fillRect(t.x + 0.18, t.y + 0.24, 0.64, 0.2);
+    // 화물 게이지 — 얼마나 실렸는지가 지도에서 보여야 배차를 눈으로 판단한다
+    var f = clamp(trainCargo(t) / SPEC.trainCargoCap, 0, 1);
+    ctx.fillStyle = '#20232a'; ctx.fillRect(t.x + 0.18, t.y + 0.58, 0.64, 0.18);
+    ctx.fillStyle = f > 0.02 ? COL.amber : '#3a3f45';
+    ctx.fillRect(t.x + 0.19, t.y + 0.59, 0.62 * f, 0.16);
+  }
+}
+
 function drawEnemies(b) {
   for (var i = 0; i < corpses.length; i++) {
     var c = corpses[i];
@@ -4816,6 +5129,7 @@ function render() {
     if (e.tx < b.x0 - 4 || e.tx > b.x1 + 4 || e.ty < b.y0 - 4 || e.ty > b.y1 + 4) return;
     guard('draw:' + e.type, function () { drawEntity(e); });
   });
+  drawTrains();
   drawEnemies(b);
 
   if (typeof drawOverlays === 'function') guard('overlays', drawOverlays);
@@ -5007,6 +5321,26 @@ function selectTool(t) {
 
 function tryPlace(tx, ty) {
   if (!tool) return false;
+  // 열차는 **레일 위에** 놓는다. 그 칸은 이미 레일이 점유하고 있어서 보통
+  // 건물처럼은 못 세운다(한 칸에 id 하나) — 그래서 배치 경로를 여기서 가른다.
+  // 팔레트·단축키·비용은 다른 건물과 똑같이 지나간다.
+  if (BUILDINGS[tool] && BUILDINGS[tool].onRail) {
+    if (!isRail(tx, ty)) { toast('레일 위에만 놓을 수 있다', 'bad'); return false; }
+    if (trainAt(tx, ty)) { toast('여기 이미 열차가 있다', 'bad'); return false; }
+    var costT = BUILDINGS[tool].cost;
+    for (var ck in costT) {
+      if ((inventory[ck] || 0) < costT[ck]) {
+        var howT = howToGet(ck);
+        toast(ITEMS[ck].name + ' ' + costT[ck] + '개 필요 (지금 ' + (inventory[ck] || 0) + '개)' +
+              (howT ? ' — ' + howT : ''), 'bad');
+        return false;
+      }
+    }
+    for (var ck2 in costT) inventory[ck2] -= costT[ck2];
+    addTrain(tx, ty);
+    renderInv();
+    return true;
+  }
   var e = placeEntity(tool, tx, ty, toolDir, false);
   if (!e) {
     var chk = canPlace(tool, tx, ty, toolDir);
@@ -5893,6 +6227,19 @@ function fillHelp() {
     '되먹임이 있는 제어를 짤 때 늘 만나는 문제이고, 이 게임에서 가장 배울 것이 많은 지점이다.</li>',
     '<li><b>방어 자동화</b> — 적 근접 센서가 적을 감지하면 생산 라인을 끄고 그 전력을 방어에 몰아준다.</li>',
     '</ul>',
+    '<h4>기차 — 먼 광맥을 쓸 이유</h4>',
+    '<p>광맥은 멀수록 크고 풍부한데, 벨트로 60타일을 끌면 벨트값이 광석값을 넘는다.',
+    '기차는 그 거리를 값싸게 만든다 — <b>8 타일/s</b> 로 벨트(1.875)보다 4배 빠르다.</p>',
+    '<p><b>레일</b>을 깔고(드래그로 이어 깔린다), 레일 <b>옆</b>에 <b>역</b>을 세우고,',
+    '레일 <b>위</b>에 <b>열차</b>를 놓는다. 열차는 닿을 수 있는 역들을 지은 순서대로 돈다.',
+    '싣고 내리는 것은 인서터다 — 역에 선 열차는 <b>움직이는 상자</b>라, 상자에 하던 것을 그대로 하면 된다.</p>',
+    '<p><b>언제 떠나는가가 이 게임의 자리다.</b> 기본은 화물이 다 찼거나 5초가 지나면 간다.',
+    '그런데 역에 제어기의 <b>[열차 출발]</b> 노드를 물리면 <b>그 역은 제어기가 정한다</b> —',
+    '참이면 보내고 거짓이면 붙잡는다. <code>[역 상태]</code> 로 저쪽 역에 열차가 있는지,',
+    '이쪽 화물이 얼마나 찼는지 읽어서 배차를 회로로 짤 수 있다.',
+    '예: <b>도착지 상자가 빌 때까지 붙잡았다가 보낸다.</b></p>',
+    '<p class="dim">아직 없는 것: 신호기·다중 편성·교차 통제·대각선 곡선. 그래서 <b>한 노선에',
+    '열차 한 대</b>를 전제한다. 두 대를 같은 레일에 놓으면 서로를 통과한다 — 넣을 때는 신호기부터다.</p>',
     '<h4>청사진 — 잘 도는 라인을 통째로 늘린다</h4>',
     '<p><code>B</code> (폰은 아래 [청사진] 버튼) 를 누르고 <b>영역을 끌어서</b> 담는다.',
     '담으면 곧바로 붙여넣기 모드가 되고, <b>좌클릭</b> 한 번으로 그 자리에 지어진다.',
@@ -7769,6 +8116,7 @@ function newGame(seed) {
   ERRORS.length = 0;
   alarms.length = 0; displays.length = 0;
   busClear();                // 신호 버스도 판을 넘기지 않는다 — 결정성이 깨진다
+  trains.length = 0;         // 열차도 판에 딸린 물건이다
   blueprint = null;          // 청사진도 판에 딸린 물건이다
 
   generateWorld(worldSeed);
@@ -7825,6 +8173,7 @@ function tick(dt) {
   stepEntities(dt);
   stepHandCraft(dt);      // 손 조립도 시간이 든다 — 기계와 같은 틱에 진행한다
   stepBelts(dt);
+  stepTrains(dt);         // 벨트 뒤 — 인서터가 이번 틱에 실은 것이 실려서 떠난다
   stepPollution(dt);
   absorbByTrees(dt);
   stepNests(dt);
@@ -7957,6 +8306,11 @@ function saveGame() {
     // 청사진도 저장한다. 저장 한 번에 사라지면 '한 라인 잘 만들어 두고 늘리기'가
     // 성립하지 않는다 — 그게 이 기능의 전부다.
     bp: blueprint,
+    // 열차는 점유맵 밖에 있어서 엔티티 목록에 안 실린다 — 따로 담는다.
+    // 화물까지 담지 않으면 저장 한 번에 실어 둔 것이 사라진다.
+    trains: trains.map(function (t) {
+      return { x: t.x, y: t.y, inv: t.inv, w: t.waitT };
+    }),
     tut: { on: tutorial.on, track: tutorial.track, step: tutorial.step, done: tutorial.done, flags: tutorial.flags },
     prod: { smelted: prodStats.smelted, crafted: prodStats.crafted, byRecipe: prodStats.byRecipe }
   };
@@ -7992,6 +8346,7 @@ function loadGame(raw) {
     researchProgressBy = data.resBy || {};   // 예전 저장본엔 없다 — 빈 채로 두면 그만이다
     busRestore(data.bus);                    // 마찬가지로 없으면 전 채널 0 에서 시작한다
     blueprint = data.bp || null;             // 예전 저장본엔 없다 — 빈 채로 둔다
+    trains.length = 0;
     handQueue.length = 0;
     if (Array.isArray(data.hand)) {
       for (var hj = 0; hj < data.hand.length; hj++) {
@@ -8080,6 +8435,13 @@ function loadGame(raw) {
       toast('경고: 엔티티 ' + dropped.length + '건을 복원하지 못했다', 'bad');
     }
     nextEntId = Math.max(data.nextId || 0, maxId + 1);
+    // **열차는 엔티티를 다 복원한 뒤에 놓는다.** addTrain 은 레일 위인지 보는데,
+    // 엔티티 복원 전에 부르면 레일이 아직 없어서 전부 조용히 버려진다
+    // (실제로 그렇게 해서 복원 후 열차 0대가 나왔다).
+    (data.trains || []).forEach(function (t) {
+      var tr = addTrain(Math.round(t.x), Math.round(t.y));
+      if (tr) { tr.x = t.x; tr.y = t.y; tr.inv = t.inv || {}; tr.waitT = t.w || 0; }
+    });
 
     nests.length = 0;
     (data.nests || []).forEach(function (n) {
@@ -8178,6 +8540,22 @@ window.__GAME = {
              cost: blueprintCost() };
   },
   bpClear: function () { blueprint = null; return true; },
+  // 열차 — 시험도 플레이어와 같은 경로(레일 위 배치)로만 만든다
+  trainAdd: function (tx, ty) { var t = addTrain(tx, ty); return t ? t.id : null; },
+  trainList: function () {
+    return trains.map(function (t) {
+      return { id: t.id, x: t.x, y: t.y, moving: t.moving, cargo: trainCargo(t),
+               inv: JSON.parse(JSON.stringify(t.inv)), why: t.lastWhy };
+    });
+  },
+  stationInfo: function (id) {
+    var e = entities[id];
+    if (!e || e.type !== 'station') return null;
+    var rt = stationRailTile(e);
+    var tr = trainAtStation(e);
+    return { rail: rt, hasTrain: !!tr, cargo: tr ? trainCargo(tr) : 0,
+             ctl: !!e.trainCtl, hold: !!e.holdTrain };
+  },
   fluidNetCount: function () { if (fluidDirty) rebuildFluid(); return fluidNets.length; },
   // 신호 버스 — 지금 읽히는 값(직전 틱 합계)
   bus: function (ch) { return ch === undefined ? busSnapshot() : busRead(ch); },
@@ -8821,7 +9199,9 @@ window.__GAME = {
              turretRange: SPEC.turretRange, turretDps: SPEC.turretDps,
              pumpRate: SPEC.pumpRate, boilerFluid: SPEC.boilerFluid,
              boilerKw: SPEC.boilerPower, engineSteam: SPEC.engineSteam,
-             engineKw: SPEC.engineOutput, fluidPerTile: SPEC.fluidPerTile };
+             engineKw: SPEC.engineOutput, fluidPerTile: SPEC.fluidPerTile,
+             trainSpeed: SPEC.trainSpeed, trainCargoCap: SPEC.trainCargoCap,
+             trainDwell: SPEC.trainDwell };
   }
 };
 

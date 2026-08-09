@@ -517,16 +517,22 @@ function stepLab(e, dt) {
 function inserterSource(e) { var d = dirOpp(e.dir); return { x: e.tx + DIR_DX[d], y: e.ty + DIR_DY[d] }; }
 function inserterTarget(e) { return { x: e.tx + DIR_DX[e.dir], y: e.ty + DIR_DY[e.dir] }; }
 
+// 열차는 점유맵 밖에 있어서 entityAt 으로 안 잡힌다(36_train.js 주석).
+// 대상 해석이 이 네 함수뿐이라, 여기서만 열차를 함께 보면 적재가 통째로 붙는다.
 function inserterCanPlace(e, itemId) {
   var t = inserterTarget(e);
   var c = cellAt(t.x, t.y);
   if (c) return laneHasRoom(c.lanes[0]) || laneHasRoom(c.lanes[1]);
+  var tt = trainAt(t.x, t.y);
+  if (tt) return trainCanAccept(tt, itemId);
   return canAccept(entityAt(t.x, t.y), itemId);
 }
 function inserterDoPlace(e, itemId) {
   var t = inserterTarget(e);
   var c = cellAt(t.x, t.y);
   if (c) return beltAccept(c, itemId);
+  var tt = trainAt(t.x, t.y);
+  if (tt) return trainGive(tt, itemId);
   var te = entityAt(t.x, t.y);
   if (te && canAccept(te, itemId)) return giveTo(te, itemId);
   return false;
@@ -537,12 +543,16 @@ function inserterPeekSource(e) {
   // beltPeek 은 beltTake 와 **같은 규칙**으로 고른다. 여기서 어긋나면
   // "놓을 수 있는지"를 A로 검사하고 B를 집어 영원히 쥔 채 굳는다.
   if (c) return beltPeek(c, e.filter);
+  var ts = trainAt(s.x, s.y);
+  if (ts) return trainPeek(ts, e.filter);
   return peekTake(entityAt(s.x, s.y), e.filter);
 }
 function inserterGrab(e) {
   var s = inserterSource(e);
   var c = cellAt(s.x, s.y);
   if (c) return beltTake(c, e.filter);
+  var tg = trainAt(s.x, s.y);
+  if (tg) { var pk = trainPeek(tg, e.filter); return (pk && trainTake(tg, pk)) ? pk : null; }
   return takeFrom(entityAt(s.x, s.y), e.filter);
 }
 

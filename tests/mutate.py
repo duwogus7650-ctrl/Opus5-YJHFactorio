@@ -808,6 +808,57 @@ MUTATIONS = [
      b"    if (k === 'b' || k === 'B') { toggleBlueprint(); return; }",
      b"    if (false) { toggleBlueprint(); return; }",
      ['ui.blueprintKeyAndDragCapture'], 'uismoke.js'),
+
+    # ---- 기차 ----
+    ('열차 이동에 dt 를 안 곱한다 (60배)', '36_train.js',
+     b'      var adv = SPEC.trainSpeed * dt;',
+     b'      var adv = SPEC.trainSpeed;',
+     ['train.dtInvariant']),
+
+    # 앵커는 **ASCII 만** 담을 수 있다(bytes 리터럴). 한글이 든 줄은 앞의 ASCII
+    # 부분까지만 잡는다 — 처음에 한글째로 썼다가 SyntaxError 로 파일이 안 열렸다.
+    ('열차가 규격보다 빠르다', '05_data.js',
+     b'  trainSpeed: 8,',
+     b'  trainSpeed: 12,',
+     ['train.speedMatchesSpec']),
+
+    ('움직이는 열차에도 짐을 싣는다 (텔레포트)', '36_train.js',
+     b'  return !!tr && !tr.moving && trainCargo(tr) < SPEC.trainCargoCap && !!itemId;',
+     b'  return !!tr && trainCargo(tr) < SPEC.trainCargoCap && !!itemId;',
+     ['train.noLoadingWhileMoving']),
+
+    ('싣기가 상자에서 안 빼고 열차에만 더한다 (복제)', '36_train.js',
+     b'  invAdd(tr.inv, itemId, 1);\n  return true;',
+     b'  invAdd(tr.inv, itemId, 2);\n  return true;',
+     ['train.inserterLoadsMovesNotCreates']),
+
+    ('제어기가 붙잡아도 열차가 떠난다', '36_train.js',
+     b'      if (curSt.holdTrain) {',
+     b'      if (false) {',
+     ['train.controllerCanHold']),
+
+    ('역 지배를 매 틱 안 푼다 (유령 지배)', '35_logic.js',
+     b'    e.trainCtl = false; e.holdTrain = false;',
+     b'    e.holdTrain = false;',
+     ['train.releasesControlWhenNodeRemoved']),
+
+    ('끊긴 레일을 건너뛴다 (닿지 않는 역도 목록에 넣는다)', '36_train.js',
+     b'    if (!railPath({ x: tr.x, y: tr.y }, rt)) return;',
+     b'    if (false) return;',
+     ['train.brokenRailStopsIt']),
+
+    ('저장이 열차를 안 담는다', '60_game.js',
+     b'    trains: trains.map(function (t) {',
+     b'    trains: [].map(function (t) {',
+     ['train.survivesSave']),
+
+    # 레일 검사는 **UI 와 모델 양쪽에** 있다(이중 방어). 한쪽만 깨면 다른 쪽이 가려서
+    # 어느 것도 검정되지 않는다 — 그래서 각 층을 그 층의 게이트로 잰다. 여기서는
+    # 모델의 검사를 깨고, UI 를 거치지 않는 driver 게이트로 잡는다.
+    ('열차를 빈 땅에도 놓을 수 있다 (모델 검사)', '36_train.js',
+     b'  if (!isRail(tx, ty)) return null;',
+     b'  if (false) return null;',
+     ['train.addRejectsNonRail']),
 ]
 
 

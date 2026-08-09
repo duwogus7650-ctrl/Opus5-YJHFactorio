@@ -58,7 +58,7 @@
       // **이 숫자는 덫이다.** 노드 종류를 늘리면 여기가 RED 로 갈리고, 그때 이 파일
       // 아래의 전수 시험도 같이 채우라는 뜻이다. 숫자만 올리고 시험을 안 채우면
       // 그 종류는 "안 깨진 기능"이 아니라 **아직 안 들킨 기능**으로 남는다.
-      chk('sweep.allNodeKindsKnown', kinds.length === 30,
+      chk('sweep.allNodeKindsKnown', kinds.length === 32,
         '노드 종류 ' + kinds.length + '개: ' + kinds.join(','));
 
       // ---- 입력: 상수 ----
@@ -421,6 +421,34 @@
       G.run(0.2);
       chk('node.fluidDisconnected', O(flN2, 3) === 0 && O(flN2, 1) === 0,
         '대상 미지정 → 망연결 ' + O(flN2, 3) + ' · 증기 ' + O(flN2, 1) + ' (둘 다 0이어야)');
+
+      // ---- 입력/출력: 역 상태 · 열차 출발 ----
+      // 이 둘은 짝이다 — 읽고(열차 있음·화물) 정한다(보낸다/붙잡는다).
+      // 그래서 한 리그에서 같이 본다.
+      freshCtrl();
+      var tvRails = [];
+      for (var tv = 0; tv < 9; tv++) tvRails.push(G.place('rail', 64 + tv, 60, 0));
+      var tvA = G.place('station', 64, 61, 0);
+      var tvB = G.place('station', 72, 61, 0);
+      G.trainAdd(64, 60);
+      var tvS = N('station', 0, 0); G.gCfg(CT, tvS, 'ent', tvA);
+      var tvZero = K(0, 0, 300);
+      var tvGo = N('traingo', 300, 0); G.gCfg(CT, tvGo, 'ent', tvA);
+      L(tvZero, 0, tvGo, 0);
+      G.run(12);                                    // 정차 5초의 두 배 넘게 붙잡는다
+      var tvHas = O(tvS, 0), tvCargo = O(tvS, 1), tvPct = O(tvS, 2);
+      var tvMoving = G.trainList()[0].moving;
+      chk('node.stationAndTrainGo',
+        !!tvA && !!tvB && tvRails.length === 9 && tvHas === 1 && tvCargo === 0 &&
+        tvPct === 0 && tvMoving === false,
+        '역 센서 → 열차있음 ' + tvHas + ' · 화물 ' + tvCargo + ' · ' + r2(tvPct) +
+        '% · 출발 허가 거짓으로 12초 → 이동중 ' + tvMoving + ' (false 여야 · 기본값은 5초 뒤 출발)');
+      // 음성 대조군 — 허가를 참으로 바꾸면 떠나야 한다. 안 그러면 위 검사는
+      // "열차가 원래 안 움직인다"는 구현도 통과시킨다.
+      G.gCfg(CT, tvZero, 'value', 1);
+      G.run(0.5);
+      chk('node.trainGoReleases', G.trainList()[0].moving === true,
+        '허가를 참으로 → 이동중 ' + G.trainList()[0].moving + ' (true 여야 · 조건 발생 확인)');
 
       // ---- 출력/입력: 신호 버스 ----
       // 한 제어기 안에서도 보내고 받을 수 있지만, 값은 **다음 틱**에 온다.

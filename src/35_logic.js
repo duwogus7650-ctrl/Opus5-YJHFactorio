@@ -99,6 +99,13 @@ var NODE_DEFS = {
                        filter: ['pipe', 'pump', 'boiler', 'engine'] }],
                tech: 'steel' },
 
+  // 역 센서 — 배차를 회로로 짜려면 "지금 열차가 서 있나 · 얼마나 실렸나" 를
+  // 읽을 수 있어야 한다. 화물%는 임계값을 비율로 잡는 회로에 쓴다.
+  'station': { label: '역 상태', cat: 'in', ins: [],
+               outs: ['열차있음', '화물', '화물%'],
+               cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['station'] }],
+               tech: 'steel' },
+
   // ---- 연산 ----
   'cmp':     { label: '비교', cat: 'op', ins: ['A', 'B'], outs: ['참'],
                cfg: [{ k: 'op', t: 'opsel', label: '연산', opts: ['>', '>=', '<', '<=', '==', '!='], def: '>' }] },
@@ -152,6 +159,13 @@ var NODE_DEFS = {
                cfg: [{ k: 'label', t: 'text', label: '문구', def: '' }] },
   'display': { label: '수치 표시', cat: 'out', ins: ['값'], outs: [],
                cfg: [{ k: 'label', t: 'text', label: '이름', def: '' }] },
+  // 열차 출발 — **물리는 순간 그 역은 제어기 지배 하에 들어간다.** 입력이 참이면
+  // 보내고 거짓이면 붙잡는다. 안 물리면 기본 규칙(가득 차거나 정차 시간 초과)으로
+  // 돌아간다 — 배선 없이도 게임이 돌아야 하기 때문이다. 다른 출력 노드가 쓰는
+  // '안 물린 입력은 지배하지 않는다' 와 같은 규약이다.
+  'traingo': { label: '열차 출발', cat: 'out', ins: ['출발'], outs: [],
+               cfg: [{ k: 'ent', t: 'ent', label: '대상', filter: ['station'] }],
+               tech: 'steel' },
   'bussend': { label: '신호 보내기', cat: 'out', ins: ['값'], outs: [],
                cfg: [{ k: 'ch', t: 'opsel', label: '채널', opts: BUS_CHANNELS, def: 'A' }],
                tech: 'logic-ctrl' }
@@ -503,6 +517,15 @@ function evalNode(g, n, dt, ctrl) {
     }
     case 'busrecv': n.out[0] = busRead(n.cfg.ch); break;
 
+    case 'station': {
+      var se = entities[n.cfg.ent];
+      var str = (se && se.type === 'station') ? trainAtStation(se) : null;
+      n.out[0] = str ? 1 : 0;
+      n.out[1] = str ? trainCargo(str) : 0;
+      n.out[2] = str ? (trainCargo(str) / SPEC.trainCargoCap) * 100 : 0;
+      break;
+    }
+
     case 'fluid': {
       var fe = entities[n.cfg.ent];
       var fi = fe ? fluidOf(fe) : null;
@@ -585,6 +608,17 @@ function evalNode(g, n, dt, ctrl) {
       displays.push({ label: String(n.cfg.label || ('값 #' + n.nid)), value: readIn(g, n, 0) });
       break;
     }
+    case 'traingo': {
+      if (!inputFed(g, n, 0)) break;         // 안 물리면 지배하지 않는다
+      var ts2 = entities[n.cfg.ent];
+      if (ts2 && ts2.type === 'station') {
+        noteAxisWriter(ts2, '열차출발', ctrl);
+        ts2.trainCtl = true;
+        ts2.holdTrain = !truthy(readIn(g, n, 0));
+        ts2.logicForced = true;
+      }
+      break;
+    }
     case 'bussend': {
       // 다른 출력 노드와 같은 형태를 유지한다. **다만 여기서는 값이 안 바뀐다** —
       // 합산 규약이라 0 을 한 몫 더해도 합계가 그대로다. 그래서 이 가드는 게이트로
@@ -647,6 +681,8 @@ function stepLogic(dt) {
   displays.length = 0;
   forEachEntity(function (e) {
     e.logicForced = false; e.fEnable = false; e.fGate = false; e.fFilter = false; e.fFire = false;
+    // 역의 출발 지배도 매 틱 푼다. 안 풀면 노드를 지운 뒤에도 열차가 영원히 붙잡힌다.
+    e.trainCtl = false; e.holdTrain = false;
     // 이번 틱에 이 축을 쓴 제어기가 누구인지 기억한다. 둘이 겹치면 나중에 평가된
     // 쪽이 조용히 이겨서, 한쪽 회로가 통째로 무시당하는 것처럼 보인다.
     e.axisBy = null; e.logicConflict = null;
