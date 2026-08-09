@@ -787,6 +787,26 @@ function refreshInsp() {
       Math.round((e.load || 0) * 100) + '% · 보유 석탄 ' + (inventory['coal'] || 0) +
       (e.net < 0 ? ' · <b class="bad">망 미연결</b>' : '') + '</span></div>');
   }
+  if (e.type === 'boiler') {
+    s.push('<div class="frow"><label>연료</label><span class="num">' + fmt((e.fuel || 0) / 1000, 1) +
+      ' MJ · 부하 ' + Math.round((e.load || 0) * 100) + '% · 보유 석탄 ' + (inventory['coal'] || 0) +
+      '</span></div>');
+  }
+  if (B.fluid) {
+    // **증기는 이 계의 선행 지표다** — 전기가 흔들리기 전에 여기가 먼저 준다.
+    // 그래서 숫자를 보여 준다. 안 보이면 제어기로 뭘 잡아야 할지 알 수 없다.
+    var fi = fluidOf(e);
+    if (!fi.connected) {
+      s.push('<div class="frow"><label>유체</label><span class="num"><b class="bad">망 미연결</b>' +
+        ' — 파이프가 맞닿아야 이어진다</span></div>');
+    } else {
+      s.push('<div class="frow"><label>물</label><span class="num">' + fmt(fi.water, 0) + ' / ' +
+        fi.cap + '</span></div>');
+      s.push('<div class="frow"><label>증기</label><span class="num" style="color:' +
+        (fi.steamPct > 25 ? 'var(--run)' : (fi.steamPct > 0 ? 'var(--warn)' : 'var(--stop)')) + '">' +
+        fmt(fi.steam, 0) + ' / ' + fi.cap + ' · ' + fmt(fi.steamPct, 0) + '%</span></div>');
+    }
+  }
   if (e.type === 'turret') {
     s.push('<div class="frow"><label>탄약</label><span class="num">' + e.ammo + ' 발' +
       (e.fireOk ? '' : ' · <b class="bad">사격 금지</b>') + '</span></div>');
@@ -961,6 +981,19 @@ function fillHelp() {
     '되먹임이 있는 제어를 짤 때 늘 만나는 문제이고, 이 게임에서 가장 배울 것이 많은 지점이다.</li>',
     '<li><b>방어 자동화</b> — 적 근접 센서가 적을 감지하면 생산 라인을 끄고 그 전력을 방어에 몰아준다.</li>',
     '</ul>',
+    '<h4>증기 발전 — 버퍼가 생기면 제어가 달라진다</h4>',
+    '<p>강철 제련을 연구하면 <b>파이프·지하수 펌프·보일러·증기기관</b>이 열린다.',
+    '<code>펌프 → 파이프 → 보일러 → 파이프 → 증기기관</code> 으로 <b>맞대어</b> 놓으면 한 유체망이 된다 —',
+    '맞닿음이 곧 연결이고, 파이프 한 칸을 빼면 그 자리에서 끊긴다.</p>',
+    '<p>보일러는 석탄을 태워 물 60/s 를 증기 60/s 로 바꾸고, 증기기관은 증기 30/s 로 900 kW 를 낸다.',
+    '즉 <b>보일러 1대가 증기기관 2대</b>를 먹인다. 발전기와 효율은 같다(둘 다 100%) —',
+    '이득은 <b>석탄 넣는 곳이 절반</b>이라는 것과, 파이프에 <b>증기가 고인다</b>는 것이다.</p>',
+    '<p><b>그 고인 증기가 이 계의 요점이다.</b> 석탄이 잠깐 끊겨도 증기가 남아 있으면 전기는 버틴다.',
+    '반대로 부하가 몰리면 <b>전기가 흔들리기 전에 증기부터 준다</b> —',
+    '전력 만족도는 이미 모자란 뒤에야 100% 아래로 내려가지만, 증기%는 그 전에 내려간다.',
+    '그래서 제어기의 과제가 "전기가 모자라면 끄기"에서 <b>"증기가 마르기 전에 끄기"</b>로 옮겨 간다.',
+    '읽는 노드는 <b>유체 잔량</b>(증기%·증기·물·망연결)이고, 문장 편집기에도 <code>증기 잔량</code> 으로 있다.',
+    '하고 싶은 일 카드의 <b>"증기가 마르기 전에 미리 끄기"</b>가 그 회로를 절반 채워서 열어 준다.</p>',
     '<h4>신호를 다듬고, 나누고, 단계로 쪼갠다</h4>',
     '<p><b>평활 필터</b>(논리 III)는 덜덜 떨리는 값을 눅인다. <code>시상수 s</code>는 입력이 갑자기 바뀌었을 때',
     '<b>63%까지 따라가는 데 걸리는 시간</b>이다 — 5로 두면 5초에 63%, 15초에 95% 따라간다.',

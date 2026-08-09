@@ -85,6 +85,19 @@ var NODE_DEFS = {
   'busrecv': { label: '신호 받기', cat: 'in', ins: [], outs: ['값'],
                cfg: [{ k: 'ch', t: 'opsel', label: '채널', opts: BUS_CHANNELS, def: 'A' }],
                tech: 'logic-ctrl' },
+  // 유체 센서 — 이 게임에서 **유일한 선행 지표**다. 전력 만족도는 이미 모자란
+  // 뒤에야 떨어지지만, 증기%는 그 전에 준다. "모자란 다음에 끄기"와 "마르기 전에
+  // 끄기"를 가르는 것이 이 노드이고, 유체 계통을 넣은 이유가 그것이다.
+  // 망연결 출구가 따로 있는 이유는 전력 노드와 같다 — 0 이 '비었다'인지
+  // '파이프를 안 이었다'인지 구별하지 못하면 원인을 짚을 수 없다.
+  // 읽는 값은 **직전 틱**의 유체 상태다. 틱 순서가 로직 → 유체 → 전력이라
+  // 그렇게 되고, 기계 상태 센서도 같은 규약이다. 60/s 로 차는 중이면 한 틱에
+  // 1 만큼 벌어질 수 있다 — 임계값을 그 폭보다 촘촘하게 잡지 말 것.
+  'fluid':   { label: '유체 잔량', cat: 'in', ins: [],
+               outs: ['증기%', '증기', '물', '망연결'],
+               cfg: [{ k: 'ent', t: 'ent', label: '대상',
+                       filter: ['pipe', 'pump', 'boiler', 'engine'] }],
+               tech: 'steel' },
 
   // ---- 연산 ----
   'cmp':     { label: '비교', cat: 'op', ins: ['A', 'B'], outs: ['참'],
@@ -489,6 +502,17 @@ function evalNode(g, n, dt, ctrl) {
       break;
     }
     case 'busrecv': n.out[0] = busRead(n.cfg.ch); break;
+
+    case 'fluid': {
+      var fe = entities[n.cfg.ent];
+      var fi = fe ? fluidOf(fe) : null;
+      if (!fi) { n.out[0] = 0; n.out[1] = 0; n.out[2] = 0; n.out[3] = 0; break; }
+      n.out[0] = fi.steamPct;
+      n.out[1] = fi.steam;
+      n.out[2] = fi.water;
+      n.out[3] = fi.connected;
+      break;
+    }
 
     case 'pid': {
       var sp = readIn(g, n, 0), pv2 = readIn(g, n, 1);

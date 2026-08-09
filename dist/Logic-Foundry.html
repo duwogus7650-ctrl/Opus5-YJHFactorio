@@ -699,6 +699,7 @@ var ITEMS = {
   'circuit':     { name: '회로기판', color: '#4fae5a', shape: 'chip' },
 
   'belt-item':   { name: '벨트',     color: '#c9a227', shape: 'chip' },
+  'pipe-item':   { name: '파이프',   color: '#9aa6ae', shape: 'wire' },
   'inserter-item':{name: '인서터',   color: '#c9a227', shape: 'gear' },
   'ammo':        { name: '탄창',     color: '#c94f3d', shape: 'ammo' },
 
@@ -721,6 +722,9 @@ var RECIPES = {
 
   'belt-item':    { cat: 'craft', time: 0.5, inp: { 'gear': 1, 'iron-plate': 1 }, out: { 'belt-item': 2 }, handOk: true },
   'inserter-item':{ cat: 'craft', time: 0.5, inp: { 'gear': 1, 'circuit': 1, 'iron-plate': 1 }, out: { 'inserter-item': 1 }, handOk: true },
+  // 파이프는 철판 하나로 하나 (Factorio 와 같다). 강철 제련을 연구해야 만든다 —
+  // 유체 계통 전체가 그 연구 하나에 걸려 있다.
+  'pipe-item':    { cat: 'craft', time: 0.5, inp: { 'iron-plate': 1 }, out: { 'pipe-item': 1 }, handOk: true, tech: 'steel' },
   'ammo':         { cat: 'craft', time: 1.0, inp: { 'iron-plate': 4 }, out: { 'ammo': 1 }, handOk: true, tech: 'military' },
 
   'sci-red':      { cat: 'craft', time: 5.0, inp: { 'copper-plate': 1, 'gear': 1 }, out: { 'sci-red': 1 }, handOk: true },
@@ -761,7 +765,30 @@ var BUILDINGS = {
   'turret':    { name: '기관총 터렛', w: 2, h: 2, cost: { 'gear': 10, 'iron-plate': 20 }, tech: 'military',
                  desc: '사거리 18타일. 탄창을 인서터로 넣어줘야 쏜다.' },
   'wall':      { name: '벽', w: 1, h: 1, cost: { 'brick': 2 }, tech: 'military',
-                 desc: '체력 350. 적의 진로를 막는다.' }
+                 desc: '체력 350. 적의 진로를 막는다.' },
+
+  // --- 유체 계통 (강철 제련으로 함께 열린다) --------------------------------
+  // fluid: true 인 건물은 맞닿으면 한 유체망이 된다 (32_fluid.js).
+  // **새 기술을 만들지 않았다** — clear.js 가 "연구 8종 = 410 사이클"을 오라클로
+  // 쓰고 있어서, 9번째 기술은 자력완주 주행의 기준식을 통째로 흔든다.
+  'pipe':      { name: '파이프', w: 1, h: 1, cost: { 'pipe-item': 1 }, tech: 'steel', fluid: true,
+                 desc: '유체를 잇는다. 맞닿은 파이프·설비가 한 망이 된다. 한 칸에 100 저장.' },
+  // 지하수 펌프 — 어디에나 선다. Factorio 의 offshore pump 는 물가에만 서지만,
+  // 이 게임에는 물 지형이 없다. 넣어 봤다가 되돌렸다: 시험 리그들이 고정 좌표에
+  // 짓는데(스폰에서 최대 85타일) 호수가 그 자리를 덮으면 배치가 실패해 드라이버가
+  // 통째로 죽는다. 물가 배치 퍼즐은 이 게임이 얻으려던 것(증기 버퍼로 깊어지는
+  // 제어 문제)과 무관해서, 지형 대신 규칙을 단순화했다. 자세한 것은 원장.
+  'pump':      { name: '지하수 펌프', w: 1, h: 1, cost: { 'circuit': 1, 'gear': 1, 'pipe-item': 1 },
+                 tech: 'steel', fluid: true,
+                 desc: '땅에서 물을 1200/s 퍼 올린다. 전기를 쓰지 않는다 — 정전이 물까지 끊으면 ' +
+                       '스스로 못 살아나는 고장이 된다.' },
+  'boiler':    { name: '보일러', w: 2, h: 2, cost: { 'pipe-item': 4, 'brick': 5, 'iron-plate': 4 },
+                 tech: 'steel', fluid: true,
+                 desc: '석탄을 태워 물 60/s 를 증기 60/s 로. 1.8 MW 를 먹는다 — 증기기관 2대분.' },
+  'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
+                 tech: 'steel', fluid: true,
+                 desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
+                       '보일러 1대가 2대를 먹이고, 파이프에 고인 증기가 완충 역할을 한다.' }
 };
 var BUILD_IDS = Object.keys(BUILDINGS);
 
@@ -776,6 +803,16 @@ var SPEC = {
   labSpeed: 1.0,
   genOutput: 900,             // kW
   coalEnergy: 4000,           // kJ  (4 MJ)
+  // 유체 — 전부 Factorio 공개값. 이 넷은 서로 묶여 있다:
+  //   보일러 1800 kW ÷ 60 증기/s = 30 kJ/증기 = 900 kW ÷ 30 증기/s
+  // 즉 **증기 1개 = 30 kJ** 이 양쪽에서 같게 나온다. 하나만 바꾸면 에너지수지
+  // 게이트가 즉시 어긋난다 — 일부러 그렇게 묶어 놨다.
+  pumpRate: 1200,             // 물/s  (offshore pump)
+  boilerFluid: 60,            // 물/s → 증기/s  (boiler)
+  boilerPower: 1800,          // kW    (boiler, 연료 소비)
+  engineSteam: 30,            // 증기/s (steam engine)
+  engineOutput: 900,          // kW    (steam engine)
+  fluidPerTile: 100,          // 한 칸이 담는 유체 (pipe)
   poleSupply: 2,              // 중심에서 ±2 → 5x5
   poleReach: 7.5,             // 전주끼리 연결되는 거리(타일)
   chestCap: 600,
@@ -1527,12 +1564,20 @@ function placeEntity(type, tx, ty, dir, free) {
   } else if (type === 'lab') {
     e.researching = 0;
   }
+  // 유체 설비는 제 몫의 유체를 직접 들고 있는다. 망 번호로 들고 있으면 저장할 수
+  // 없다 — 파이프 한 칸만 옮겨도 번호가 갈리기 때문이다.
+  if (B.fluid) {
+    e.fw = 0; e.fs = 0; e.fnet = -1;
+    if (type === 'boiler') { e.fuel = 0; e.load = 0; }
+    if (type === 'engine') e.load = 0;
+  }
 
   entities[id] = e;
   entOrder.push(id);
   setOcc(tx, ty, w, h, id);
   markBeltDirty();
   markPowerDirty();
+  markFluidDirty();
   markLogicDirty();
   return e;
 }
@@ -1558,7 +1603,7 @@ function removeEntity(id, refund) {
     }
     // 발전기의 석탄은 e.inv 가 아니라 e.fuel(에너지)에 녹아 있다. 여기서 안 돌려주면
     // 바로 위 주석이 막으려던 그것 — 철거가 아이템 소각기 — 이 발전기에만 남는다.
-    if (e.type === 'generator' && e.fuel > 0) {
+    if ((e.type === 'generator' || e.type === 'boiler') && e.fuel > 0) {
       var coals = Math.floor(e.fuel / SPEC.coalEnergy);
       if (coals > 0) inventory['coal'] = (inventory['coal'] || 0) + coals;
     }
@@ -1581,6 +1626,7 @@ function removeEntity(id, refund) {
   if (typeof cancelPickIfTarget === 'function') cancelPickIfTarget(id);
   markBeltDirty();
   markPowerDirty();
+  markFluidDirty();
   markLogicDirty();
   return true;
 }
@@ -1619,7 +1665,7 @@ function stockTakeCount(e) {
 //
 // **무엇을 받을지는 canAccept 가 정한다** — 인서터가 쓰는 것과 같은 판정이다.
 // 따로 규칙을 쓰면 "인서터로는 들어가는데 손으로는 안 들어간다"가 반드시 생긴다.
-var PUT_TYPES = { generator: 1, turret: 1, lab: 1, furnace: 1, assembler: 1 };
+var PUT_TYPES = { generator: 1, boiler: 1, turret: 1, lab: 1, furnace: 1, assembler: 1 };
 
 function stockPuttableItems(e) {
   var out = [];
@@ -1699,6 +1745,9 @@ function canAccept(e, itemId) {
   switch (e.type) {
     case 'chest': return invTotal(e.inv) < SPEC.chestCap;
     case 'generator': return itemId === 'coal' && e.fuel < SPEC.coalEnergy * 20;
+    // 보일러도 석탄을 태운다 — 저장 방식(e.fuel = 에너지)까지 발전기와 같게 둔다.
+    // 여기가 갈리면 철거 환급·인스펙터·오염 계산이 전부 따로 놀게 된다.
+    case 'boiler': return itemId === 'coal' && e.fuel < SPEC.coalEnergy * 20;
     case 'turret': return itemId === 'ammo' && e.ammo < 200;
     case 'lab': return (itemId === 'sci-red' || itemId === 'sci-green') && invCount(e.inv, itemId) < 100;
     case 'furnace':
@@ -1718,7 +1767,7 @@ function canAccept(e, itemId) {
 }
 function giveTo(e, itemId) {
   if (!canAccept(e, itemId)) return false;
-  if (e.type === 'generator') { e.fuel += SPEC.coalEnergy; return true; }
+  if (e.type === 'generator' || e.type === 'boiler') { e.fuel += SPEC.coalEnergy; return true; }
   if (e.type === 'turret') { e.ammo += SPEC.turretShotsPerAmmo; return true; }
   if (e.type === 'furnace' && !e.recipe) e.recipe = furnaceRecipeIdFor(itemId);
   invAdd(e.inv, itemId, 1);
@@ -1858,6 +1907,16 @@ function stepGenerator(e, dt) {
   } else {
     e.working = false;
   }
+}
+
+// 증기기관 — 발전기와 같은 자리다. 실제 출력은 전력망이 정하고(e.load 0..1),
+// 여기서는 그만큼의 증기를 유체망에서 뽑는다. 900 kW × load × dt 를 30 kJ/증기로
+// 나누면 30 × load × dt 개 — SPEC 의 engineSteam 이 바로 그 수다.
+function stepEngine(e, dt) {
+  if (!e.enabled || e.load <= 0) { e.working = false; return; }
+  var need = SPEC.engineSteam * e.load * dt;
+  var got = drawSteam(e, need);
+  e.working = got > 0;
 }
 
 function stepLab(e, dt) {
@@ -2043,7 +2102,9 @@ function rebuildPower() {
         if (c > 0) { e.net = c - 1; break; }
       }
     }
-    if (e.net >= 0 && e.type === 'generator') nets[e.net].gens.push(e);
+    // 증기기관도 발전기와 같은 자리에 들어간다. 다른 점은 연료가 아니라
+    // **유체망의 증기**를 본다는 것뿐이다.
+    if (e.net >= 0 && (e.type === 'generator' || e.type === 'engine')) nets[e.net].gens.push(e);
   });
   rebuildWireEdges();
   powerDirty = false;
@@ -2090,7 +2151,7 @@ function stepPower(dt) {
   // 이 초기화가 없으면 전주를 철거해 망에서 떨어진 발전기가 **마지막 부하율로
   // 영원히 연료를 태우고 오염을 뿜는다** (전기는 아무 데도 안 가는데).
   // 틱 순서가 stepPower → stepEntities 라 연결된 발전기는 같은 틱에 값이 복구된다.
-  forEachEntity(function (e) { if (e.type === 'generator') e.load = 0; });
+  forEachEntity(function (e) { if (e.type === 'generator' || e.type === 'engine') e.load = 0; });
   if (powerCheatOn) {
     var dem = 0;
     forEachEntity(function (e) { e.powerSat = 1; dem += powerDraw(e); });
@@ -2107,7 +2168,12 @@ function stepPower(dt) {
       var gen = net.gens[g];
       // 꺼진 발전기는 공급하지 않는다 — 제어기의 가동/정지 노드가 발전기에도 먹혀야
       // "예비 발전기를 필요할 때만 돌린다" 같은 배선이 성립한다.
-      if (gen.fuel > 0 && gen.enabled) net.supplyCap += SPEC.genOutput;
+      if (!gen.enabled) continue;
+      if (gen.type === 'engine') {
+        // 증기가 한 방울이라도 있으면 이번 틱은 공급한다 — 발전기의 'fuel > 0' 과
+        // 같은 규약이다. 마르면 다음 틱에 빠진다.
+        if (engineHasSteam(gen)) net.supplyCap += SPEC.engineOutput;
+      } else if (gen.fuel > 0) net.supplyCap += SPEC.genOutput;
     }
     net.demand = 0;
   }
@@ -2122,12 +2188,14 @@ function stepPower(dt) {
     var used = Math.min(nt.demand, nt.supplyCap);
     var loadFrac = nt.supplyCap > 0 ? used / nt.supplyCap : 0;
     for (var g2 = 0; g2 < nt.gens.length; g2++) {
-      nt.gens[g2].load = (nt.gens[g2].fuel > 0 && nt.gens[g2].enabled) ? loadFrac : 0;
+      var gg = nt.gens[g2];
+      var live = gg.enabled && (gg.type === 'engine' ? engineHasSteam(gg) : gg.fuel > 0);
+      gg.load = live ? loadFrac : 0;
     }
     totSup += nt.supplyCap; totDem += nt.demand;
   }
   forEachEntity(function (e) {
-    if (e.type === 'pole' || e.type === 'generator') { e.powerSat = 1; return; }
+    if (e.type === 'pole' || e.type === 'generator' || e.type === 'engine') { e.powerSat = 1; return; }
     var B = BUILDINGS[e.type];
     if (!B || !B.power) { e.powerSat = 1; return; }
     e.powerSat = (e.net >= 0 && e.net < nets.length) ? nets[e.net].sat : 0;
@@ -2156,6 +2224,212 @@ function netPowerOf(e) {
   var nt = nets[e.net];
   return { connected: 1, supply: nt.supplyCap, demand: nt.demand,
            head: nt.supplyCap - nt.demand };
+}
+
+/* ===================== 32_fluid.js ===================== */
+// ===========================================================================
+//  32_fluid.js — 유체망: 물과 증기
+//
+//  구조는 전력망과 같다. 파이프·취수펌프·보일러·증기기관이 **맞닿아** 있으면 한
+//  망이고, 망 하나는 **잘 섞인 탱크 하나**다 — 압력 기울기도 흐름 방향도 모형화하지
+//  않는다. 전력망이 선로 손실을 모형화하지 않는 것과 같은 층위의 단순화이고,
+//  그래서 게이트가 물어볼 것도 같다: 총량이 맞는가, 에너지가 맞는가.
+//
+//  **왜 넣었나 — 버퍼 때문이다.** 발전이 한 단계(석탄→전기)에서 두 단계
+//  (석탄→증기→전기)가 되면 중간에 저장고가 생긴다. 석탄이 잠깐 끊겨도 증기가
+//  남아 있으면 전기는 버티고, 반대로 부하가 몰리면 전기가 흔들리기 **전에** 증기가
+//  먼저 마른다. 제어기의 과제가 "전기가 모자란 다음에 끄기"에서 "증기가 마르기
+//  전에 끄기"로 옮겨 간다 — 관측 가능한 선행 지표가 생기는 것이고, 이 게임이
+//  가르치려는 지점이 정확히 거기다.
+//
+//  수치는 전부 Factorio 공개값이다 (05_data.js SPEC):
+//    취수펌프 1200 물/s · 보일러 1.8 MW 로 물 60/s → 증기 60/s · 증기기관 30 증기/s → 900 kW
+//  그래서 **증기 1개 = 30 kJ** 이 양쪽에서 같게 떨어진다(1800/60 = 900/30). 이 항등식이
+//  에너지수지 게이트의 오라클이다 — 어느 한쪽 수치를 흔들면 즉시 어긋난다.
+// ===========================================================================
+
+var fluidNets = [];
+var fluidDirty = true;
+var fluidAt = new Int32Array(W * H);      // 타일 → 유체 엔티티 색인+1 (0 = 없음)
+
+function markFluidDirty() { fluidDirty = true; }
+function isFluidEnt(e) { return !!(e && BUILDINGS[e.type] && BUILDINGS[e.type].fluid); }
+function fluidCapOf(e) { return e.w * e.h * SPEC.fluidPerTile; }
+
+// --- 망 재구성 --------------------------------------------------------------
+// 맞닿은 칸으로만 잇는다. 대각선은 안 잇는다 — 화면에서 안 닿아 보이는데 이어지면
+// 왜 이어졌는지 짚을 단서가 없다(전주가 '거리'로 잇는 것과 달리 파이프는 '맞닿음'이
+// 눈에 보이는 규칙이다).
+function rebuildFluid() {
+  fluidAt.fill(0);
+  var list = [];
+  forEachEntity(function (e) { if (isFluidEnt(e)) { e.fnet = -1; list.push(e); } });
+  var i, x, y;
+  for (i = 0; i < list.length; i++) {
+    var e0 = list[i];
+    for (y = e0.ty; y < e0.ty + e0.h; y++) {
+      for (x = e0.tx; x < e0.tx + e0.w; x++) if (inBounds(x, y)) fluidAt[idx(x, y)] = i + 1;
+    }
+  }
+  var parent = new Int32Array(list.length);
+  for (i = 0; i < list.length; i++) parent[i] = i;
+  function find(a) { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; }
+  function uni(a, b) { a = find(a); b = find(b); if (a !== b) parent[b] = a; }
+
+  for (var k = 0; k < list.length; k++) {
+    var m = list[k];
+    for (y = m.ty; y < m.ty + m.h; y++) {
+      for (x = m.tx; x < m.tx + m.w; x++) {
+        for (var d = 0; d < 4; d++) {
+          var nx = x + DIR_DX[d], ny = y + DIR_DY[d];
+          if (!inBounds(nx, ny)) continue;
+          var other = fluidAt[idx(nx, ny)];
+          if (other > 0 && other - 1 !== k) uni(k, other - 1);
+        }
+      }
+    }
+  }
+
+  fluidNets = [];
+  var rootNet = {};
+  for (var q = 0; q < list.length; q++) {
+    var r = find(q);
+    if (rootNet[r] === undefined) {
+      rootNet[r] = fluidNets.length;
+      fluidNets.push({ members: [], cap: 0, water: 0, steam: 0 });
+    }
+    var nid = rootNet[r];
+    list[q].fnet = nid;
+    fluidNets[nid].members.push(list[q]);
+  }
+  // 용량과 **지금 들어 있는 양**을 같이 모은다. 양을 안 모으면, 망을 다시 지은
+  // 직후(파이프 한 칸을 잇거나 저장을 불러온 순간) 회원은 증기를 들고 있는데
+  // 망은 0 이라고 답한다 — 그 한 틱에 증기기관이 멎는다.
+  for (var n = 0; n < fluidNets.length; n++) {
+    var net = fluidNets[n], cap = 0, w0 = 0, s0 = 0;
+    for (var mm = 0; mm < net.members.length; mm++) {
+      var mem = net.members[mm];
+      cap += fluidCapOf(mem);
+      w0 += mem.fw || 0;
+      s0 += mem.fs || 0;
+    }
+    net.cap = cap;
+    // 망이 쪼개지거나 합쳐지면 용량이 줄 수 있다 — 넘치는 몫은 버린다.
+    net.water = Math.min(w0, cap);
+    net.steam = Math.min(s0, cap);
+    spreadFluid(net, net.water, net.steam);
+  }
+  fluidDirty = false;
+}
+
+// --- 한 틱 -------------------------------------------------------------------
+// 순서: 회원이 들고 있는 양을 모은다 → 펌프가 붓는다 → 보일러가 물을 증기로
+// 바꾼다 → 다시 회원에게 고르게 나눠 담는다.
+// **회원별로 나눠 담는 이유는 저장이다.** 망 번호는 지형이 바뀌면 갈리므로 저장할
+// 수 없다. 각 건물이 제 몫을 들고 있으면 저장·복원이 그냥 된다.
+function stepFluids(dt) {
+  if (fluidDirty) rebuildFluid();
+  for (var n = 0; n < fluidNets.length; n++) {
+    var net = fluidNets[n];
+    var w = 0, s = 0, i, m;
+    for (i = 0; i < net.members.length; i++) {
+      w += net.members[i].fw || 0;
+      s += net.members[i].fs || 0;
+    }
+
+    for (i = 0; i < net.members.length; i++) {
+      m = net.members[i];
+      if (m.type === 'pump') {
+        // 취수 펌프는 전기를 쓰지 않는다 (Factorio 의 offshore pump 와 같다).
+        // 전기를 요구하면 "정전 → 물 끊김 → 증기 끊김 → 더 큰 정전" 이라는
+        // 자기강화 고장이 생긴다. 제어기의 가동/정지로는 끌 수 있다.
+        if (!m.enabled) { m.working = false; continue; }
+        var add = SPEC.pumpRate * dt;
+        var before = w;
+        w = Math.min(net.cap, w + add);
+        m.working = (w > before);
+      }
+    }
+
+    for (i = 0; i < net.members.length; i++) {
+      m = net.members[i];
+      if (m.type !== 'boiler') continue;
+      if (!m.enabled || m.fuel <= 0) { m.working = false; m.load = 0; continue; }
+      var want = SPEC.boilerFluid * dt;                 // 이 틱에 최대로 끓일 물
+      var room = net.cap - s;                           // 증기가 들어갈 자리
+      var lim = Math.min(want, w, room);
+      if (lim <= 0) { m.working = false; m.load = 0; continue; }
+      // 연료는 끓인 만큼만 탄다. dt 를 곱하는 자리가 여기다 — 빼먹으면 60배가 되고,
+      // 그걸 잡는 것은 아래 에너지수지 게이트뿐이다 (교훈 03).
+      var kj = SPEC.boilerPower * (lim / want) * dt;
+      if (kj > m.fuel) { lim *= m.fuel / kj; kj = m.fuel; }
+      m.fuel -= kj;
+      if (m.fuel < 0) m.fuel = 0;
+      w -= lim; s += lim;
+      m.load = want > 0 ? lim / want : 0;
+      // 오염은 태운 에너지에 비례한다. 발전기가 900 kW 에 20/s 이므로 1.8 MW 는 40/s.
+      emitPollution(m, 40 * m.load * dt);
+      m.working = true;
+    }
+
+    net.water = w; net.steam = s;
+    spreadFluid(net, w, s);
+  }
+}
+
+// 망의 총량을 회원에게 **용량 비례**로 나눈다. 균등하게 나누면 파이프 한 칸과
+// 증기기관(6칸)이 같은 양을 들게 되어, 큰 건물만 있는 망에서 용량이 남는데도
+// 못 채우는 일이 생긴다.
+function spreadFluid(net, w, s) {
+  var cap = net.cap;
+  for (var i = 0; i < net.members.length; i++) {
+    var m = net.members[i];
+    var share = cap > 0 ? fluidCapOf(m) / cap : 0;
+    m.fw = w * share;
+    m.fs = s * share;
+  }
+}
+
+// 증기기관이 부하만큼 증기를 뽑는다. 망 전체에서 빼고 다시 나눠 담는다.
+function drawSteam(e, amt) {
+  if (fluidDirty) rebuildFluid();
+  if (!e || e.fnet < 0 || e.fnet >= fluidNets.length) return 0;
+  var net = fluidNets[e.fnet];
+  var got = Math.min(amt, net.steam);
+  if (got <= 0) return 0;
+  net.steam -= got;
+  spreadFluid(net, net.water, net.steam);
+  return got;
+}
+
+// 센서·인스펙터·전력망이 함께 쓰는 조회. connected 0 은 "망이 아예 없다"이고,
+// 그건 "망에 있는데 비었다"와 다르다 — 둘을 같은 0 으로 뭉치면 플레이어가
+// 파이프를 안 이은 것인지 증기가 마른 것인지 구별할 수 없다.
+function fluidOf(e) {
+  // 배치 직후 첫 틱 전에도 물어본다(렌더러·시험). 다시 안 지으면 방금 이은
+  // 파이프가 '연결 안 됨'으로 보이는데, 그건 사실이 아니라 타이밍이다.
+  if (fluidDirty) rebuildFluid();
+  if (!e || e.fnet === undefined || e.fnet < 0 || e.fnet >= fluidNets.length) {
+    return { connected: 0, water: 0, steam: 0, cap: 0, steamPct: 0 };
+  }
+  var net = fluidNets[e.fnet];
+  return { connected: 1, water: net.water, steam: net.steam, cap: net.cap,
+           steamPct: net.cap > 0 ? (net.steam / net.cap) * 100 : 0 };
+}
+function engineHasSteam(e) {
+  if (fluidDirty) rebuildFluid();
+  if (!e || e.fnet === undefined || e.fnet < 0 || e.fnet >= fluidNets.length) return false;
+  return fluidNets[e.fnet].steam > 0;
+}
+
+var fluidStats = { nets: 0, water: 0, steam: 0, cap: 0 };
+function updateFluidStats() {
+  var w = 0, s = 0, c = 0;
+  for (var i = 0; i < fluidNets.length; i++) {
+    w += fluidNets[i].water; s += fluidNets[i].steam; c += fluidNets[i].cap;
+  }
+  fluidStats.nets = fluidNets.length;
+  fluidStats.water = w; fluidStats.steam = s; fluidStats.cap = c;
 }
 
 /* ===================== 35_logic.js ===================== */
@@ -2246,6 +2520,19 @@ var NODE_DEFS = {
   'busrecv': { label: '신호 받기', cat: 'in', ins: [], outs: ['값'],
                cfg: [{ k: 'ch', t: 'opsel', label: '채널', opts: BUS_CHANNELS, def: 'A' }],
                tech: 'logic-ctrl' },
+  // 유체 센서 — 이 게임에서 **유일한 선행 지표**다. 전력 만족도는 이미 모자란
+  // 뒤에야 떨어지지만, 증기%는 그 전에 준다. "모자란 다음에 끄기"와 "마르기 전에
+  // 끄기"를 가르는 것이 이 노드이고, 유체 계통을 넣은 이유가 그것이다.
+  // 망연결 출구가 따로 있는 이유는 전력 노드와 같다 — 0 이 '비었다'인지
+  // '파이프를 안 이었다'인지 구별하지 못하면 원인을 짚을 수 없다.
+  // 읽는 값은 **직전 틱**의 유체 상태다. 틱 순서가 로직 → 유체 → 전력이라
+  // 그렇게 되고, 기계 상태 센서도 같은 규약이다. 60/s 로 차는 중이면 한 틱에
+  // 1 만큼 벌어질 수 있다 — 임계값을 그 폭보다 촘촘하게 잡지 말 것.
+  'fluid':   { label: '유체 잔량', cat: 'in', ins: [],
+               outs: ['증기%', '증기', '물', '망연결'],
+               cfg: [{ k: 'ent', t: 'ent', label: '대상',
+                       filter: ['pipe', 'pump', 'boiler', 'engine'] }],
+               tech: 'steel' },
 
   // ---- 연산 ----
   'cmp':     { label: '비교', cat: 'op', ins: ['A', 'B'], outs: ['참'],
@@ -2651,6 +2938,17 @@ function evalNode(g, n, dt, ctrl) {
     }
     case 'busrecv': n.out[0] = busRead(n.cfg.ch); break;
 
+    case 'fluid': {
+      var fe = entities[n.cfg.ent];
+      var fi = fe ? fluidOf(fe) : null;
+      if (!fi) { n.out[0] = 0; n.out[1] = 0; n.out[2] = 0; n.out[3] = 0; break; }
+      n.out[0] = fi.steamPct;
+      n.out[1] = fi.steam;
+      n.out[2] = fi.water;
+      n.out[3] = fi.connected;
+      break;
+    }
+
     case 'pid': {
       var sp = readIn(g, n, 0), pv2 = readIn(g, n, 1);
       var err = sp - pv2;
@@ -2863,7 +3161,13 @@ var RULE_SOURCES = {
   // 다른 제어기가 보낸 값. 채널은 고르는 것이지 적는 것이 아니다 — 오타 하나로
   // 조용히 0 이 되는 것이 이 게임에서 제일 나쁜 실패라서.
   'busIn':     { label: '받은 신호', node: 'busrecv', port: 0, needs: ['ch'],
-                 tech: 'logic-ctrl' }
+                 tech: 'logic-ctrl' },
+  // 증기%는 전력 만족도보다 **먼저** 준다. 문장 쪽에도 넣어야 "전기가 모자라면"
+  // 대신 "증기가 마르기 전에" 를 코딩 없이 쓸 수 있다.
+  'steamPct':  { label: '증기 잔량', node: 'fluid', port: 0, needs: ['ent'],
+                 entFilter: ['pipe', 'pump', 'boiler', 'engine'], unit: '%', tech: 'steel' },
+  'waterAmt':  { label: '물 잔량', node: 'fluid', port: 2, needs: ['ent'],
+                 entFilter: ['pipe', 'pump', 'boiler', 'engine'], tech: 'steel' }
 };
 var RULE_SOURCE_IDS = Object.keys(RULE_SOURCES);
 
@@ -3267,6 +3571,17 @@ var RULE_CARDS = [
       r.name = '';
       r.when.src = 'powerHead'; r.when.cmp = '>='; r.when.value = 0;
       r.then.act = 'display'; r.then.label = '전기 여유';
+    } },
+  { id: 'steam', title: '증기가 마르기 전에 미리 끄기',
+    why: '전기 만족도는 <b>이미 모자란 뒤에야</b> 떨어진다. 증기는 그 전에 준다 — ' +
+         '보일러가 못 따라가는 순간 증기%가 먼저 내려가고, 전기는 아직 100% 다. ' +
+         '그때 저우선 라인을 끄면 정전을 <b>미리</b> 막는다.',
+    need: 'steel',
+    make: function (r) {
+      r.name = '증기부족';
+      r.when.src = 'steamPct'; r.when.cmp = '<'; r.when.value = 30;
+      r.memo.kind = 'latch'; r.memo.resetCmp = '>'; r.memo.resetValue = 70; r.memo.everySec = 20;
+      r.then.act = 'run'; r.then.onWhenTrue = false;
     } },
   { id: 'signal', title: '공장 상태를 다른 제어기에 알리기',
     why: '제어기 하나에 규칙을 다 몰아넣으면 읽을 수가 없다. 재는 쪽과 판단하는 쪽을 ' +
@@ -3882,6 +4197,37 @@ function drawEntity(e) {
     case 'belt': case 'splitter': return;   // 벨트는 따로 그린다
     case 'inserter': drawInserter(e); return;
     case 'pole': drawPole(e); return;
+    // 파이프는 벨트처럼 1칸짜리라 그림자·몸통 규격을 안 쓴다. 이웃한 유체 설비
+    // 쪽으로만 목을 뻗어, **어디가 이어졌는지 화면에서 바로 보이게** 한다 —
+    // 유체망은 맞닿음이 규칙이므로 그게 곧 규칙의 시각화다.
+    case 'pipe': {
+      ctx.fillStyle = '#59636b';
+      ctx.fillRect(x + 0.28, y + 0.28, 0.44, 0.44);
+      for (var pd = 0; pd < 4; pd++) {
+        var nb = entityAt(x + DIR_DX[pd], y + DIR_DY[pd]);
+        if (!nb || !BUILDINGS[nb.type] || !BUILDINGS[nb.type].fluid) continue;
+        ctx.fillRect(x + 0.28 + DIR_DX[pd] * 0.36, y + 0.28 + DIR_DY[pd] * 0.36, 0.44, 0.44);
+      }
+      ctx.strokeStyle = 'rgba(20,24,28,0.55)'; ctx.lineWidth = 0.04;
+      ctx.strokeRect(x + 0.28, y + 0.28, 0.44, 0.44);
+      ctx.fillStyle = 'rgba(150,205,235,0.5)';
+      ctx.fillRect(x + 0.38, y + 0.38, 0.24, 0.24);
+      return;
+    }
+    case 'pump': {
+      ctx.fillStyle = '#4a5a64'; ctx.fillRect(x + 0.06, y + 0.06, 0.88, 0.88);
+      ctx.fillStyle = '#9aa6ae'; ctx.fillRect(x + 0.2, y + 0.2, 0.6, 0.6);
+      // 물을 퍼 올리는 중이면 도는 표시 — 정지와 가동을 화면에서 구별한다
+      var pa = e.working ? e.anim * 6 : 0;
+      ctx.save(); ctx.translate(x + 0.5, y + 0.5); ctx.rotate(pa);
+      ctx.fillStyle = '#2f6d8f';
+      ctx.fillRect(-0.30, -0.07, 0.60, 0.14);
+      ctx.fillRect(-0.07, -0.30, 0.14, 0.60);
+      ctx.restore();
+      ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.05;
+      ctx.strokeRect(x + 0.06, y + 0.06, 0.88, 0.88);
+      return;
+    }
     case 'wall': {
       ctx.fillStyle = '#7a6a58'; ctx.fillRect(x + 0.02, y + 0.02, 0.96, 0.96);
       ctx.fillStyle = '#95836d'; ctx.fillRect(x + 0.08, y + 0.08, 0.84, 0.36);
@@ -3954,6 +4300,49 @@ function drawEntity(e) {
     ctx.fillStyle = ff > 0.15 ? COL.amber : '#c0392b';
     ctx.fillRect(x + 0.32, y + h - 0.40, (w - 0.64) * ff, 0.16);
     if (e.fuel <= 0) drawWarn(x, y, w, '연료 없음');
+  } else if (e.type === 'boiler') {
+    body(x, y, w, h, '#6b5a52');
+    // 가로로 누운 드럼 — 발전기의 플라이휠과 한눈에 갈리게 형태를 다르게 둔다
+    ctx.fillStyle = '#8a7468';
+    rr(x + 0.16, y + 0.34, w - 0.32, h - 0.72, 0.3); ctx.fill();
+    ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.05; ctx.stroke();
+    hazard(x + 0.16, y + 0.12, w - 0.32, 0.18);
+    // 불길 — 태우는 중에만
+    var bg = e.working ? 1 : 0.12;
+    var bgr = ctx.createRadialGradient(x + w / 2, y + h - 0.3, 0.02, x + w / 2, y + h - 0.3, 0.5);
+    bgr.addColorStop(0, 'rgba(255,170,60,' + (0.9 * bg) + ')');
+    bgr.addColorStop(1, 'rgba(255,80,10,0)');
+    ctx.fillStyle = bgr; ctx.fillRect(x + 0.1, y + h - 0.8, w - 0.2, 0.7);
+    // 증기 배출 — 부하가 있을 때만 김이 오른다
+    if (e.working) {
+      ctx.fillStyle = 'rgba(226,236,240,0.45)';
+      var pph = 0.18 + (e.anim * 0.6 % 0.5);
+      ctx.beginPath(); ctx.arc(x + w - 0.42, y + 0.28 - pph * 0.5, 0.13 + pph * 0.2, 0, 6.283); ctx.fill();
+    }
+    var bf = clamp((e.fuel || 0) / (SPEC.coalEnergy * 20), 0, 1);
+    ctx.fillStyle = '#20232a'; ctx.fillRect(x + 0.24, y + h - 0.26, w - 0.48, 0.16);
+    ctx.fillStyle = bf > 0.15 ? COL.amber : '#c0392b';
+    ctx.fillRect(x + 0.26, y + h - 0.24, (w - 0.52) * bf, 0.12);
+    if (!e.fuel) drawWarn(x, y, w, '연료 없음');
+  } else if (e.type === 'engine') {
+    body(x, y, w, h, '#59636b');
+    hazard(x + 0.16, y + 0.14, w - 0.32, 0.18);
+    // 수평 피스톤 — 왕복 운동. 발전기(회전)와 보일러(드럼)와 셋 다 달라야 한다.
+    var stroke = e.working ? (Math.sin(e.anim * 8) * 0.5 + 0.5) : 0.5;
+    ctx.fillStyle = '#39424a';
+    ctx.fillRect(x + 0.3, y + h / 2 - 0.22, w - 0.6, 0.44);
+    ctx.fillStyle = '#aeb8c0';
+    ctx.fillRect(x + 0.36 + stroke * (w - 1.5), y + h / 2 - 0.14, 0.7, 0.28);
+    ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.05;
+    ctx.strokeRect(x + 0.3, y + h / 2 - 0.22, w - 0.6, 0.44);
+    // 증기 게이지 — 이 계의 선행 지표다. 전기가 흔들리기 전에 여기가 먼저 준다.
+    var fi = fluidOf(e);
+    var sp = clamp(fi.cap > 0 ? fi.steam / fi.cap : 0, 0, 1);
+    ctx.fillStyle = '#20232a'; ctx.fillRect(x + 0.3, y + h - 0.32, w - 0.6, 0.18);
+    ctx.fillStyle = sp > 0.15 ? '#7fb8d8' : '#c0392b';
+    ctx.fillRect(x + 0.32, y + h - 0.30, (w - 0.64) * sp, 0.14);
+    if (!fi.connected) drawWarn(x, y, w, '파이프 없음');
+    else if (fi.steam <= 0) drawWarn(x, y, w, '증기 없음');
   } else if (e.type === 'chest') {
     ctx.fillStyle = '#8a6a3d'; rr(x + 0.08, y + 0.12, 0.84, 0.78, 0.08); ctx.fill();
     ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.06; ctx.stroke();
@@ -5081,6 +5470,26 @@ function refreshInsp() {
       Math.round((e.load || 0) * 100) + '% · 보유 석탄 ' + (inventory['coal'] || 0) +
       (e.net < 0 ? ' · <b class="bad">망 미연결</b>' : '') + '</span></div>');
   }
+  if (e.type === 'boiler') {
+    s.push('<div class="frow"><label>연료</label><span class="num">' + fmt((e.fuel || 0) / 1000, 1) +
+      ' MJ · 부하 ' + Math.round((e.load || 0) * 100) + '% · 보유 석탄 ' + (inventory['coal'] || 0) +
+      '</span></div>');
+  }
+  if (B.fluid) {
+    // **증기는 이 계의 선행 지표다** — 전기가 흔들리기 전에 여기가 먼저 준다.
+    // 그래서 숫자를 보여 준다. 안 보이면 제어기로 뭘 잡아야 할지 알 수 없다.
+    var fi = fluidOf(e);
+    if (!fi.connected) {
+      s.push('<div class="frow"><label>유체</label><span class="num"><b class="bad">망 미연결</b>' +
+        ' — 파이프가 맞닿아야 이어진다</span></div>');
+    } else {
+      s.push('<div class="frow"><label>물</label><span class="num">' + fmt(fi.water, 0) + ' / ' +
+        fi.cap + '</span></div>');
+      s.push('<div class="frow"><label>증기</label><span class="num" style="color:' +
+        (fi.steamPct > 25 ? 'var(--run)' : (fi.steamPct > 0 ? 'var(--warn)' : 'var(--stop)')) + '">' +
+        fmt(fi.steam, 0) + ' / ' + fi.cap + ' · ' + fmt(fi.steamPct, 0) + '%</span></div>');
+    }
+  }
   if (e.type === 'turret') {
     s.push('<div class="frow"><label>탄약</label><span class="num">' + e.ammo + ' 발' +
       (e.fireOk ? '' : ' · <b class="bad">사격 금지</b>') + '</span></div>');
@@ -5255,6 +5664,19 @@ function fillHelp() {
     '되먹임이 있는 제어를 짤 때 늘 만나는 문제이고, 이 게임에서 가장 배울 것이 많은 지점이다.</li>',
     '<li><b>방어 자동화</b> — 적 근접 센서가 적을 감지하면 생산 라인을 끄고 그 전력을 방어에 몰아준다.</li>',
     '</ul>',
+    '<h4>증기 발전 — 버퍼가 생기면 제어가 달라진다</h4>',
+    '<p>강철 제련을 연구하면 <b>파이프·지하수 펌프·보일러·증기기관</b>이 열린다.',
+    '<code>펌프 → 파이프 → 보일러 → 파이프 → 증기기관</code> 으로 <b>맞대어</b> 놓으면 한 유체망이 된다 —',
+    '맞닿음이 곧 연결이고, 파이프 한 칸을 빼면 그 자리에서 끊긴다.</p>',
+    '<p>보일러는 석탄을 태워 물 60/s 를 증기 60/s 로 바꾸고, 증기기관은 증기 30/s 로 900 kW 를 낸다.',
+    '즉 <b>보일러 1대가 증기기관 2대</b>를 먹인다. 발전기와 효율은 같다(둘 다 100%) —',
+    '이득은 <b>석탄 넣는 곳이 절반</b>이라는 것과, 파이프에 <b>증기가 고인다</b>는 것이다.</p>',
+    '<p><b>그 고인 증기가 이 계의 요점이다.</b> 석탄이 잠깐 끊겨도 증기가 남아 있으면 전기는 버틴다.',
+    '반대로 부하가 몰리면 <b>전기가 흔들리기 전에 증기부터 준다</b> —',
+    '전력 만족도는 이미 모자란 뒤에야 100% 아래로 내려가지만, 증기%는 그 전에 내려간다.',
+    '그래서 제어기의 과제가 "전기가 모자라면 끄기"에서 <b>"증기가 마르기 전에 끄기"</b>로 옮겨 간다.',
+    '읽는 노드는 <b>유체 잔량</b>(증기%·증기·물·망연결)이고, 문장 편집기에도 <code>증기 잔량</code> 으로 있다.',
+    '하고 싶은 일 카드의 <b>"증기가 마르기 전에 미리 끄기"</b>가 그 회로를 절반 채워서 열어 준다.</p>',
     '<h4>신호를 다듬고, 나누고, 단계로 쪼갠다</h4>',
     '<p><b>평활 필터</b>(논리 III)는 덜덜 떨리는 값을 눅인다. <code>시상수 s</code>는 입력이 갑자기 바뀌었을 때',
     '<b>63%까지 따라가는 데 걸리는 시간</b>이다 — 5로 두면 5초에 63%, 15초에 95% 따라간다.',
@@ -7142,6 +7564,7 @@ function stepEntities(dt) {
       case 'furnace': guard('furnace', function () { stepCrafter(e, dt, SPEC.furnaceSpeed); }); break;
       case 'assembler': guard('assembler', function () { stepCrafter(e, dt, SPEC.assemblerSpeed); }); break;
       case 'generator': guard('generator', function () { stepGenerator(e, dt); }); break;
+      case 'engine': guard('engine', function () { stepEngine(e, dt); }); break;
       case 'lab': guard('lab', function () { stepLab(e, dt); }); break;
       case 'inserter': guard('inserter', function () { stepInserter(e, dt); }); break;
     }
@@ -7150,6 +7573,10 @@ function stepEntities(dt) {
 
 function tick(dt) {
   stepLogic(dt);
+  // 유체가 전력보다 먼저다 — 펌프가 물을 붓고 보일러가 증기를 만든 뒤에야
+  // 증기기관이 이번 틱에 얼마를 공급할 수 있는지 정해진다. 뒤로 돌리면 발전이
+  // 한 틱씩 밀려, 부하가 급변할 때 전력이 실제보다 한 틱 늦게 반응한다.
+  stepFluids(dt);
   stepPower(dt);
   stepEntities(dt);
   stepHandCraft(dt);      // 손 조립도 시간이 든다 — 기계와 같은 틱에 진행한다
@@ -7227,7 +7654,10 @@ function serializeEntity(e) {
   var o = { id: e.id, t: e.type, x: e.tx, y: e.ty, d: e.dir, hp: e.hp,
             pe: e.playerEnabled, pf: e.playerFilter, inv: e.inv, out: e.out,
             rec: e.recipe, prog: e.progress };
-  if (e.type === 'generator') o.fuel = e.fuel;
+  if (e.type === 'generator' || e.type === 'boiler') o.fuel = e.fuel;
+  // 유체는 회원이 제 몫을 들고 있다. 안 담으면 불러오는 순간 파이프의 증기가
+  // 통째로 사라져 발전이 한 박자 멈춘다 — 버퍼가 있는 계에서는 그게 곧 정전이다.
+  if (BUILDINGS[e.type] && BUILDINGS[e.type].fluid) { o.fw = e.fw || 0; o.fs = e.fs || 0; }
   if (e.type === 'furnace' && e.lastRecipe) o.lrec = e.lastRecipe;   // 굽던 것의 기억
   if (e.type === 'turret') o.ammo = e.ammo;
   if (e.type === 'splitter') o.prio = e.outPrio;
@@ -7366,6 +7796,8 @@ function loadGame(raw) {
       if (o.ammo !== undefined) e.ammo = o.ammo;
       if (o.prio !== undefined) e.outPrio = o.prio;
       if (o.res !== undefined) e.researching = o.res;
+      if (o.fw !== undefined) e.fw = o.fw;
+      if (o.fs !== undefined) e.fs = o.fs;
       if (o.ph !== undefined) { e.phase = o.ph; e.t = o.tt; e.held = o.held || null; }
       if (o.cells && e.cells) {
         for (var cc = 0; cc < e.cells.length && cc < o.cells.length; cc++) {
@@ -7485,6 +7917,10 @@ window.__GAME = {
   // 미는 유일한 경로이고, 존재 이유는 하나다: 같은 게임시간을 다르게 쪼개도 결과가
   // 같은지 물어야 dt 를 곱했는지 아닌지가 갈린다 (교훈 03 의 60배 오염이 그 실패다).
   tickWith: function (dt) { tick(Math.max(0, +dt || 0)); return gameTime; },
+  // 유체망 — 이 설비가 속한 망의 물·증기. connected 0 은 "망이 없다"이고
+  // 그건 "망에 있는데 비었다"와 다르다.
+  fluid: function (id) { var e = entities[id]; return e ? fluidOf(e) : null; },
+  fluidNetCount: function () { if (fluidDirty) rebuildFluid(); return fluidNets.length; },
   // 신호 버스 — 지금 읽히는 값(직전 틱 합계)
   bus: function (ch) { return ch === undefined ? busSnapshot() : busRead(ch); },
   busChannels: function () { return BUS_CHANNELS.slice(); },
@@ -8124,7 +8560,10 @@ window.__GAME = {
              inserterPerSec: 1 / SPEC.inserterSwing,
              minerPerSec: SPEC.minerRate, furnaceTime: RECIPES['iron-plate'].time,
              genKw: SPEC.genOutput, coalKj: SPEC.coalEnergy,
-             turretRange: SPEC.turretRange, turretDps: SPEC.turretDps };
+             turretRange: SPEC.turretRange, turretDps: SPEC.turretDps,
+             pumpRate: SPEC.pumpRate, boilerFluid: SPEC.boilerFluid,
+             boilerKw: SPEC.boilerPower, engineSteam: SPEC.engineSteam,
+             engineKw: SPEC.engineOutput, fluidPerTile: SPEC.fluidPerTile };
   }
 };
 

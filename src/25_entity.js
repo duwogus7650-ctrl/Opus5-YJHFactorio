@@ -139,12 +139,20 @@ function placeEntity(type, tx, ty, dir, free) {
   } else if (type === 'lab') {
     e.researching = 0;
   }
+  // 유체 설비는 제 몫의 유체를 직접 들고 있는다. 망 번호로 들고 있으면 저장할 수
+  // 없다 — 파이프 한 칸만 옮겨도 번호가 갈리기 때문이다.
+  if (B.fluid) {
+    e.fw = 0; e.fs = 0; e.fnet = -1;
+    if (type === 'boiler') { e.fuel = 0; e.load = 0; }
+    if (type === 'engine') e.load = 0;
+  }
 
   entities[id] = e;
   entOrder.push(id);
   setOcc(tx, ty, w, h, id);
   markBeltDirty();
   markPowerDirty();
+  markFluidDirty();
   markLogicDirty();
   return e;
 }
@@ -170,7 +178,7 @@ function removeEntity(id, refund) {
     }
     // 발전기의 석탄은 e.inv 가 아니라 e.fuel(에너지)에 녹아 있다. 여기서 안 돌려주면
     // 바로 위 주석이 막으려던 그것 — 철거가 아이템 소각기 — 이 발전기에만 남는다.
-    if (e.type === 'generator' && e.fuel > 0) {
+    if ((e.type === 'generator' || e.type === 'boiler') && e.fuel > 0) {
       var coals = Math.floor(e.fuel / SPEC.coalEnergy);
       if (coals > 0) inventory['coal'] = (inventory['coal'] || 0) + coals;
     }
@@ -193,6 +201,7 @@ function removeEntity(id, refund) {
   if (typeof cancelPickIfTarget === 'function') cancelPickIfTarget(id);
   markBeltDirty();
   markPowerDirty();
+  markFluidDirty();
   markLogicDirty();
   return true;
 }
@@ -231,7 +240,7 @@ function stockTakeCount(e) {
 //
 // **무엇을 받을지는 canAccept 가 정한다** — 인서터가 쓰는 것과 같은 판정이다.
 // 따로 규칙을 쓰면 "인서터로는 들어가는데 손으로는 안 들어간다"가 반드시 생긴다.
-var PUT_TYPES = { generator: 1, turret: 1, lab: 1, furnace: 1, assembler: 1 };
+var PUT_TYPES = { generator: 1, boiler: 1, turret: 1, lab: 1, furnace: 1, assembler: 1 };
 
 function stockPuttableItems(e) {
   var out = [];
@@ -311,6 +320,9 @@ function canAccept(e, itemId) {
   switch (e.type) {
     case 'chest': return invTotal(e.inv) < SPEC.chestCap;
     case 'generator': return itemId === 'coal' && e.fuel < SPEC.coalEnergy * 20;
+    // 보일러도 석탄을 태운다 — 저장 방식(e.fuel = 에너지)까지 발전기와 같게 둔다.
+    // 여기가 갈리면 철거 환급·인스펙터·오염 계산이 전부 따로 놀게 된다.
+    case 'boiler': return itemId === 'coal' && e.fuel < SPEC.coalEnergy * 20;
     case 'turret': return itemId === 'ammo' && e.ammo < 200;
     case 'lab': return (itemId === 'sci-red' || itemId === 'sci-green') && invCount(e.inv, itemId) < 100;
     case 'furnace':
@@ -330,7 +342,7 @@ function canAccept(e, itemId) {
 }
 function giveTo(e, itemId) {
   if (!canAccept(e, itemId)) return false;
-  if (e.type === 'generator') { e.fuel += SPEC.coalEnergy; return true; }
+  if (e.type === 'generator' || e.type === 'boiler') { e.fuel += SPEC.coalEnergy; return true; }
   if (e.type === 'turret') { e.ammo += SPEC.turretShotsPerAmmo; return true; }
   if (e.type === 'furnace' && !e.recipe) e.recipe = furnaceRecipeIdFor(itemId);
   invAdd(e.inv, itemId, 1);
@@ -470,6 +482,16 @@ function stepGenerator(e, dt) {
   } else {
     e.working = false;
   }
+}
+
+// 증기기관 — 발전기와 같은 자리다. 실제 출력은 전력망이 정하고(e.load 0..1),
+// 여기서는 그만큼의 증기를 유체망에서 뽑는다. 900 kW × load × dt 를 30 kJ/증기로
+// 나누면 30 × load × dt 개 — SPEC 의 engineSteam 이 바로 그 수다.
+function stepEngine(e, dt) {
+  if (!e.enabled || e.load <= 0) { e.working = false; return; }
+  var need = SPEC.engineSteam * e.load * dt;
+  var got = drawSteam(e, need);
+  e.working = got > 0;
 }
 
 function stepLab(e, dt) {

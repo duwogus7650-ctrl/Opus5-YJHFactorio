@@ -179,13 +179,13 @@ MUTATIONS = [
      ['save.keepsLatchState']),
 
     ('망에서 떨어진 발전기의 부하를 안 지운다', '30_power.js',
-     b"  forEachEntity(function (e) { if (e.type === 'generator') e.load = 0; });",
+     b"  forEachEntity(function (e) { if (e.type === 'generator' || e.type === 'engine') e.load = 0; });",
      b"  forEachEntity(function (e) { if (e.type === '__never') e.load = 0; });",
      ['power.disconnectedGeneratorIdles']),
 
     ('꺼진 발전기도 계속 공급한다', '30_power.js',
-     b'      if (gen.fuel > 0 && gen.enabled) net.supplyCap += SPEC.genOutput;',
-     b'      if (gen.fuel > 0) net.supplyCap += SPEC.genOutput;',
+     b'      if (!gen.enabled) continue;',
+     b'      if (false) continue;',
      ['power.controllerCanStopGenerator']),
 
     ('용광로가 아무 제련 레시피나 받는다', '25_entity.js',
@@ -549,8 +549,8 @@ MUTATIONS = [
      ['stock.putRespectsBufferCap', 'stock.putRejectsWrongItem']),
 
     ('넣기 대상에 상자를 넣는다 (전 재고가 상자로 빨려간다)', '25_entity.js',
-     b"var PUT_TYPES = { generator: 1, turret: 1, lab: 1, furnace: 1, assembler: 1 };",
-     b"var PUT_TYPES = { generator: 1, turret: 1, lab: 1, furnace: 1, assembler: 1, chest: 1 };",
+     b"var PUT_TYPES = { generator: 1, boiler: 1, turret: 1, lab: 1, furnace: 1, assembler: 1 };",
+     b"var PUT_TYPES = { generator: 1, boiler: 1, turret: 1, lab: 1, furnace: 1, assembler: 1, chest: 1 };",
      ['stock.chestIsNotAPutTarget']),
 
     # ---- UI 경로 (uismoke.js 로 판정) ----
@@ -725,6 +725,50 @@ MUTATIONS = [
      b'    if (!obj[k]) obj[k] = {};',
      b'    if (!obj[k]) return;',
      ['ui.mathDropdownExistsAndCompiles'], 'uismoke.js'),
+
+    # ---- 유체: 물·증기 ----
+    # 매 틱 누적에서 dt 를 빼면 60배가 된다. 오염이 그렇게 60배로 나왔었다(교훈 03).
+    ('보일러가 dt 를 안 곱한다 (60배)', '32_fluid.js',
+     b'      var want = SPEC.boilerFluid * dt;',
+     b'      var want = SPEC.boilerFluid * 1;',
+     ['fluid.boilerRateAndFuelMatchSpec']),
+
+    ('펌프가 dt 를 안 곱한다 (60배)', '32_fluid.js',
+     b'        var add = SPEC.pumpRate * dt;',
+     b'        var add = SPEC.pumpRate;',
+     ['fluid.pumpRateMatchesSpec']),
+
+    # 증기 1개 = 30 kJ 항등식을 깬다. 한쪽만 바꿔도 양쪽 게이트가 어긋나야 한다.
+    ('보일러가 연료를 덜 태운다 (증기가 공짜가 된다)', '32_fluid.js',
+     b'      var kj = SPEC.boilerPower * (lim / want) * dt;',
+     b'      var kj = SPEC.boilerPower * (lim / want) * dt * 0.5;',
+     ['fluid.energyPerSteamIsThirty']),
+
+    ('증기기관이 증기를 안 쓴다 (영구기관)', '25_entity.js',
+     b'  var need = SPEC.engineSteam * e.load * dt;',
+     b'  var need = 0;',
+     ['fluid.engineDrawsSteamAtSpec']),
+
+    ('증기가 없어도 증기기관이 공급한다', '30_power.js',
+     b'        if (engineHasSteam(gen)) net.supplyCap += SPEC.engineOutput;',
+     b'        net.supplyCap += SPEC.engineOutput;',
+     ['fluid.noSteamNoPower']),
+
+    # 맞닿음이 유체망의 규칙이다. 이걸 깨면 파이프를 지워도 계속 이어져 있다.
+    ('철거해도 유체망을 다시 안 짓는다', '25_entity.js',
+     b'  markBeltDirty();\n  markPowerDirty();\n  markFluidDirty();\n  markLogicDirty();\n  return true;',
+     b'  markBeltDirty();\n  markPowerDirty();\n  markLogicDirty();\n  return true;',
+     ['fluid.removingPipeSplitsNet']),
+
+    ('저장이 파이프의 유체를 안 담는다', '60_game.js',
+     b"  if (BUILDINGS[e.type] && BUILDINGS[e.type].fluid) { o.fw = e.fw || 0; o.fs = e.fs || 0; }",
+     b"  if (false) { o.fw = e.fw || 0; o.fs = e.fs || 0; }",
+     ['fluid.survivesSave']),
+
+    ('유체 센서가 망 밖과 빈 망을 같은 값으로 뭉갠다', '32_fluid.js',
+     b'  return { connected: 1, water: net.water, steam: net.steam, cap: net.cap,',
+     b'  return { connected: 0, water: net.water, steam: net.steam, cap: net.cap,',
+     ['fluid.sensorReadsTheNet']),
 ]
 
 

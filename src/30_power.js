@@ -91,7 +91,9 @@ function rebuildPower() {
         if (c > 0) { e.net = c - 1; break; }
       }
     }
-    if (e.net >= 0 && e.type === 'generator') nets[e.net].gens.push(e);
+    // 증기기관도 발전기와 같은 자리에 들어간다. 다른 점은 연료가 아니라
+    // **유체망의 증기**를 본다는 것뿐이다.
+    if (e.net >= 0 && (e.type === 'generator' || e.type === 'engine')) nets[e.net].gens.push(e);
   });
   rebuildWireEdges();
   powerDirty = false;
@@ -138,7 +140,7 @@ function stepPower(dt) {
   // 이 초기화가 없으면 전주를 철거해 망에서 떨어진 발전기가 **마지막 부하율로
   // 영원히 연료를 태우고 오염을 뿜는다** (전기는 아무 데도 안 가는데).
   // 틱 순서가 stepPower → stepEntities 라 연결된 발전기는 같은 틱에 값이 복구된다.
-  forEachEntity(function (e) { if (e.type === 'generator') e.load = 0; });
+  forEachEntity(function (e) { if (e.type === 'generator' || e.type === 'engine') e.load = 0; });
   if (powerCheatOn) {
     var dem = 0;
     forEachEntity(function (e) { e.powerSat = 1; dem += powerDraw(e); });
@@ -155,7 +157,12 @@ function stepPower(dt) {
       var gen = net.gens[g];
       // 꺼진 발전기는 공급하지 않는다 — 제어기의 가동/정지 노드가 발전기에도 먹혀야
       // "예비 발전기를 필요할 때만 돌린다" 같은 배선이 성립한다.
-      if (gen.fuel > 0 && gen.enabled) net.supplyCap += SPEC.genOutput;
+      if (!gen.enabled) continue;
+      if (gen.type === 'engine') {
+        // 증기가 한 방울이라도 있으면 이번 틱은 공급한다 — 발전기의 'fuel > 0' 과
+        // 같은 규약이다. 마르면 다음 틱에 빠진다.
+        if (engineHasSteam(gen)) net.supplyCap += SPEC.engineOutput;
+      } else if (gen.fuel > 0) net.supplyCap += SPEC.genOutput;
     }
     net.demand = 0;
   }
@@ -170,12 +177,14 @@ function stepPower(dt) {
     var used = Math.min(nt.demand, nt.supplyCap);
     var loadFrac = nt.supplyCap > 0 ? used / nt.supplyCap : 0;
     for (var g2 = 0; g2 < nt.gens.length; g2++) {
-      nt.gens[g2].load = (nt.gens[g2].fuel > 0 && nt.gens[g2].enabled) ? loadFrac : 0;
+      var gg = nt.gens[g2];
+      var live = gg.enabled && (gg.type === 'engine' ? engineHasSteam(gg) : gg.fuel > 0);
+      gg.load = live ? loadFrac : 0;
     }
     totSup += nt.supplyCap; totDem += nt.demand;
   }
   forEachEntity(function (e) {
-    if (e.type === 'pole' || e.type === 'generator') { e.powerSat = 1; return; }
+    if (e.type === 'pole' || e.type === 'generator' || e.type === 'engine') { e.powerSat = 1; return; }
     var B = BUILDINGS[e.type];
     if (!B || !B.power) { e.powerSat = 1; return; }
     e.powerSat = (e.net >= 0 && e.net < nets.length) ? nets[e.net].sat : 0;

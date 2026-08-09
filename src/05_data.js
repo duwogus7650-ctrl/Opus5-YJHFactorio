@@ -33,6 +33,7 @@ var ITEMS = {
   'circuit':     { name: '회로기판', color: '#4fae5a', shape: 'chip' },
 
   'belt-item':   { name: '벨트',     color: '#c9a227', shape: 'chip' },
+  'pipe-item':   { name: '파이프',   color: '#9aa6ae', shape: 'wire' },
   'inserter-item':{name: '인서터',   color: '#c9a227', shape: 'gear' },
   'ammo':        { name: '탄창',     color: '#c94f3d', shape: 'ammo' },
 
@@ -55,6 +56,9 @@ var RECIPES = {
 
   'belt-item':    { cat: 'craft', time: 0.5, inp: { 'gear': 1, 'iron-plate': 1 }, out: { 'belt-item': 2 }, handOk: true },
   'inserter-item':{ cat: 'craft', time: 0.5, inp: { 'gear': 1, 'circuit': 1, 'iron-plate': 1 }, out: { 'inserter-item': 1 }, handOk: true },
+  // 파이프는 철판 하나로 하나 (Factorio 와 같다). 강철 제련을 연구해야 만든다 —
+  // 유체 계통 전체가 그 연구 하나에 걸려 있다.
+  'pipe-item':    { cat: 'craft', time: 0.5, inp: { 'iron-plate': 1 }, out: { 'pipe-item': 1 }, handOk: true, tech: 'steel' },
   'ammo':         { cat: 'craft', time: 1.0, inp: { 'iron-plate': 4 }, out: { 'ammo': 1 }, handOk: true, tech: 'military' },
 
   'sci-red':      { cat: 'craft', time: 5.0, inp: { 'copper-plate': 1, 'gear': 1 }, out: { 'sci-red': 1 }, handOk: true },
@@ -95,7 +99,30 @@ var BUILDINGS = {
   'turret':    { name: '기관총 터렛', w: 2, h: 2, cost: { 'gear': 10, 'iron-plate': 20 }, tech: 'military',
                  desc: '사거리 18타일. 탄창을 인서터로 넣어줘야 쏜다.' },
   'wall':      { name: '벽', w: 1, h: 1, cost: { 'brick': 2 }, tech: 'military',
-                 desc: '체력 350. 적의 진로를 막는다.' }
+                 desc: '체력 350. 적의 진로를 막는다.' },
+
+  // --- 유체 계통 (강철 제련으로 함께 열린다) --------------------------------
+  // fluid: true 인 건물은 맞닿으면 한 유체망이 된다 (32_fluid.js).
+  // **새 기술을 만들지 않았다** — clear.js 가 "연구 8종 = 410 사이클"을 오라클로
+  // 쓰고 있어서, 9번째 기술은 자력완주 주행의 기준식을 통째로 흔든다.
+  'pipe':      { name: '파이프', w: 1, h: 1, cost: { 'pipe-item': 1 }, tech: 'steel', fluid: true,
+                 desc: '유체를 잇는다. 맞닿은 파이프·설비가 한 망이 된다. 한 칸에 100 저장.' },
+  // 지하수 펌프 — 어디에나 선다. Factorio 의 offshore pump 는 물가에만 서지만,
+  // 이 게임에는 물 지형이 없다. 넣어 봤다가 되돌렸다: 시험 리그들이 고정 좌표에
+  // 짓는데(스폰에서 최대 85타일) 호수가 그 자리를 덮으면 배치가 실패해 드라이버가
+  // 통째로 죽는다. 물가 배치 퍼즐은 이 게임이 얻으려던 것(증기 버퍼로 깊어지는
+  // 제어 문제)과 무관해서, 지형 대신 규칙을 단순화했다. 자세한 것은 원장.
+  'pump':      { name: '지하수 펌프', w: 1, h: 1, cost: { 'circuit': 1, 'gear': 1, 'pipe-item': 1 },
+                 tech: 'steel', fluid: true,
+                 desc: '땅에서 물을 1200/s 퍼 올린다. 전기를 쓰지 않는다 — 정전이 물까지 끊으면 ' +
+                       '스스로 못 살아나는 고장이 된다.' },
+  'boiler':    { name: '보일러', w: 2, h: 2, cost: { 'pipe-item': 4, 'brick': 5, 'iron-plate': 4 },
+                 tech: 'steel', fluid: true,
+                 desc: '석탄을 태워 물 60/s 를 증기 60/s 로. 1.8 MW 를 먹는다 — 증기기관 2대분.' },
+  'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
+                 tech: 'steel', fluid: true,
+                 desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
+                       '보일러 1대가 2대를 먹이고, 파이프에 고인 증기가 완충 역할을 한다.' }
 };
 var BUILD_IDS = Object.keys(BUILDINGS);
 
@@ -110,6 +137,16 @@ var SPEC = {
   labSpeed: 1.0,
   genOutput: 900,             // kW
   coalEnergy: 4000,           // kJ  (4 MJ)
+  // 유체 — 전부 Factorio 공개값. 이 넷은 서로 묶여 있다:
+  //   보일러 1800 kW ÷ 60 증기/s = 30 kJ/증기 = 900 kW ÷ 30 증기/s
+  // 즉 **증기 1개 = 30 kJ** 이 양쪽에서 같게 나온다. 하나만 바꾸면 에너지수지
+  // 게이트가 즉시 어긋난다 — 일부러 그렇게 묶어 놨다.
+  pumpRate: 1200,             // 물/s  (offshore pump)
+  boilerFluid: 60,            // 물/s → 증기/s  (boiler)
+  boilerPower: 1800,          // kW    (boiler, 연료 소비)
+  engineSteam: 30,            // 증기/s (steam engine)
+  engineOutput: 900,          // kW    (steam engine)
+  fluidPerTile: 100,          // 한 칸이 담는 유체 (pipe)
   poleSupply: 2,              // 중심에서 ±2 → 5x5
   poleReach: 7.5,             // 전주끼리 연결되는 거리(타일)
   chestCap: 600,

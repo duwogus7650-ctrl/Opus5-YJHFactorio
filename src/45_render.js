@@ -328,6 +328,37 @@ function drawEntity(e) {
     case 'belt': case 'splitter': return;   // 벨트는 따로 그린다
     case 'inserter': drawInserter(e); return;
     case 'pole': drawPole(e); return;
+    // 파이프는 벨트처럼 1칸짜리라 그림자·몸통 규격을 안 쓴다. 이웃한 유체 설비
+    // 쪽으로만 목을 뻗어, **어디가 이어졌는지 화면에서 바로 보이게** 한다 —
+    // 유체망은 맞닿음이 규칙이므로 그게 곧 규칙의 시각화다.
+    case 'pipe': {
+      ctx.fillStyle = '#59636b';
+      ctx.fillRect(x + 0.28, y + 0.28, 0.44, 0.44);
+      for (var pd = 0; pd < 4; pd++) {
+        var nb = entityAt(x + DIR_DX[pd], y + DIR_DY[pd]);
+        if (!nb || !BUILDINGS[nb.type] || !BUILDINGS[nb.type].fluid) continue;
+        ctx.fillRect(x + 0.28 + DIR_DX[pd] * 0.36, y + 0.28 + DIR_DY[pd] * 0.36, 0.44, 0.44);
+      }
+      ctx.strokeStyle = 'rgba(20,24,28,0.55)'; ctx.lineWidth = 0.04;
+      ctx.strokeRect(x + 0.28, y + 0.28, 0.44, 0.44);
+      ctx.fillStyle = 'rgba(150,205,235,0.5)';
+      ctx.fillRect(x + 0.38, y + 0.38, 0.24, 0.24);
+      return;
+    }
+    case 'pump': {
+      ctx.fillStyle = '#4a5a64'; ctx.fillRect(x + 0.06, y + 0.06, 0.88, 0.88);
+      ctx.fillStyle = '#9aa6ae'; ctx.fillRect(x + 0.2, y + 0.2, 0.6, 0.6);
+      // 물을 퍼 올리는 중이면 도는 표시 — 정지와 가동을 화면에서 구별한다
+      var pa = e.working ? e.anim * 6 : 0;
+      ctx.save(); ctx.translate(x + 0.5, y + 0.5); ctx.rotate(pa);
+      ctx.fillStyle = '#2f6d8f';
+      ctx.fillRect(-0.30, -0.07, 0.60, 0.14);
+      ctx.fillRect(-0.07, -0.30, 0.14, 0.60);
+      ctx.restore();
+      ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.05;
+      ctx.strokeRect(x + 0.06, y + 0.06, 0.88, 0.88);
+      return;
+    }
     case 'wall': {
       ctx.fillStyle = '#7a6a58'; ctx.fillRect(x + 0.02, y + 0.02, 0.96, 0.96);
       ctx.fillStyle = '#95836d'; ctx.fillRect(x + 0.08, y + 0.08, 0.84, 0.36);
@@ -400,6 +431,49 @@ function drawEntity(e) {
     ctx.fillStyle = ff > 0.15 ? COL.amber : '#c0392b';
     ctx.fillRect(x + 0.32, y + h - 0.40, (w - 0.64) * ff, 0.16);
     if (e.fuel <= 0) drawWarn(x, y, w, '연료 없음');
+  } else if (e.type === 'boiler') {
+    body(x, y, w, h, '#6b5a52');
+    // 가로로 누운 드럼 — 발전기의 플라이휠과 한눈에 갈리게 형태를 다르게 둔다
+    ctx.fillStyle = '#8a7468';
+    rr(x + 0.16, y + 0.34, w - 0.32, h - 0.72, 0.3); ctx.fill();
+    ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.05; ctx.stroke();
+    hazard(x + 0.16, y + 0.12, w - 0.32, 0.18);
+    // 불길 — 태우는 중에만
+    var bg = e.working ? 1 : 0.12;
+    var bgr = ctx.createRadialGradient(x + w / 2, y + h - 0.3, 0.02, x + w / 2, y + h - 0.3, 0.5);
+    bgr.addColorStop(0, 'rgba(255,170,60,' + (0.9 * bg) + ')');
+    bgr.addColorStop(1, 'rgba(255,80,10,0)');
+    ctx.fillStyle = bgr; ctx.fillRect(x + 0.1, y + h - 0.8, w - 0.2, 0.7);
+    // 증기 배출 — 부하가 있을 때만 김이 오른다
+    if (e.working) {
+      ctx.fillStyle = 'rgba(226,236,240,0.45)';
+      var pph = 0.18 + (e.anim * 0.6 % 0.5);
+      ctx.beginPath(); ctx.arc(x + w - 0.42, y + 0.28 - pph * 0.5, 0.13 + pph * 0.2, 0, 6.283); ctx.fill();
+    }
+    var bf = clamp((e.fuel || 0) / (SPEC.coalEnergy * 20), 0, 1);
+    ctx.fillStyle = '#20232a'; ctx.fillRect(x + 0.24, y + h - 0.26, w - 0.48, 0.16);
+    ctx.fillStyle = bf > 0.15 ? COL.amber : '#c0392b';
+    ctx.fillRect(x + 0.26, y + h - 0.24, (w - 0.52) * bf, 0.12);
+    if (!e.fuel) drawWarn(x, y, w, '연료 없음');
+  } else if (e.type === 'engine') {
+    body(x, y, w, h, '#59636b');
+    hazard(x + 0.16, y + 0.14, w - 0.32, 0.18);
+    // 수평 피스톤 — 왕복 운동. 발전기(회전)와 보일러(드럼)와 셋 다 달라야 한다.
+    var stroke = e.working ? (Math.sin(e.anim * 8) * 0.5 + 0.5) : 0.5;
+    ctx.fillStyle = '#39424a';
+    ctx.fillRect(x + 0.3, y + h / 2 - 0.22, w - 0.6, 0.44);
+    ctx.fillStyle = '#aeb8c0';
+    ctx.fillRect(x + 0.36 + stroke * (w - 1.5), y + h / 2 - 0.14, 0.7, 0.28);
+    ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.05;
+    ctx.strokeRect(x + 0.3, y + h / 2 - 0.22, w - 0.6, 0.44);
+    // 증기 게이지 — 이 계의 선행 지표다. 전기가 흔들리기 전에 여기가 먼저 준다.
+    var fi = fluidOf(e);
+    var sp = clamp(fi.cap > 0 ? fi.steam / fi.cap : 0, 0, 1);
+    ctx.fillStyle = '#20232a'; ctx.fillRect(x + 0.3, y + h - 0.32, w - 0.6, 0.18);
+    ctx.fillStyle = sp > 0.15 ? '#7fb8d8' : '#c0392b';
+    ctx.fillRect(x + 0.32, y + h - 0.30, (w - 0.64) * sp, 0.14);
+    if (!fi.connected) drawWarn(x, y, w, '파이프 없음');
+    else if (fi.steam <= 0) drawWarn(x, y, w, '증기 없음');
   } else if (e.type === 'chest') {
     ctx.fillStyle = '#8a6a3d'; rr(x + 0.08, y + 0.12, 0.84, 0.78, 0.08); ctx.fill();
     ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.06; ctx.stroke();

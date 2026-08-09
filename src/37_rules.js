@@ -52,7 +52,13 @@ var RULE_SOURCES = {
   // 다른 제어기가 보낸 값. 채널은 고르는 것이지 적는 것이 아니다 — 오타 하나로
   // 조용히 0 이 되는 것이 이 게임에서 제일 나쁜 실패라서.
   'busIn':     { label: '받은 신호', node: 'busrecv', port: 0, needs: ['ch'],
-                 tech: 'logic-ctrl' }
+                 tech: 'logic-ctrl' },
+  // 증기%는 전력 만족도보다 **먼저** 준다. 문장 쪽에도 넣어야 "전기가 모자라면"
+  // 대신 "증기가 마르기 전에" 를 코딩 없이 쓸 수 있다.
+  'steamPct':  { label: '증기 잔량', node: 'fluid', port: 0, needs: ['ent'],
+                 entFilter: ['pipe', 'pump', 'boiler', 'engine'], unit: '%', tech: 'steel' },
+  'waterAmt':  { label: '물 잔량', node: 'fluid', port: 2, needs: ['ent'],
+                 entFilter: ['pipe', 'pump', 'boiler', 'engine'], tech: 'steel' }
 };
 var RULE_SOURCE_IDS = Object.keys(RULE_SOURCES);
 
@@ -456,6 +462,17 @@ var RULE_CARDS = [
       r.name = '';
       r.when.src = 'powerHead'; r.when.cmp = '>='; r.when.value = 0;
       r.then.act = 'display'; r.then.label = '전기 여유';
+    } },
+  { id: 'steam', title: '증기가 마르기 전에 미리 끄기',
+    why: '전기 만족도는 <b>이미 모자란 뒤에야</b> 떨어진다. 증기는 그 전에 준다 — ' +
+         '보일러가 못 따라가는 순간 증기%가 먼저 내려가고, 전기는 아직 100% 다. ' +
+         '그때 저우선 라인을 끄면 정전을 <b>미리</b> 막는다.',
+    need: 'steel',
+    make: function (r) {
+      r.name = '증기부족';
+      r.when.src = 'steamPct'; r.when.cmp = '<'; r.when.value = 30;
+      r.memo.kind = 'latch'; r.memo.resetCmp = '>'; r.memo.resetValue = 70; r.memo.everySec = 20;
+      r.then.act = 'run'; r.then.onWhenTrue = false;
     } },
   { id: 'signal', title: '공장 상태를 다른 제어기에 알리기',
     why: '제어기 하나에 규칙을 다 몰아넣으면 읽을 수가 없다. 재는 쪽과 판단하는 쪽을 ' +

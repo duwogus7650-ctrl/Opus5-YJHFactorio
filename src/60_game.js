@@ -69,6 +69,7 @@ function stepEntities(dt) {
       case 'furnace': guard('furnace', function () { stepCrafter(e, dt, SPEC.furnaceSpeed); }); break;
       case 'assembler': guard('assembler', function () { stepCrafter(e, dt, SPEC.assemblerSpeed); }); break;
       case 'generator': guard('generator', function () { stepGenerator(e, dt); }); break;
+      case 'engine': guard('engine', function () { stepEngine(e, dt); }); break;
       case 'lab': guard('lab', function () { stepLab(e, dt); }); break;
       case 'inserter': guard('inserter', function () { stepInserter(e, dt); }); break;
     }
@@ -77,6 +78,10 @@ function stepEntities(dt) {
 
 function tick(dt) {
   stepLogic(dt);
+  // 유체가 전력보다 먼저다 — 펌프가 물을 붓고 보일러가 증기를 만든 뒤에야
+  // 증기기관이 이번 틱에 얼마를 공급할 수 있는지 정해진다. 뒤로 돌리면 발전이
+  // 한 틱씩 밀려, 부하가 급변할 때 전력이 실제보다 한 틱 늦게 반응한다.
+  stepFluids(dt);
   stepPower(dt);
   stepEntities(dt);
   stepHandCraft(dt);      // 손 조립도 시간이 든다 — 기계와 같은 틱에 진행한다
@@ -154,7 +159,10 @@ function serializeEntity(e) {
   var o = { id: e.id, t: e.type, x: e.tx, y: e.ty, d: e.dir, hp: e.hp,
             pe: e.playerEnabled, pf: e.playerFilter, inv: e.inv, out: e.out,
             rec: e.recipe, prog: e.progress };
-  if (e.type === 'generator') o.fuel = e.fuel;
+  if (e.type === 'generator' || e.type === 'boiler') o.fuel = e.fuel;
+  // 유체는 회원이 제 몫을 들고 있다. 안 담으면 불러오는 순간 파이프의 증기가
+  // 통째로 사라져 발전이 한 박자 멈춘다 — 버퍼가 있는 계에서는 그게 곧 정전이다.
+  if (BUILDINGS[e.type] && BUILDINGS[e.type].fluid) { o.fw = e.fw || 0; o.fs = e.fs || 0; }
   if (e.type === 'furnace' && e.lastRecipe) o.lrec = e.lastRecipe;   // 굽던 것의 기억
   if (e.type === 'turret') o.ammo = e.ammo;
   if (e.type === 'splitter') o.prio = e.outPrio;
@@ -293,6 +301,8 @@ function loadGame(raw) {
       if (o.ammo !== undefined) e.ammo = o.ammo;
       if (o.prio !== undefined) e.outPrio = o.prio;
       if (o.res !== undefined) e.researching = o.res;
+      if (o.fw !== undefined) e.fw = o.fw;
+      if (o.fs !== undefined) e.fs = o.fs;
       if (o.ph !== undefined) { e.phase = o.ph; e.t = o.tt; e.held = o.held || null; }
       if (o.cells && e.cells) {
         for (var cc = 0; cc < e.cells.length && cc < o.cells.length; cc++) {
@@ -412,6 +422,10 @@ window.__GAME = {
   // 미는 유일한 경로이고, 존재 이유는 하나다: 같은 게임시간을 다르게 쪼개도 결과가
   // 같은지 물어야 dt 를 곱했는지 아닌지가 갈린다 (교훈 03 의 60배 오염이 그 실패다).
   tickWith: function (dt) { tick(Math.max(0, +dt || 0)); return gameTime; },
+  // 유체망 — 이 설비가 속한 망의 물·증기. connected 0 은 "망이 없다"이고
+  // 그건 "망에 있는데 비었다"와 다르다.
+  fluid: function (id) { var e = entities[id]; return e ? fluidOf(e) : null; },
+  fluidNetCount: function () { if (fluidDirty) rebuildFluid(); return fluidNets.length; },
   // 신호 버스 — 지금 읽히는 값(직전 틱 합계)
   bus: function (ch) { return ch === undefined ? busSnapshot() : busRead(ch); },
   busChannels: function () { return BUS_CHANNELS.slice(); },
@@ -1051,7 +1065,10 @@ window.__GAME = {
              inserterPerSec: 1 / SPEC.inserterSwing,
              minerPerSec: SPEC.minerRate, furnaceTime: RECIPES['iron-plate'].time,
              genKw: SPEC.genOutput, coalKj: SPEC.coalEnergy,
-             turretRange: SPEC.turretRange, turretDps: SPEC.turretDps };
+             turretRange: SPEC.turretRange, turretDps: SPEC.turretDps,
+             pumpRate: SPEC.pumpRate, boilerFluid: SPEC.boilerFluid,
+             boilerKw: SPEC.boilerPower, engineSteam: SPEC.engineSteam,
+             engineKw: SPEC.engineOutput, fluidPerTile: SPEC.fluidPerTile };
   }
 };
 

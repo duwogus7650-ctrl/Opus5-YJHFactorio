@@ -2398,6 +2398,242 @@
         sigKeys.length + '종의 화면 지문이 전부 다르다' +
         (dupPairs.length ? ' · 같은 것: ' + dupPairs.join(', ') : ''));
 
+      // ================= 11.5 유체 — 물·증기 =============================
+      // 오라클은 SPEC 의 Factorio 값 넷이고, 그것들이 **하나의 항등식**으로 묶여
+      // 있다: 보일러 1800 kW ÷ 60 증기/s = 30 kJ/증기 = 900 kW ÷ 30 증기/s.
+      // 그래서 "증기 1개 = 30 kJ" 를 양쪽에서 따로 재고 서로 대조한다.
+      function fluidRig(seed) {
+        G.reset(seed); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+        G.research('logistics'); G.research('steel');
+        var r = {};
+        r.pump = G.place('pump', 40, 40, 0);
+        r.pipeA = G.place('pipe', 41, 40, 0);
+        r.boiler = G.place('boiler', 42, 40, 0);     // 2x2 → x 42..43
+        r.pipeB = G.place('pipe', 44, 40, 0);
+        r.engine = G.place('engine', 45, 40, 0);     // 3x2 → x 45..47
+        // 전주 — 증기기관도 **전력망에 붙어야** 공급으로 잡힌다(발전기와 같다).
+        // 처음엔 빼놓고 재다가 '공급 0' 을 코드 탓으로 오해했다.
+        r.pole = G.place('pole', 46, 42, 0);
+        return r;
+      }
+      var fr = fluidRig(8200);
+      chk('fluid.rigBuilt',
+        !!fr.pump && !!fr.pipeA && !!fr.boiler && !!fr.pipeB && !!fr.engine &&
+        G.fluid(fr.pump).connected === 1 && G.fluidNetCount() === 1,
+        '펌프·파이프·보일러·파이프·증기기관을 맞대어 배치 → 유체망 ' + G.fluidNetCount() +
+        '개 (1이어야 · 맞닿음이 곧 연결이다) · 용량 ' + G.fluid(fr.pump).cap +
+        ' (13칸 × 100 = 1300 이어야)');
+
+      // 펌프 처리량 — 0.1초에 120. 용량(1300)보다 훨씬 작게 재야 '상한'이 아니라
+      // '속도'를 재는 것이 된다.
+      G.run(0.1);
+      var fPumped = G.fluid(fr.pump).water;
+      chk('fluid.pumpRateMatchesSpec',
+        Math.abs(fPumped - 120) < 2,
+        '0.1초 → 물 ' + fPumped.toFixed(1) + ' (오라클 1200/s × 0.1s = 120)');
+
+      // 보일러 — 석탄을 주면 물 60/s 를 증기 60/s 로 바꾸고 1800 kW 를 태운다.
+      // 세 축(물 감소·증기 증가·연료 감소)을 **동시에** 재야 한 축만 맞는 구현이 걸린다.
+      G.putFromStock(fr.boiler);                     // 석탄이 들어간다
+      G.run(0.5);                                    // 정상 운전에 들기
+      var b0 = { s: G.fluid(fr.boiler).steam, f: G.ent(fr.boiler).fuel, w: G.fluid(fr.boiler).water };
+      G.run(1);
+      var b1 = { s: G.fluid(fr.boiler).steam, f: G.ent(fr.boiler).fuel, w: G.fluid(fr.boiler).water };
+      var dS = b1.s - b0.s, dF = b0.f - b1.f, dW = b1.w - b0.w;
+      // 물은 펌프가 계속 채우므로 증가할 수도 있다 — 여기서 재는 것은 증기와 연료다.
+      chk('fluid.boilerRateAndFuelMatchSpec',
+        Math.abs(dS - 60) < 2 && Math.abs(dF - 1800) < 60,
+        '1초 → 증기 +' + dS.toFixed(1) + ' (오라클 60) · 연료 -' + dF.toFixed(0) +
+        ' kJ (오라클 1800) · 물 ' + (dW >= 0 ? '+' : '') + dW.toFixed(1) + ' (펌프가 채운다)');
+      chk('fluid.energyPerSteamIsThirty',
+        dS > 1 && Math.abs(dF / dS - 30) < 1,
+        '태운 에너지 ÷ 만든 증기 = ' + (dF / dS).toFixed(2) +
+        ' kJ/증기 (오라클 30 · 1800÷60 과 900÷30 이 같은 수여야 한다)');
+
+      // 증기기관 — 증기가 있으면 900 kW 를 공급한다.
+      var eng0 = G.state().power.supply;
+      chk('fluid.engineSuppliesSpecPower',
+        Math.abs(eng0 - SP.engineKw) < 1,
+        '증기가 있는 증기기관 1대 → 공급 ' + eng0 + ' kW (오라클 900)');
+
+      // 부하를 걸면 증기를 30/s 로 뽑는다. 인서터 70대 = 910 kW 로 공급을 넘긴다.
+      // **전주를 먼저 깐다** — 인서터를 먼저 깔았더니 전주 자리를 차지해 전주가
+      // 하나도 안 서고, 수요 0 이 나왔다. 그때 "코드가 수요를 안 센다"로 오해했다.
+      var fpo = 0;
+      for (var fp = 0; fp < 8; fp++) if (G.place('pole', 21 + fp * 5, 59, 0)) fpo++;
+      // 증기기관 쪽 망과 이어 준다 (전주 사거리 7.5)
+      for (var fp2 = 0; fp2 < 4; fp2++) G.place('pole', 46, 47 + fp2 * 4, 0);
+      G.place('pole', 46, 59, 0); G.place('pole', 52, 59, 0);
+      var insN = 0;
+      for (var fi2 = 0; fi2 < 70; fi2++) {
+        if (G.place('inserter', 20 + (fi2 % 35), 60 + Math.floor(fi2 / 35), 1)) insN++;
+      }
+      G.run(0.3);
+      var s0 = G.fluid(fr.engine).steam;
+      G.run(1);
+      var s1 = G.fluid(fr.engine).steam;
+      var st = G.state();
+      // 보일러가 동시에 증기를 만들고 있으므로 순증감이 아니라 **소비량**을 본다:
+      // 소비 = 생산(60/s) - 순증가.
+      var consumed = 60 - (s1 - s0);
+      chk('fluid.engineDrawsSteamAtSpec',
+        st.power.demand > SP.engineKw && Math.abs(consumed - 30) < 3,
+        '수요 ' + Math.round(st.power.demand) + ' kW (인서터 ' + insN + '대) → 증기 소비 ' +
+        consumed.toFixed(1) + '/s (오라클 30 · 900kW ÷ 30kJ)');
+
+      // **버퍼가 실제로 버티는가.** 석탄이 떨어져도 파이프에 고인 증기로 잠시 간다 —
+      // 이 계를 넣은 이유가 그것이다.
+      //
+      // 처음에는 `G.ent(보일러).fuel = 0` 으로 연료를 끊으려 했다. **G.ent 는 사본을
+      // 돌려준다** — 그 대입은 아무 데도 안 갔고, 보일러는 계속 태우고 있었다.
+      // 게이트는 통과했지만 '연료가 끊긴 적이 없는' 통과였다(거짓 GREEN). 음성
+      // 대조군이 FAIL 로 나와서야 들켰다. 이제는 석탄 1개(4000 kJ)만 넣고 **실제로
+      // 바닥나기를 기다린다** — 시험용 setter 를 새로 만들지 않는다.
+      var fr2 = fluidRig(8201);
+      // putFromStock 은 **받을 수 있는 만큼 다 넣는다** (석탄 20개 = 80,000 kJ).
+      // 그러면 증기가 용량까지 차서 보일러가 멈추고, 연료는 영영 안 마른다.
+      // 보유 재고를 1개로 깎아 정확히 4000 kJ 만 넣는다.
+      G.setInv('coal', 1);
+      G.putFromStock(fr2.boiler);                    // 석탄 1개 = 4000 kJ = 2.22초분
+      G.run(3);                                      // 다 태우고도 남을 시간
+      var fuelLeft = G.ent(fr2.boiler).fuel;
+      var bufSteam = G.fluid(fr2.engine).steam;
+      G.run(0.5);
+      var stillUp = G.state().power.supply;
+      chk('fluid.steamBuffersFuelOutage',
+        fuelLeft === 0 && bufSteam > 30 && stillUp === SP.engineKw,
+        '연료 소진 확인(' + fuelLeft + ' kJ) · 남은 증기 ' + bufSteam.toFixed(0) +
+        ' → 0.5초 뒤 공급 ' + stillUp + ' kW (버퍼가 없으면 즉시 0 이다)');
+
+      // 음성 대조군 — 석탄을 한 번도 안 준 판에서는 공급이 0 이어야 한다.
+      // 이게 없으면 위 검사는 "공급은 언제나 900" 인 구현도 통과시킨다.
+      var fr2b = fluidRig(8206);                     // 석탄을 주지 않는다
+      G.run(1);
+      var dryUp = G.state().power.supply;
+      var drySteam = G.fluid(fr2b.engine).steam;
+      chk('fluid.noSteamNoPower', dryUp === 0 && drySteam === 0,
+        '석탄을 안 준 판: 증기 ' + drySteam.toFixed(1) + ' · 공급 ' + dryUp +
+        ' kW (둘 다 0이어야 · 조건 발생 확인)');
+
+      // 파이프 한 칸을 빼면 망이 갈린다. 맞닿음이 규칙이라는 것을 값으로 못 박는다.
+      var fr3 = fluidRig(8202);
+      var netsBefore = G.fluidNetCount();
+      G.remove(fr3.pipeB, false);
+      G.run(0.05);
+      var netsAfter = G.fluidNetCount();
+      chk('fluid.removingPipeSplitsNet',
+        netsBefore === 1 && netsAfter === 2,
+        '파이프 한 칸 철거 → 망 ' + netsBefore + '개 → ' + netsAfter +
+        '개 (2여야 · 안 갈리면 지운 파이프가 계속 잇고 있는 것)');
+
+      // 저장은 파이프에 고인 유체를 들고 가야 한다. 안 담으면 불러온 순간
+      // 버퍼가 통째로 사라져 발전이 한 박자 멈춘다.
+      var fr4 = fluidRig(8203);
+      G.putFromStock(fr4.boiler);
+      G.run(2);
+      var beforeSave = G.fluid(fr4.engine).steam;
+      var rawF = G.saveRaw(); G.load(rawF); G.run(0.02);
+      var afterLoad = G.fluid(fr4.engine).steam;
+      chk('fluid.survivesSave',
+        beforeSave > 10 && Math.abs(afterLoad - beforeSave) < 3,
+        '저장 전 증기 ' + beforeSave.toFixed(1) + ' → 복원 후 ' + afterLoad.toFixed(1) +
+        ' (같아야 · 0이면 버퍼가 저장에 안 담긴 것)');
+
+      // dt 를 곱했는가 — 같은 게임시간을 다르게 쪼개도 같은 값이어야 한다.
+      // 유체는 매 틱 누적이라 여기가 60배 함정의 자리다 (교훈 03).
+      function steamAfter1s(seed, big) {
+        var r = fluidRig(seed);
+        G.putFromStock(r.boiler);
+        G.tickOnce();
+        var base = G.fluid(r.boiler).steam;
+        if (big) { for (var q = 0; q < 4; q++) G.tickWith(0.25); }
+        else G.run(1);
+        return G.fluid(r.boiler).steam - base;
+      }
+      var fFine = steamAfter1s(8204, false);
+      var fCoarse = steamAfter1s(8205, true);
+      chk('fluid.dtInvariant',
+        Math.abs(fFine - fCoarse) < 0.5 && Math.abs(fFine - 60) < 2,
+        '1초를 60틱으로 → 증기 +' + fFine.toFixed(2) + ' · 4틱으로 → +' + fCoarse.toFixed(2) +
+        ' (둘 다 60이어야 · 다르면 dt 를 안 곱한 것)');
+
+      // **이 계를 넣은 이유를 값으로 못 박는다.** 증기%는 전력 만족도보다 *먼저*
+      // 떨어져야 한다 — 그래야 "모자란 뒤에 끄기"가 아니라 "마르기 전에 끄기"가
+      // 성립한다. 먼저 떨어지지 않으면 이 계는 복잡도만 늘린 것이다.
+      var fr5 = fluidRig(8207);
+      G.setInv('coal', 1);
+      G.putFromStock(fr5.boiler);
+      G.run(2);                                       // 증기를 모은다
+      // 전주를 먼저 깔고 인서터로 공급(900)을 넘는 수요를 만든다
+      for (var lp = 0; lp < 8; lp++) G.place('pole', 21 + lp * 5, 59, 0);
+      for (var lp2 = 0; lp2 < 4; lp2++) G.place('pole', 46, 47 + lp2 * 4, 0);
+      G.place('pole', 46, 59, 0); G.place('pole', 52, 59, 0);
+      // 수요는 공급(900)보다 **조금 낮게** 둔다. 넘겨 버리면 전기가 처음부터
+      // 모자라서(sat 99%) '증기가 먼저 준다'를 보일 수가 없다 — 처음에 70대를
+      // 놓고 그렇게 됐다. 66대 × 13 kW = 858 kW.
+      var linsN = 0;
+      for (var li = 0; li < 66; li++) {
+        if (G.place('inserter', 20 + (li % 33), 60 + Math.floor(li / 33), 1)) linsN++;
+      }
+      G.run(0.2);
+      var demand0 = G.state().power.demand, sat0 = G.state().power.sat;
+      var leadPct = -1, leadSat = -1, dryPct = -1, drySat = -1;
+      for (var lt = 0; lt < 900; lt++) {              // 15초를 틱 단위로 지켜본다
+        G.tickOnce();
+        var fnow = G.fluid(fr5.engine);
+        var snow = G.state().power.sat;
+        // 증기가 절반 아래로 내려간 첫 순간 — 전기는 아직 멀쩡한가?
+        if (leadPct < 0 && fnow.steamPct < 50) { leadPct = fnow.steamPct; leadSat = snow; }
+        // 전기가 처음 무너진 순간 — 그때 증기는 이미 얼마나 남았나?
+        if (drySat < 0 && snow < 0.999) { drySat = snow; dryPct = fnow.steamPct; }
+      }
+      chk('fluid.steamLeadsPowerAsIndicator',
+        demand0 > 700 && demand0 < 900 && sat0 >= 0.999 &&
+        leadSat >= 0.999 && drySat >= 0 && dryPct < 5,
+        '수요 ' + Math.round(demand0) + ' kW < 공급 900 (조건 발생 확인) · 증기가 50% 아래로 내려간 ' +
+        '순간 전력 ' + Math.round(leadSat * 100) + '% (100이어야 — 증기가 먼저 준다) · ' +
+        '전력이 처음 무너진 순간의 증기 ' + (dryPct < 0 ? '안 무너짐' : dryPct.toFixed(1) + '%') +
+        ' (거의 0이어야 — 전기는 맨 나중에 안다)');
+
+      // 제어기가 그 지표를 읽을 수 있어야 쓸모가 있다 — 노드로도, 문장으로도.
+      var fc = G.place('controller', 50, 44, 0);
+      var fn1 = G.gAdd(fc, 'fluid', 10, 10); G.gCfg(fc, fn1, 'ent', fr5.engine);
+      G.run(0.05);
+      var fRead = { pct: G.gOut(fc, fn1, 0), steam: G.gOut(fc, fn1, 1),
+                    water: G.gOut(fc, fn1, 2), conn: G.gOut(fc, fn1, 3) };
+      var fTrue = G.fluid(fr5.engine);
+      chk('fluid.sensorReadsTheNet',
+        // 한 틱 지연이 정상이다 — 로직이 유체보다 먼저 돈다(틱 순서 규약)
+        fRead.conn === 1 && Math.abs(fRead.steam - fTrue.steam) <= 1.5 &&
+        Math.abs(fRead.pct - fTrue.steamPct) <= 0.3 && fRead.water >= 0,
+        '유체 센서 → 증기 ' + fRead.steam.toFixed(1) + ' (실제 ' + fTrue.steam.toFixed(1) +
+        ') · ' + fRead.pct.toFixed(1) + '% · 망연결 ' + fRead.conn);
+
+      // 음성 대조군 — 대상을 안 고르면 0 이고 망연결도 0 이어야 한다. 0 과
+      // '망 밖'을 같은 값으로 뭉치면 플레이어가 원인을 못 짚는다.
+      var fn2 = G.gAdd(fc, 'fluid', 10, 300);
+      G.run(0.05);
+      chk('fluid.sensorSaysDisconnected',
+        G.gOut(fc, fn2, 3) === 0 && G.gOut(fc, fn2, 1) === 0,
+        '대상 미지정 센서 → 망연결 ' + G.gOut(fc, fn2, 3) + ' · 증기 ' + G.gOut(fc, fn2, 1) +
+        ' (둘 다 0이어야 · 조건 발생 확인)');
+
+      // 문장으로도 같은 것을 쓸 수 있는가 — 카드가 있는데 컴파일이 안 되면 그 카드는 거짓말이다
+      var fsC = G.place('controller', 54, 44, 0);
+      var fsAsm = G.place('assembler', 56, 48, 0);
+      G.setRecipe(fsAsm, 'gear');
+      G.ruleAdd(fsC, {
+        when: { src: 'steamPct', ent: fr5.engine, cmp: '<', value: 30 },
+        then: { act: 'run', ent: fsAsm, onWhenTrue: false } });
+      var fsComp = G.ruleCompile(fsC);
+      G.run(0.2);
+      chk('fluid.sentenceCanReadSteam',
+        fsComp.skipped.length === 0 && fsComp.nodes >= 3 &&
+        (G.gKinds(fsC) || []).indexOf('fluid') >= 0,
+        '문장 "증기 잔량이 30% 미만이면 조립기를 끈다" → 노드 ' + fsComp.nodes +
+        '개 · 건너뜀 ' + fsComp.skipped.length + ' · 유체 노드 포함 ' +
+        ((G.gKinds(fsC) || []).indexOf('fluid') >= 0));
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

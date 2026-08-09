@@ -58,7 +58,7 @@
       // **이 숫자는 덫이다.** 노드 종류를 늘리면 여기가 RED 로 갈리고, 그때 이 파일
       // 아래의 전수 시험도 같이 채우라는 뜻이다. 숫자만 올리고 시험을 안 채우면
       // 그 종류는 "안 깨진 기능"이 아니라 **아직 안 들킨 기능**으로 남는다.
-      chk('sweep.allNodeKindsKnown', kinds.length === 29,
+      chk('sweep.allNodeKindsKnown', kinds.length === 30,
         '노드 종류 ' + kinds.length + '개: ' + kinds.join(','));
 
       // ---- 입력: 상수 ----
@@ -393,6 +393,34 @@
         fsA === 1 && fsB === 2 && fsHot === '0,1,0,0' && fsC2 === 3 && fsD === 1,
         '시작 ' + fsA + '단계 → 조건 유지 30틱 ' + fsB + '단계(2여야) · 단계출구 [' + fsHot +
         '] · 내렸다 올림 ' + fsC2 + '단계(3여야) · 리셋 ' + fsD + '단계(1이어야)');
+
+      // ---- 입력: 유체 잔량 ----
+      // 네 출구를 한 번에 본다. 증기%와 증기 개수가 따로 있는 이유는 임계값을
+      // 비율로 잡는 회로와 절대량으로 잡는 회로가 둘 다 자연스럽기 때문이다.
+      freshCtrl();
+      var flPump = G.place('pump', 64, 60, 0);
+      var flPipe = G.place('pipe', 65, 60, 0);
+      var flBoil = G.place('boiler', 66, 60, 0);
+      G.setInv('coal', 1); G.putFromStock(flBoil);
+      var flN = N('fluid', 0, 0); G.gCfg(CT, flN, 'ent', flPipe);
+      G.run(1);
+      var flTrue = G.fluid(flPipe);
+      var flPct = O(flN, 0), flSteam = O(flN, 1), flWater = O(flN, 2), flConn = O(flN, 3);
+      chk('node.fluid',
+        !!flPump && !!flPipe && !!flBoil && flConn === 1 &&
+        // **한 틱 지연이 정상이다.** 틱 순서가 로직 → 유체 → 전력이라 센서는 직전
+        // 틱의 유체 상태를 본다(기계 상태 센서도 같다). 보일러가 60/s 로 만드는
+        // 중이면 한 틱 = 1.0 만큼 벌어질 수 있으므로 허용치를 그만큼 준다.
+        Math.abs(flSteam - flTrue.steam) <= 1.5 && Math.abs(flPct - flTrue.steamPct) <= 0.3 &&
+        flWater > 0 && Math.abs(flTrue.cap - 600) < 1,
+        '펌프+파이프+보일러(용량 ' + flTrue.cap + ', 6칸×100 이어야) → 센서: 증기 ' +
+        r2(flSteam) + ' (실제 ' + r2(flTrue.steam) + ') · ' + r2(flPct) + '% · 물 ' +
+        r2(flWater) + ' · 망연결 ' + flConn);
+      // 음성 대조군 — 망 밖(대상 미지정)은 망연결 0
+      var flN2 = N('fluid', 0, 300);
+      G.run(0.2);
+      chk('node.fluidDisconnected', O(flN2, 3) === 0 && O(flN2, 1) === 0,
+        '대상 미지정 → 망연결 ' + O(flN2, 3) + ' · 증기 ' + O(flN2, 1) + ' (둘 다 0이어야)');
 
       // ---- 출력/입력: 신호 버스 ----
       // 한 제어기 안에서도 보내고 받을 수 있지만, 값은 **다음 틱**에 온다.
