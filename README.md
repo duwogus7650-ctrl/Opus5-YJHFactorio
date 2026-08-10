@@ -1,6 +1,7 @@
 # LOGIC FOUNDRY — 프로그래머블 공정자동화
 
-Factorio 계열 공정자동화 게임. 단일 HTML 한 장, 의존성 0, 오프라인 실행.
+Factorio 계열 공정자동화 게임. 단일 HTML 한 장, 의존성 0, 오프라인 실행
+(`tests/offline_check.py` 가 그것을 검정한다 — 주장은 검사가 아니다).
 **차별점은 제어기(Controller)** — 공장의 판단 로직을 플레이어가 노드 그래프로 직접 배선한다.
 
 ```
@@ -160,6 +161,7 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 ```bash
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
+python tests/offline_check.py        # 외부 참조 0건인가 (단일 HTML·의존성 0 검정)
 python tests/harness.py              # 모델 게이트 236건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
 python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 40건
@@ -187,6 +189,7 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
+offline_check.py       GREEN — 외부 참조 0건 (규칙 9개 · 자기 시험 포함)
 harness.py             GREEN — 실검사 236건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py fullplay.js GREEN — 노드 35종·건물 22종 전수 40건 (고의 실패 1건 정상 검출)
