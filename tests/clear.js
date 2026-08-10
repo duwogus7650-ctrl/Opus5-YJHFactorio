@@ -249,7 +249,11 @@
     var st = G.state();
     // 문턱을 35로 뒀더니 발전기가 마른 뒤에야 채광기를 세워 만족도가 27%까지
     // 떨어졌다. 석탄은 미리 벌어 둔다 — 남아도 손해가 크지 않다.
-    if ((st.inventory['coal'] || 0) > 45 || coalMiners >= 8) return;
+    // **보일러는 석탄 먹는 입이 하나 더 생긴 것이다.** 1.8 MW 를 태워 900 kW 를
+    // 내므로 발전기보다 석탄 효율이 나쁘고(버퍼를 얻는 대가다), 채광을 그대로 두면
+    // 발전기 몫이 줄어 전력 만족도가 떨어진다 (실측: 90.7% → 47.2%).
+    var coalCap = steamParts.boiler ? 11 : 8;
+    if ((st.inventory['coal'] || 0) > (steamParts.boiler ? 60 : 45) || coalMiners >= coalCap) return;
     if (!afford('miner')) return;
     if (mineOn('coal', 71, 76)) { coalMiners++; note('석탄 채광 ' + coalMiners + '대'); }
   }
@@ -707,16 +711,35 @@
 
   }
 
-  // --- 강철 (분배기 재료) ----------------------------------------------------
+  // --- 강철 (분배기·철도 재료) -----------------------------------------------
   // 강철은 조립기가 아니라 **용광로** 레시피다. 철 용광로 하나를 잠시 빌려 굽고,
   // 다 되면 되돌린다. 되돌릴 때 남은 철판을 안 걷으면 그 용광로 입력 버퍼에
   // 영원히 갇힌다(철판은 철 레시피의 입력이 아니라 canAccept 가 거부한다).
+  //
+  // **목표량이 고정 4개였다.** 분배기(강철 2)만 있을 때는 맞았는데 철도가 들어오면서
+  // 레일·역·열차가 강철을 먹는다. 4에서 멈추면 철도 단계가 영원히 재료를 기다리고,
+  // 그건 "기능이 안 된다"가 아니라 "드라이버가 안 사 준다"이다 — 둘은 다른 문장이고
+  // 게이트는 구별하지 못한다. 목표를 철도 예산까지 올린다.
+  //   레일 6 + 역 2대(4) + 열차(10) + 분배기(2) = 22, 여유 2 = 24
+  // 강철 1개는 철판 5장·16초다. 24개면 철판 120장이 철도로 빠진다 — 그만큼 연구가
+  // 늦어질 수 있고, 그 대가는 아래 (가) 무리의 숫자로 드러난다. 감추지 않는다.
+  var STEEL_WANT = 24;
+  // 재고에 잡아 두는 철판. 강철 연구 전에는 0 — 그 전에 잡으면 초반 공장이 굶는다.
+  // 증기 발전소를 살 때까지 40, 그 뒤로는 철도용 강철을 굽는 동안 25 를 남긴다
+  // (용광로가 강철을 구우려면 재고에서 철판을 받아야 한다).
+  var ironHold = 0, ironPeak = 0;
+  function ironHoldTick() {
+    if (!researched('steel')) { ironHold = 0; return; }
+    if (!steamDone) ironHold = 40;
+    else if (!railDone) ironHold = 25;
+    else ironHold = 0;
+  }
   var steelFurn = null;
   function steelTick() {
     var st = G.state();
     if (st.research.done.indexOf('steel') < 0) return;
     var have = st.inventory['steel'] || 0;
-    if (have >= 4) {
+    if (have >= STEEL_WANT) {
       if (steelFurn) { G.takeToStock(steelFurn); setR(steelFurn, 'iron-plate'); steelFurn = null; }
       return;
     }
@@ -749,7 +772,13 @@
   // 3.0 판/s 를 요구해 전 공장 소요(0.35 톱니/s)의 8배를 빨아들인다.
   var CAP = { gear: 70, wire: 90, circuit: 70, 'belt-item': 110, 'inserter-item': 110,
               'sci-red': 130, 'sci-green': 130, ammo: 70, brick: 260,
-              'iron-plate': 1e9, 'copper-plate': 1e9, steel: 8 };
+              'iron-plate': 1e9, 'copper-plate': 1e9,
+              // **상한을 목표량에 묶는다.** 8로 박아 뒀더니 강철 재고가 9가 된 순간
+              // feed 가 제련로를 영원히 건너뛰었고(이 표는 "재고가 상한을 넘으면 그
+              // 기계는 재료를 안 받는다"), 40분에 강철 11개에서 멈춰 철도를 못 샀다.
+              // 분배기(강철 2)만 있던 시절에 맞춘 숫자가 철도가 들어오자 조용한
+              // 상한이 됐다 — 목표를 올릴 때 같이 안 올라가는 상수는 이렇게 배신한다.
+              steel: STEEL_WANT + 4 };
   // **재고 예비량은 작아야 한다.** 30으로 뒀더니 재고 탄창이 그 위로 올라간 적이
   // 없어 터렛이 40분 내내 빈 채로 서 있었다(실측: 터렛 1기·탄약 0 → 손실 77).
   // 터렛을 굶기지 않는 쪽이 먼저다 — 과잉 흡수는 turretCap 이 따로 막는다.
@@ -781,6 +810,18 @@
       var ty = ids[i][1], id = ids[i][0];
       if (ty === 'turret') { turrets.push(id); continue; }
       if (ty === 'generator') { G.putFromStock(id); continue; }
+      // 보일러도 석탄을 먹는다. 여기 안 넣으면 증기 발전소가 서 있기만 하고
+      // 증기% 가 0 에 붙는다 — 지었다는 사실만 남고 도는지는 아무도 안 본다.
+      //
+      // **다만 발전기 다음이다.** 보일러는 1.8 MW 를 태워 900 kW 를 내므로 석탄
+      // 효율이 발전기보다 나쁘다(그 대가로 버퍼를 얻는다). 같은 순위로 먹이면
+      // 발전기가 굶어 전력이 무너진다 — 실측으로 최저 만족도가 90.7% → 47.2% 로
+      // 떨어졌고, 그건 유체를 넣어서 생긴 손해가 아니라 **먹이는 순서**의 문제였다.
+      // 재고가 넉넉할 때만, 그것도 조금씩 준다.
+      if (ty === 'boiler') {
+        if ((inv0['coal'] || 0) > 40) G.putFromStock(id, 4);
+        continue;
+      }
       if (ty !== 'assembler' && ty !== 'lab' && ty !== 'furnace') continue;
       var me = G.ent(id); if (!me) continue;
       // **의도한 레시피를 매 사이클 다시 못박는다.** 용광로는 완전히 비면 레시피가
@@ -800,10 +841,13 @@
     // 귀한 중간재를 50개씩 가져가 주차하면 나머지가 통째로 굶는다. 녹색 연구팩 사슬이
     // 정확히 그렇게 막혔다(인서터 157개가 조립기 버퍼에 흩어져 있었다).
     // 재고가 넉넉하면(용광로의 광석처럼) 상한을 풀어 예전처럼 채운다.
+    // **저축하는 동안에는 더 조인다.** 증기 발전소·철도처럼 재고를 한 순간에 요구하는
+    // 구매가 걸려 있으면(ironHold > 0), 기계 보급을 품목당 3개로 낮춰 재고가 쌓일
+    // 틈을 만든다. 안 그러면 흐름은 넉넉한데 재고는 영원히 0 이라 큰 것을 못 산다.
     for (var m = 0; m < machines.length; m++) {
       var mid = machines[m][0], me2 = G.ent(mid);
       var scarce = me2 && me2.type === 'assembler';
-      G.putFromStock(mid, scarce ? 10 : 0);
+      G.putFromStock(mid, ironHold > 0 ? 3 : (scarce ? 10 : 0));
     }
 
     // 터렛은 예비량을 남기고 상한까지만. 20기 x 20탄창 = 400개를 한 번에 빨아들이면
@@ -856,7 +900,11 @@
     // 전력 대기 중이면 줄 맨 앞은 사실상 발전기다
     var pc = (powerBlock ? G.buildingInfo('generator').cost : (pendingCost() || {}));
     function short(k) { return Math.max(0, (pc[k] || 0) - n(k)); }
-    var free = n('iron-plate') - (pc['iron-plate'] || 0);
+    // **재고에 남겨 둘 철판.** 이걸 안 두면 증기 발전소도 강철 제련도 영원히 못 산다 —
+    // craft 가 매 사이클 철판을 0 으로 만들어서 재고가 한 번도 문턱을 넘지 않는다
+    // (실측: 40분 내내 '철판 여유 부족 0/40', 강철은 9개에서 멈췄다. 용광로에 넣을
+    // 철판조차 없었다). 흐름이 아니라 **재고**가 필요한 구매가 있다는 뜻이다.
+    var free = n('iron-plate') - (pc['iron-plate'] || 0) - ironHold;
     var freeCu = n('copper-plate'), freeGear = n('gear') - (pc['gear'] || 0);
 
     // (가) 줄을 푸는 손 조립 — **재료의 재료까지 따라 내려간다.**
@@ -1124,8 +1172,252 @@
     out.fails.push('분배기 자리 없음');
     return true;
   }
-  var STAGES = [stageCtrl1, stageCtrl2, stageCtrl3, stageCtrl4, stageSplitter],
-      stageDone = [0, 0, 0, 0, 0];
+  // --- 증기 발전소 (파이프·펌프·보일러·증기기관) -------------------------------
+  // **이 단계가 없어서 유체 4종이 40분 동안 한 번도 안 세워졌다.** 모델 게이트는
+  // 전부 GREEN 이었는데, 그 게이트들은 리그가 세운 실험 설비를 잰다. 완주 주행은
+  // "플레이어가 실제로 지어 쓰는가"를 재는 유일한 자리다.
+  //
+  // 넷을 **맞닿게** 놓아야 한 유체망이 된다(대각선은 안 이어진다). 가로 한 줄:
+  //   펌프(1x1) │ 보일러(2x2) │ 증기기관(3x2)
+  // 자리를 손으로 찍으면 확장할 때마다 밟으니 구역만 정하고 자리는 찾게 한다.
+  var steamSpot = null;
+  function findSteamSpot() {
+    for (var y = 64; y <= 92; y++) {
+      for (var x = 64; x <= 92; x++) {
+        if (G.whyPlace('pump', x, y, 0) !== 'ok') continue;
+        if (G.whyPlace('boiler', x + 1, y, 0) !== 'ok') continue;
+        if (G.whyPlace('engine', x + 3, y, 0) !== 'ok') continue;
+        // 증기기관은 **망에 들어가야 공급한다.** needsNet 은 소비 건물만 보므로
+        // (bi.power 가 있는 것) 여기서 직접 전주 자리를 확인한다. 망 밖에 세우면
+        // 900kW 가 조용히 0 이 되고, 그건 게이트가 아니라 눈으로도 안 보인다.
+        for (var dx = -1; dx <= 6; dx++) {
+          for (var dy = -1; dy <= 2; dy++) {
+            var px = x + dx, py = y + dy;
+            if (px >= x && px <= x + 5 && py >= y && py <= y + 1) continue;
+            if (poleLinked(px, py) && G.whyPlace('pole', px, py, 0) === 'ok') {
+              return { x: x, y: y, px: px, py: py };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+  // **막힌 이유를 남긴다.** 첫 실행에서 두 단계가 통째로 안 돌았는데 게이트는
+  // "안 지어졌다"까지만 알려 줬다. 무엇을 기다리다 40분을 보냈는지는 안 나온다 —
+  // 재료인지, 자리인지, 기술인지. 그 셋은 고치는 방법이 전혀 다르다.
+  var steamWhy = '아직 시도 전', trainWhy = '아직 시도 전';
+  function why(kind, msg) { if (kind === 's') steamWhy = msg; else trainWhy = msg; return false; }
+  var steamDone = false;
+  function stageSteam() {
+    if (steamDone) return true;
+    if (!researched('steel')) return why('s', '강철 연구 대기');
+    if ((invNow()['iron-plate'] || 0) > ironPeak) ironPeak = invNow()['iron-plate'] || 0;
+    // 파이프 아이템은 손으로 만든다(철판 1장). 네 건물이 통틀어 11개를 먹는다.
+    //
+    // **파이프는 철판의 안전한 저축이다.** 이 판의 어느 기계도 파이프를 재료로 안
+    // 쓰므로 feed 가 못 가져간다. 철판을 재고에 두면 다음 사이클에 사라지지만
+    // 파이프로 바꿔 두면 남는다 — 큰 것을 사려면 안 없어지는 형태로 모아야 한다.
+    if ((invNow()['pipe-item'] || 0) < 11) {
+      if ((invNow()['iron-plate'] || 0) < 4) {
+        return why('s', '철판 부족 ' + (invNow()['iron-plate'] || 0) + ' (파이프 재료, 최대 ' + ironPeak + ')');
+      }
+      for (var i = 0; i < 3 && (invNow()['pipe-item'] || 0) < 11; i++) {
+        if (!G.handCraft('pipe-item')) break;
+      }
+      return why('s', '파이프 ' + (invNow()['pipe-item'] || 0) + '/11 제작 중');
+    }
+    // **자리는 고정, 구매는 부품별.** 처음엔 넷을 한꺼번에 살 수 있을 때까지
+    // 기다리게 했는데, 이 공장은 철판 40장을 한 순간에 가진 적이 **한 번도 없다**
+    // (실측: 40분 내내 최대 8). 흐름은 넉넉한데 재고가 안 쌓이는 경제다 —
+    // feed 가 매 사이클 기계 버퍼로 밀어 넣기 때문이다.
+    //
+    // 반대로 처음 판에서는 부품별로 사되 **실패하면 자리를 새로 찾았다.** 그게
+    // 누수였다: 펌프·보일러를 세우고 증기기관에서 실패하면 다음 사이클에 다른 자리에
+    // 펌프와 보일러를 또 지었다(철판 0, 탄약 끊김, 손실 3→7). 누수의 원인은 부분
+    // 건설이 아니라 **자리를 바꾼 것**이었다. 자리를 못 박으면 부분 건설은 안전하다.
+    var iv = invNow();
+    if (!steamSpot) steamSpot = findSteamSpot();
+    if (!steamSpot) return why('s', '자리 없음 (전주가 닿는 6x2 공터를 못 찾았다)');
+    var s = steamSpot;
+    if (!steamParts.pump && afford('pump')) {
+      steamParts.pump = G.build('pump', s.x, s.y, 0);
+      if (steamParts.pump) markBuilt('pump');
+    }
+    if (!steamParts.boiler && afford('boiler')) {
+      steamParts.boiler = G.build('boiler', s.x + 1, s.y, 0);
+      if (steamParts.boiler) markBuilt('boiler');
+    }
+    if (!steamParts.engine && afford('engine')) {
+      steamParts.engine = G.build('engine', s.x + 3, s.y, 0);
+      if (steamParts.engine) markBuilt('engine');
+    }
+    if (!steamParts.pump || !steamParts.boiler || !steamParts.engine) {
+      return why('s', '부품 대기 — 펌프 ' + (steamParts.pump ? 'O' : 'X') +
+                      ' 보일러 ' + (steamParts.boiler ? 'O' : 'X') +
+                      ' 증기기관 ' + (steamParts.engine ? 'O' : 'X') +
+                      ' · 지금 철판 ' + (iv['iron-plate'] || 0) + ' 파이프 ' + (iv['pipe-item'] || 0) +
+                      ' 기어 ' + (iv['gear'] || 0) + ' 벽돌 ' + (iv['brick'] || 0) +
+                      ' (철판 최대 ' + ironPeak + ')');
+    }
+    putPole(s.px, s.py);
+    // 파이프 한 칸을 보일러 위에 덧대 **망이 실제로 이어지는지**를 눈에 보이게 한다.
+    // 없어도 셋은 맞닿아 있지만, 파이프 자체가 안 쓰인 건물로 남는다.
+    if (!steamParts.pipe) {
+      if (G.whyPlace('pipe', s.x + 1, s.y - 1, 0) === 'ok') {
+        steamParts.pipe = G.build('pipe', s.x + 1, s.y - 1, 0);
+      }
+      if (!steamParts.pipe && G.whyPlace('pipe', s.x + 1, s.y + 2, 0) === 'ok') {
+        steamParts.pipe = G.build('pipe', s.x + 1, s.y + 2, 0);
+      }
+      if (steamParts.pipe) markBuilt('pipe');
+    }
+    steamEnt = { boiler: steamParts.boiler, engine: steamParts.engine, pump: steamParts.pump };
+    steamDone = true;
+    note('증기 발전소: 펌프·보일러·증기기관 (' + s.x + ',' + s.y + ')');
+    return true;
+  }
+  var steamEnt = null, steamParts = { pump: null, boiler: null, engine: null, pipe: null };
+
+  // --- 철도 (레일·역·열차) ----------------------------------------------------
+  // 최소한이되 **실제로 도는** 노선이다. 한 대가 두 역 사이를 왕복하고, 출발역에는
+  // 인서터가 붙어 짐을 싣는다. 역이 하나면 열차는 서 있기만 하고, 그러면 이 주행은
+  // "열차를 놓았다"만 증명하지 "열차가 다닌다"를 증명하지 못한다.
+  //   레일 6칸 가로줄 · 양 끝 위에 역 2대 · 왼쪽 끝 레일 위에 열차
+  var RAIL_LEN = 6;
+  function findRailSpot() {
+    for (var y = 66; y <= 92; y++) {
+      for (var x = 64; x <= 88; x++) {
+        var ok = true, i;
+        for (i = 0; i < RAIL_LEN && ok; i++) if (G.whyPlace('rail', x + i, y, 0) !== 'ok') ok = false;
+        if (!ok) continue;
+        if (G.whyPlace('station', x, y - 1, 0) !== 'ok') continue;
+        if (G.whyPlace('station', x + RAIL_LEN - 1, y - 1, 0) !== 'ok') continue;
+        return { x: x, y: y };
+      }
+    }
+    return null;
+  }
+  var railDone = false, stationA = null, stationB = null, trainId = null;
+  var railSpot = null, railTiles = [];
+  function stageTrain() {
+    if (railDone) return true;
+    if (!researched('steel')) return why('t', '강철 연구 대기');
+    var inv = invNow();
+    // 전부 한꺼번에 산다 — 레일만 깔고 강철이 떨어지면 열차 없는 선로가 남는다.
+    var needSteel = RAIL_LEN + 2 * 2 + 10;
+    if ((inv['steel'] || 0) < needSteel) {
+      // **왜 안 모이는지까지 남긴다.** 재고만 보면 "강철 9/20"이고, 그게 제련이
+      // 느린 것인지 다 써 버린 것인지 용광로가 놀고 있는 것인지 구별이 안 된다.
+      var fe = steelFurn ? G.ent(steelFurn) : null;
+      return why('t', '강철 ' + (inv['steel'] || 0) + '/' + needSteel +
+                      ' · 누계 제련 ' + ((G.tutorial().prod.byRecipe || {})['steel'] || 0) +
+                      ' · 제련로 ' + (fe ? (fe.recipe || '-') + (fe.working ? '(가동)' : '(정지)') : '없음') +
+                      ' · 지금 철판 ' + (inv['iron-plate'] || 0) + ' (최대 ' + ironPeak + ')');
+    }
+    if ((inv['stone'] || 0) < RAIL_LEN) return why('t', '돌 ' + (inv['stone'] || 0) + '/' + RAIL_LEN);
+    // **강철만 한꺼번에 본다.** 강철은 이 판에서 아무도 안 뺏어 가는 자원이라
+    // (제련 상한을 목표에 묶어 뒀다) 한 번 모으면 남는다 — 그래서 노선 전체분을
+    // 확보한 뒤에 착공하는 게 맞다. 반대로 철판·회로는 매 순간 다른 데로 흘러
+    // 나가서 "한 순간에 10장"을 요구하면 40분 내내 못 넘는다(실측: 5/10 에서 종료).
+    // 그래서 나머지는 **부품별로** 산다. 자리를 못 박아 뒀으니 부분 건설은 안전하다.
+    if (!railSpot) railSpot = findRailSpot();
+    if (!railSpot) return why('t', '자리 없음 (레일 ' + RAIL_LEN + '칸 + 역 2대가 들어갈 줄을 못 찾았다)');
+    var s = railSpot;
+    var i, rid;
+    for (i = 0; i < RAIL_LEN; i++) {
+      if (railTiles[i]) continue;
+      rid = G.build('rail', s.x + i, s.y, 0);
+      if (!rid) return why('t', '레일 배치 실패 @' + (s.x + i) + ',' + s.y);
+      railTiles[i] = rid; markBuilt('rail');
+    }
+    if (!stationA && afford('station')) stationA = G.build('station', s.x, s.y - 1, 0);
+    if (!stationB && afford('station')) stationB = G.build('station', s.x + RAIL_LEN - 1, s.y - 1, 0);
+    if (!stationA || !stationB) {
+      return why('t', '역 대기 (A ' + (stationA ? 'O' : 'X') + ' B ' + (stationB ? 'O' : 'X') +
+                      ') · 철판 ' + (invNow()['iron-plate'] || 0) + '/5 회로 ' +
+                      (invNow()['circuit'] || 0) + '/2 강철 ' + (invNow()['steel'] || 0) + '/2');
+    }
+    markBuilt('station');
+    // 열차는 점유맵 밖에 살아서 G.build 로는 못 세운다. 비용은 UI 와 같은 순서로
+    // 직접 치른다 — **결제 경로 자체는 클릭 드라이버(uismoke)가 검정한다.** 여기서
+    // 재료를 안 빼면 열차가 공짜가 되어 이 주행의 예산 판정이 거짓이 된다.
+    var costT = G.buildingInfo('train').cost;
+    for (var ck in costT) {
+      if ((invNow()[ck] || 0) < costT[ck]) {
+        return why('t', '열차 재료 — ' + ck + ' ' + (invNow()[ck] || 0) + '/' + costT[ck] +
+                        ' (선로·역은 완성)');
+      }
+    }
+    for (var ck2 in costT) G.give(ck2, -costT[ck2]);
+    trainId = G.trainAdd(s.x, s.y);
+    if (!trainId) { out.fails.push('열차 배치 실패'); return true; }
+    markBuilt('train');
+    // 출발역에 인서터를 붙여 실제로 싣게 한다(있으면 좋고, 없어도 노선은 돈다).
+    if (afford('inserter')) {
+      var ins = G.build('inserter', s.x, s.y + 1, 0);
+      if (ins) { markBuilt('inserter'); ensureNet(ins); }
+    }
+    railDone = true;
+    look(s.x + 3, s.y, 0.9);
+    note('철도: 레일 ' + RAIL_LEN + '칸 · 역 2대 · 열차 1대 (' + s.x + ',' + s.y + ')');
+    return true;
+  }
+
+  // 제어기 5 — 증기와 배차. 유체 잔량 · 역 상태 · 열차 출발을 살아 있는 회로에 건다.
+  var ctrl5 = null;
+  function stageCtrl5() {
+    if (ctrl5) return true;
+    if (!steamEnt || !stationA) return false;        // 볼 대상이 먼저 있어야 한다
+    if (!afford('controller')) return false;
+    var c = placeIn('controller', CORE_RC, 0);
+    if (!c || c === 'mat' || c === 'tech') { c = spiral('controller', 70, 88, 0, 8); }
+    if (!c) return false;
+    ctrl5 = c; ctrlIds.push(c);
+    // 증기가 마르기 전에 보인다 — 이 게임이 유체를 넣은 이유가 이 한 줄이다.
+    var fl5 = nd(c, 'fluid', 20, 20); G.gCfg(c, fl5, 'ent', steamEnt.engine);
+    var d51 = nd(c, 'display', 460, 20); G.gCfg(c, d51, 'label', '증기%');
+    G.gLink(c, fl5, 0, d51, 0);
+    // 배차: 화물이 절반을 넘으면 보낸다. **아니면 20초마다 한 번은 보낸다.**
+    //
+    // 조건을 화물% 하나로만 두면 짐이 안 실리는 판에서 열차가 영원히 안 떠나고,
+    // 그 주행은 "열차 출발 노드를 걸었다"만 증명하지 "노선이 돈다"를 증명하지
+    // 못한다. 게이트는 둘을 구별 못 하므로 회로 쪽에서 막는다 — 제어기가 지배를
+    // 가져가되 굶기지는 않는, 실제로 사람이 짤 법한 규칙이다.
+    var st5 = nd(c, 'station', 20, 200); G.gCfg(c, st5, 'ent', stationA);
+    var half = nd(c, 'const', 20, 340); G.gCfg(c, half, 'value', 50);
+    var cmp5 = nd(c, 'cmp', 240, 200); G.gCfg(c, cmp5, 'op', '>=');
+    G.gLink(c, st5, 2, cmp5, 0); G.gLink(c, half, 0, cmp5, 1);
+    var tm5 = nd(c, 'timer', 20, 480); G.gCfg(c, tm5, 'period', 20);
+    var or5 = nd(c, 'bool', 460, 480); G.gCfg(c, or5, 'op', 'OR');
+    G.gLink(c, cmp5, 0, or5, 0); G.gLink(c, tm5, 0, or5, 1);
+    var go5 = nd(c, 'traingo', 660, 200); G.gCfg(c, go5, 'ent', stationA);
+    G.gLink(c, or5, 0, go5, 0);
+    var d52 = nd(c, 'display', 460, 340); G.gCfg(c, d52, 'label', '화물%');
+    G.gLink(c, st5, 2, d52, 0);
+    note('제어기5: 증기 잔량 표시 + 화물 50% 배차');
+    return true;
+  }
+
+  var STAGES = [stageCtrl1, stageCtrl2, stageCtrl3, stageCtrl4, stageSplitter, stageCtrl5],
+      stageDone = [0, 0, 0, 0, 0, 0];
+
+  // 증기 발전소와 철도는 **사이클의 앞에서** 산다. 한 사이클 안의 순서가 곧
+  // 우선순위인데(logistics 의 주석), 뒤에 두었더니 앞의 feed 가 재고를 기계
+  // 버퍼로 다 밀어 넣은 뒤라 철판이 언제나 0 이었다 — 40분 내내 '0/40'.
+  // 재고를 잡아 두는 것(ironHold)만으로는 안 됐다. 그건 craft 만 막고 feed 는
+  // 그대로 퍼 갔기 때문이다. **큰 것을 사려면 줄의 앞에 서야 한다.**
+  var buyDone = [0, 0];
+  function runBuyStages() {
+    var BUY = [stageSteam, stageTrain];
+    for (var i = 0; i < BUY.length; i++) {
+      if (buyDone[i]) continue;
+      var ok = false;
+      try { ok = BUY[i](); }
+      catch (e) { out.fails.push('buy' + (i + 1) + ': ' + (e && e.message)); buyDone[i] = 1; continue; }
+      if (ok) buyDone[i] = 1;
+    }
+  }
   function runStages() {
     for (var i = 0; i < STAGES.length; i++) {
       if (stageDone[i]) continue;
@@ -1153,6 +1445,8 @@
     // **한 사이클 안의 순서가 곧 우선순위다.** 손 조립을 먼저 돌렸더니 철판이
     // 톱니·회로로 다 빠져 나가서 터렛이 40분 동안 한 기도 안 섰다(손실 134).
     // 전력과 방어가 먼저 가져가고, 남는 것으로 손이 만들고, 그 다음이 건설이다.
+    ironHoldTick();
+    runBuyStages();
     craft();
     autoGen();
     autoCoal();
@@ -1169,6 +1463,10 @@
   // --- 주행 ------------------------------------------------------------------
   var lastPoll = -1, lastSnap = -1, inCombat = false, engaged = false;
   var peakEnemies = 0, worstSat = 1;
+  // 증기 발전소와 노선이 **실제로 돌았는가** — 배치 사실과 따로 잰다
+  var steamPeak = 0, trainTravel = 0, trainLastX = null, trainMoved = false;
+  var FP_T = [60, 300, 900, 960, 1020, 1080, 1140, 1200, 1260, 1320, 1380, 1440, 1500],
+      fpMark = [];
 
   // 한 사이클이 담당하는 **게임 시간**. 이 값이 곧 "공장이 얼마나 자주 손을
   // 쓰는가" 이고, 여기가 벽시계에 묶이면 측정이 프레임 속도에 딸려 간다.
@@ -1180,6 +1478,37 @@
   function afterCycles(st, t) {
       if (st.enemies > peakEnemies) peakEnemies = st.enemies;
       if (t >= 60 && st.power.sat < worstSat) worstSat = st.power.sat;
+
+      // **궤적 지문.** 같은 코드로 두 번 돌렸을 때 결과가 갈리면, 갈린 지점이
+      // 초반인지 후반인지부터 알아야 한다. 정해진 시각을 처음 넘을 때 세계를 몇
+      // 숫자로 찍어 둔다 — 두 주행의 지문이 t=300 부터 다르면 원인은 물류가 아니라
+      // 시작 조건이고, 후반에서만 다르면 습격 같은 되먹임이다.
+      for (var fp = 0; fp < FP_T.length; fp++) {
+        if (fpMark[fp] || t < FP_T[fp]) continue;
+        // 게임이 결정론 검정용으로 내놓는 상태 지문을 쓴다 — 엔티티 하나하나의
+        // 재고·진행도까지 들어가므로, 내가 고른 몇 숫자보다 훨씬 잘게 갈린다.
+        fpMark[fp] = FP_T[fp] + ':' + G.stateHash();
+      }
+
+      // 철판 재고의 최대치 — "흐름은 넉넉한데 재고가 없다"를 숫자로 남긴다.
+      // 한 순간에 얼마를 쥘 수 있었는지가 큰 구매의 가능 여부를 정한다.
+      if ((st.inventory['iron-plate'] || 0) > ironPeak) ironPeak = st.inventory['iron-plate'] || 0;
+
+      // **지었다 ≠ 돈다.** 건물 종류 커버리지 게이트는 배치한 순간을 세므로, 죽은
+      // 증기 발전소와 안 움직이는 열차도 통과시킨다. 도는지는 여기서 따로 잰다.
+      if (steamEnt) {
+        var fi = G.fluid(steamEnt.engine);
+        if (fi && fi.steam > steamPeak) steamPeak = fi.steam;
+      }
+      if (trainId) {
+        var tl = G.trainList();
+        for (var ti = 0; ti < tl.length; ti++) {
+          if (tl[ti].id !== trainId) continue;
+          if (trainLastX !== null) trainTravel += Math.abs(tl[ti].x - trainLastX);
+          trainLastX = tl[ti].x;
+          if (tl[ti].moving) trainMoved = true;
+        }
+      }
 
       if (st.enemies > 0) {
         var el = G.enemyList(), cx = 0, cy = 0;
@@ -1360,11 +1689,14 @@
       prod: tut.prod.byRecipe, power: st.power, placeFails: out.fails.length,
       counts: st.counts, tutTrack: tut.track,
       jobsLeft: JOBS.filter(function (j) { return !j.done; }).map(function (j) { return j.key; }).slice(0, 12),
-      snaps: prev.snaps || [], ctrl3: prev.ctrl3 || null
+      snaps: prev.snaps || [], ctrl3: prev.ctrl3 || null,
+      inv: st.inventory,
+      steamPeak: +steamPeak.toFixed(1), trainTravel: +trainTravel.toFixed(1), trainMoved: trainMoved
     };
 
     chk('clear.ranFullDuration', st.t >= END_T - 2,
-      '게임 시각 ' + Math.round(st.t) + 's (' + Math.round(st.t / 60) + '분)');
+      '게임 시각 ' + Math.round(st.t) + 's (' + Math.round(st.t / 60) + '분) · 궤적지문 ' +
+      fpMark.filter(Boolean).join(' '));
     chk('clear.noRuntimeErrors', G.errors().length === 0, G.errors().join(' | ') || '없음');
     chk('clear.noPlaceFailures', out.fails.length === 0,
       '배치·단계 실패 ' + out.fails.length + '건' +
@@ -1376,6 +1708,16 @@
     chk('clear.allBuildingsUsed', missingB.length === 0,
       '건물 ' + Object.keys(built).length + '/' + allTypes.length + '종 사용' +
       (missingB.length ? ' · 안 쓴 것: ' + missingB.join(',') : ''));
+    // **지었다는 사실만으로는 모자란다.** 위 게이트는 배치한 순간을 세므로 연료
+    // 없는 보일러와 붙박이 열차도 통과시킨다. 두 설비가 실제로 돌았는지는 따로 잰다
+    // — 이게 없으면 "커버리지를 메웠다"가 "커버리지 표를 채웠다"로 미끄러진다.
+    chk('clear.steamPlantRan', steamPeak > 0,
+      '증기 최대 잔량 ' + steamPeak.toFixed(1) +
+      (steamEnt ? ' (0 이면 보일러가 물이나 석탄을 못 받았다)' : ' — 발전소 미건설: ' + steamWhy));
+    chk('clear.trainRanRoute', trainMoved && trainTravel >= 10,
+      trainId ? ('열차 이동 누적 ' + trainTravel.toFixed(1) + ' 타일 · 움직인 적 ' +
+                 (trainMoved ? '있음' : '없음'))
+              : ('노선 미건설: ' + trainWhy));
     // 적어만 내고 실제로 안 생긴 것이 있으면 그 자체가 실패다 — 조용히 넘어가면
     // "쓴 셈 치자"가 되고, 그게 바로 위에서 고친 거짓 통과다.
     // **이 주행을 믿어도 되는가.** 드라이버가 밀려서 게임 시간을 버렸다면 공장이
