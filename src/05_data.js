@@ -138,6 +138,15 @@ var BUILDINGS = {
                  tech: 'steel', fluid: true,
                  desc: '유체를 25,000 까지 담는다 — 파이프 250칸어치. 망에 붙이면 남을 때 채우고 ' +
                        '모자랄 때 내준다. 완충이 크면 제어기가 늦게 반응해도 되고, 작으면 빨라야 한다.' },
+  // 이송 펌프 — **두 망을 잇지 않고 옮긴다.** 파이프로 이으면 그 순간 한 망이 되어
+  // "저쪽이 찰 때까지 이쪽을 비운다" 같은 것을 할 수 없다. 이 펌프는 뒤쪽 망에서
+  // 빨아 앞쪽 망으로 밀되 **두 망은 끝까지 남남**이다 — 그래서 제어기가 '언제 옮길지'
+  // 를 정할 수 있고, 그것이 이 건물이 여는 새 결정이다.
+  // 200/s 는 Factorio pump 의 공개값이다.
+  'xpump':     { name: '이송 펌프', w: 1, h: 1, cost: { 'pipe-item': 2, 'circuit': 1, 'gear': 2 },
+                 tech: 'steel', fluid: true, xfer: true, rot: true, power: 30,
+                 desc: '★ 방향이 있다. 뒤쪽 망에서 앞쪽 망으로 200/s 옮긴다. 두 망은 안 합쳐진다 — ' +
+                       '제어기로 끄면 그 자리에서 멈춘다.' },
   'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
                  tech: 'steel', fluid: true,
                  desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
@@ -167,6 +176,7 @@ var SPEC = {
   engineOutput: 900,          // kW    (steam engine)
   fluidPerTile: 100,          // 한 칸이 담는 유체 (pipe)
   tankCap: 25000,             // 저장 탱크 하나 (Factorio storage tank)
+  xpumpRate: 200,             // 유체/s  (Factorio pump — 망 사이 이송)
   // 기차 — **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
   // 160타일이라 그대로 쓰면 2초에 횡단한다. 8 타일/s 면 횡단에 20초 — 벨트(1.875)보다
   // 4.3배 빠르고, 먼 광맥을 쓸 이유가 되면서 화면에서 눈으로 따라갈 수 있다.

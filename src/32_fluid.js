@@ -25,6 +25,9 @@ var fluidAt = new Int32Array(W * H);      // 타일 → 유체 엔티티 색인+
 
 function markFluidDirty() { fluidDirty = true; }
 function isFluidEnt(e) { return !!(e && BUILDINGS[e.type] && BUILDINGS[e.type].fluid); }
+// **이송 펌프는 망의 회원이 아니다.** 회원으로 넣으면 유니온-파인드가 앞뒤를 한 망으로
+// 합쳐 버려서, 이 건물이 존재하는 이유(두 망을 남남으로 두고 옮긴다)가 사라진다.
+function isXferPump(e) { return !!(e && BUILDINGS[e.type] && BUILDINGS[e.type].xfer); }
 // **탱크만 칸 수로 안 센다.** 저장 탱크의 값은 '넓다'가 아니라 '많이 담는다'이고,
 // 3x3=900 으로 두면 파이프 아홉 칸과 같아져 지을 이유가 사라진다.
 function fluidCapOf(e) {
@@ -39,7 +42,7 @@ function fluidCapOf(e) {
 function rebuildFluid() {
   fluidAt.fill(0);
   var list = [];
-  forEachEntity(function (e) { if (isFluidEnt(e)) { e.fnet = -1; list.push(e); } });
+  forEachEntity(function (e) { if (isFluidEnt(e) && !isXferPump(e)) { e.fnet = -1; list.push(e); } });
   var i, x, y;
   for (i = 0; i < list.length; i++) {
     var e0 = list[i];
@@ -151,6 +154,53 @@ function stepFluids(dt) {
     net.water = w; net.steam = s;
     spreadFluid(net, w, s);
   }
+  stepXferPumps(dt);
+}
+
+// --- 망 사이 이송 ------------------------------------------------------------
+// 뒤쪽 망에서 빨아 앞쪽 망으로 민다. **두 망은 안 합친다** — 그것이 이 건물의 전부다.
+// 방향은 dir 이고, 뒤/앞은 그 반대편·정면 한 칸이다(인서터와 같은 읽기다).
+//
+// 물과 증기를 **같은 비율로** 옮긴다. 한쪽만 옮기면 "증기만 빼 가는 펌프" 같은 것이
+// 되어 규칙이 늘어나는데, 이 게임의 유체는 '잘 섞인 탱크' 라 종류를 가려 뽑는다는
+// 개념 자체가 없다. 옮길 양은 세 가지에 걸린다: 규격 · 보낼 쪽에 있는 양 · 받을 쪽의 빈자리.
+function stepXferPumps(dt) {
+  forEachEntity(function (e) {
+    if (!isXferPump(e)) return;
+    if (!e.enabled) { e.working = false; return; }
+    // 전기를 쓴다 — 정전이면 멈춘다(취수 펌프와 다른 점이다. 그쪽은 자기강화 고장을
+    // 막으려고 일부러 전기를 안 쓴다).
+    if (e.powerSat <= 0) { e.working = false; return; }
+    var back = fluidNetAt(e.tx - DIR_DX[e.dir], e.ty - DIR_DY[e.dir]);
+    var front = fluidNetAt(e.tx + DIR_DX[e.dir], e.ty + DIR_DY[e.dir]);
+    if (!back || !front || back === front) { e.working = false; return; }
+    var have = back.water + back.steam;
+    var room = front.cap - (front.water + front.steam);
+    var move = Math.min(SPEC.xpumpRate * dt * e.powerSat, have, room);
+    if (move <= 0) { e.working = false; return; }
+    var fw = have > 0 ? (back.water / have) * move : 0;
+    var fs = move - fw;
+    back.water -= fw; back.steam -= fs;
+    front.water += fw; front.steam += fs;
+    spreadFluid(back, back.water, back.steam);
+    spreadFluid(front, front.water, front.steam);
+    e.working = true;
+  });
+}
+
+// 그 타일을 쓰는 유체망 (이송 펌프는 회원이 아니므로 여기 안 걸린다)
+function fluidNetAt(tx, ty) {
+  if (!inBounds(tx, ty)) return null;
+  var i = fluidAt[idx(tx, ty)];
+  if (i <= 0) return null;
+  var e = null, n = 0;
+  // fluidAt 은 rebuild 시점의 색인+1 이다. 회원 목록으로 되짚는 대신 엔티티에서
+  // fnet 을 읽는다 — 색인은 재구성마다 바뀌지만 fnet 은 그 시점의 진실이다.
+  e = entityAt(tx, ty);
+  if (!e || !isFluidEnt(e) || isXferPump(e)) return null;
+  n = e.fnet;
+  if (n < 0 || n >= fluidNets.length) return null;
+  return fluidNets[n];
 }
 
 // 망의 총량을 회원에게 **용량 비례**로 나눈다. 균등하게 나누면 파이프 한 칸과

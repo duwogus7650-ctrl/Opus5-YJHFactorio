@@ -504,6 +504,20 @@ function drawEntity(e) {
     ctx.fillRect(x + 0.32, y + h - 0.30, (w - 0.64) * sp, 0.14);
     if (!fi.connected) drawWarn(x, y, w, '파이프 없음');
     else if (fi.steam <= 0) drawWarn(x, y, w, '증기 없음');
+  } else if (e.type === 'xpump') {
+    // 방향이 보이는 몸통 — 이 건물의 전부가 '어느 쪽으로 미느냐' 라서, 화살표가
+    // 아이콘이 아니라 기능 표시다. 도는 중에는 화살표가 밝아진다.
+    body(x, y, w, h, '#4f6470');
+    var xa = e.dir * Math.PI / 2;
+    ctx.save();
+    ctx.translate(x + w / 2, y + h / 2); ctx.rotate(xa);
+    ctx.fillStyle = e.working ? '#8fd0ff' : '#5b6a74';
+    ctx.beginPath();
+    ctx.moveTo(0, -0.30); ctx.lineTo(0.22, 0.10); ctx.lineTo(-0.22, 0.10);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.05; ctx.stroke();
+    ctx.restore();
+    if (!e.enabled) drawWarn(x, y, w, '꺼짐');
   } else if (e.type === 'tank') {
     // 원통 탱크 — 옆면에 **내용물 수위**가 보인다. 이 건물의 값이 곧 '얼마나 차
     // 있는가'이므로, 그것을 아이콘이 아니라 눈금으로 보여 준다.

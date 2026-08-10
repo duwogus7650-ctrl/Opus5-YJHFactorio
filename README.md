@@ -160,7 +160,7 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 ```bash
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
-python tests/harness.py              # 모델 게이트 230건 (헤드리스 Edge)
+python tests/harness.py              # 모델 게이트 234건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
 python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 40건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
@@ -187,18 +187,18 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
-harness.py             GREEN — 실검사 230건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 234건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
-harness.py fullplay.js GREEN — 노드 35종·건물 21종 전수 40건 (고의 실패 1건 정상 검출)
+harness.py fullplay.js GREEN — 노드 35종·건물 22종 전수 40건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 148건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 151건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 13건 중 12건 통과 (아래 "완주 주행은 아직 RED다")
 ```
 
-| 엔진 | 모델 230 | 클릭 79 | 전수 40 | 부하차단 10 |
+| 엔진 | 모델 234 | 클릭 79 | 전수 40 | 부하차단 10 |
 |---|---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | GREEN | GREEN |
 | Chromium (Playwright) | GREEN | GREEN | GREEN | GREEN |
@@ -669,6 +669,23 @@ peek 과 take 가 서로 다른 아이템을 고르던 그 실패가 원형이�
 > 드라이버가 통째로 죽었다. 물가 배치 퍼즐은 여기서 얻으려던 것(증기 버퍼로 깊어지는 제어
 > 문제)과 무관해서, 지형 대신 규칙을 단순화했다 — 펌프는 어디에나 서는 지하수 펌프다.
 > 자세한 것은 `tasks/failure-ledger.md`.
+
+### 이송 펌프 — 두 망을 합치지 않고 옮긴다
+
+파이프로 이으면 그 순간 **한 망**이 되어 "저쪽이 찰 때까지 이쪽을 비운다" 를 할 수 없다.
+이송 펌프는 뒤쪽 망에서 빨아 앞쪽 망으로 200/s(Factorio pump 공개값) 밀되 **두 망은
+끝까지 남남**이다 — 그래서 *언제 옮길지* 를 제어기가 정할 수 있고, 그것이 이 건물이 여는
+새 결정이다. 전기를 쓴다(취수 펌프는 자기강화 고장을 막으려 일부러 안 쓰지만, 이쪽은
+멈춰도 물이 끊기지 않는다).
+
+게이트의 첫 줄이 **"망이 2개인가"** 인 이유가 그것이다 — 회원으로 넣어 유니온-파인드가
+앞뒤를 합쳐 버리면 이 건물의 존재 이유가 사라지고, 그 돌연변이가 정확히 그 게이트를
+뒤집는다.
+
+완주 주행에 넣으면서 자리 조건으로 두 번 헛디뎠다. 처음엔 탱크(3x3)를 한 칸 띄워 그쪽을
+두 번째 망으로 삼으려 했는데 **두 자리를 동시에 요구하니 맞는 열이 없어** 탱크조차 못
+세웠다(건물 21종 → 20종). **파이프 한 칸이면 망 하나다** — 펌프 앞에 파이프를 한 칸 두는
+것으로 바꾸자 자리 조건이 3x3 에서 두 칸으로 줄어 들어갔다.
 
 ### 저장 탱크 — 완충을 얼마나 둘 것인가
 

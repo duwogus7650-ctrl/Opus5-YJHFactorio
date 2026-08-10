@@ -349,6 +349,25 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- 망 사이 이송 펌프 ----
+    # 회원으로 넣으면 유니온-파인드가 앞뒤를 한 망으로 합쳐, 이 건물의 이유가 사라진다.
+    ('이송 펌프가 유체망의 회원이 된다 (두 망이 합쳐진다)', '32_fluid.js',
+     b'  forEachEntity(function (e) { if (isFluidEnt(e) && !isXferPump(e)) { e.fnet = -1; list.push(e); } });',
+     b'  forEachEntity(function (e) { if (isFluidEnt(e)) { e.fnet = -1; list.push(e); } });',
+     ['xpump.keepsNetsSeparate']),
+
+    # 규격을 반으로 줄이면 옮기는 속도가 반이 된다.
+    ('이송 속도가 규격의 절반이다', '05_data.js',
+     b'  xpumpRate: 200,',
+     b'  xpumpRate: 100,',
+     ['xpump.movesAtSpec']),
+
+    # 제어기가 꺼도 계속 옮기면, 이 건물이 여는 결정(언제 옮길지)이 통째로 사라진다.
+    ('제어기가 꺼도 이송 펌프가 계속 옮긴다', '32_fluid.js',
+     b'    if (!e.enabled) { e.working = false; return; }',
+     b'    if (false) { e.working = false; return; }',
+     ['xpump.stopsWhenDisabled']),
+
     # ---- 저장 탱크 ----
     # 탱크를 칸 수로 세면 3x3=900 이라 파이프 아홉 칸과 같아지고, 지을 이유가 사라진다.
     ('탱크 용량을 칸 수로 센다 (파이프 9칸과 같아진다)', '32_fluid.js',

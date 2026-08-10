@@ -2833,6 +2833,51 @@
         '개 · 건너뜀 ' + fsComp.skipped.length + ' · 유체 노드 포함 ' +
         ((G.gKinds(fsC) || []).indexOf('fluid') >= 0));
 
+      // --- 망 사이 이송 펌프 ----------------------------------------------
+      // **이 건물의 값은 '안 합쳐진다' 에 있다.** 파이프로 이으면 한 망이 되어
+      // "저쪽이 찰 때까지 이쪽을 비운다" 를 할 수 없다. 그래서 첫 게이트가 망 개수다.
+      var XPUMP_RATE_ORACLE = 200;                 // Factorio pump, 설계값
+      G.reset(8211); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(true); G.research('logistics'); G.research('steel');
+      var xpA = G.place('pump', 40, 40, 0);        // 취수 펌프 — 왼쪽 망을 채운다
+      G.place('pipe', 41, 40, 0);
+      var xpX = G.place('xpump', 42, 40, 1);       // dir 1(오른쪽) → 뒤 41, 앞 43
+      G.place('pipe', 43, 40, 0);
+      var xpT = G.place('tank', 44, 39, 0);        // 오른쪽 망 (43 과 맞닿는다)
+      G.run(0.05);
+      chk('xpump.keepsNetsSeparate',
+        !!xpX && !!xpT && G.fluidNetCount() === 2,
+        '취수펌프–파이프 [이송펌프] 파이프–탱크 → 유체망 ' + G.fluidNetCount() +
+        '개 (2여야 · 1이면 이송 펌프가 두 망을 합쳐 버린 것이고 그러면 이 건물의 이유가 사라진다)');
+
+      // 규격 — 1초에 200. 왼쪽 망을 먼저 채워 두고, 오른쪽이 늘어난 양을 잰다.
+      G.run(3);                                     // 취수 1200/s 로 왼쪽을 채운다
+      var xpBefore = G.fluid(xpT).water + G.fluid(xpT).steam;
+      G.run(1);
+      var xpAfter = G.fluid(xpT).water + G.fluid(xpT).steam;
+      chk('xpump.movesAtSpec',
+        Math.abs((xpAfter - xpBefore) - XPUMP_RATE_ORACLE) < 2,
+        '1초 동안 오른쪽 망이 ' + (xpAfter - xpBefore).toFixed(1) + ' 늘었다 (설계값 ' +
+        XPUMP_RATE_ORACLE + ' 이어야)');
+
+      // **제어기가 끄면 그 자리에서 멈춘다** — 이 건물이 여는 결정이 그것이다.
+      G.setEnabled(xpX, false);
+      var xpOffBefore = G.fluid(xpT).water + G.fluid(xpT).steam;
+      G.run(1);
+      var xpOffAfter = G.fluid(xpT).water + G.fluid(xpT).steam;
+      chk('xpump.stopsWhenDisabled',
+        Math.abs(xpOffAfter - xpOffBefore) < 1e-6,
+        '끈 뒤 1초: ' + xpOffBefore.toFixed(1) + ' → ' + xpOffAfter.toFixed(1) +
+        ' (안 늘어야 · 조건 발생 확인)');
+
+      // 되돌리면 다시 옮긴다 — 위 검사가 "언제나 멈춰 있다" 를 통과시키지 않게 한다
+      G.setEnabled(xpX, true);
+      G.run(0.5);
+      chk('xpump.resumesWhenEnabled',
+        (G.fluid(xpT).water + G.fluid(xpT).steam) > xpOffAfter + 50,
+        '다시 켠 뒤 0.5초 → ' + (G.fluid(xpT).water + G.fluid(xpT).steam).toFixed(1) +
+        ' (' + xpOffAfter.toFixed(1) + ' 보다 늘어야)');
+
       // --- 저장 탱크 -----------------------------------------------------
       // **오라클은 설계값 25,000 이다** — 게임에서 읽어 오면 상수를 바꿔도 양변이
       // 같이 움직여 아무것도 검정하지 않는다(교훈 16). 여기 숫자로 박아 둔다.

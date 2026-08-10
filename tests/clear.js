@@ -1459,7 +1459,7 @@
     note('증기 발전소: 펌프·보일러·증기기관 (' + s.x + ',' + s.y + ')');
     return true;
   }
-  var steamEnt = null, steamParts = { pump: null, boiler: null, engine: null, pipe: null, tank: null };
+  var steamEnt = null, steamParts = { pump: null, boiler: null, engine: null, pipe: null, tank: null, xpump: null };
 
   // --- 저장 탱크 --------------------------------------------------------------
   // **발전소가 선 뒤에 따로 산다.** 처음엔 발전소 단계 안에 넣고 파이프 저축 목표를
@@ -1479,19 +1479,66 @@
     // 제어기의 병목은 철판이 아니라 **회로**이고 회로도 철을 거쳐 온다. 철판 여유분만
     // 남겨 봤지만 제어기 2·4 가 여전히 못 섰다(노드 32 → 29). 탱크는 후반의 완충이라
     // 순서를 뒤로 미루는 편이 맞다 — 커버리지를 지키면서 늦게 사면 둘 다 된다.
-    // 발전소와 **같은 망**에 붙인다. 3x3 이라 자리를 따로 훑는다.
+    // **탱크를 발전소에 붙이지 않는다.** 붙이면 한 망이 되어 완충이 그냥 커질 뿐인데,
+    // 한 칸 띄우고 그 사이에 **이송 펌프**를 두면 두 망이 남남인 채로 "언제 옮길지" 를
+    // 제어기가 정할 수 있다 — 이 게임이 유체를 넣은 이유가 거기까지 간다.
+    //   발전소는 (s2.y) ~ (s2.y+1) 두 줄. 이송 펌프를 s2.y+2 에 아래 방향으로 두면
+    //   뒤가 발전소 망, 앞이 탱크 망이 된다. 탱크는 s2.y+3 부터 3x3.
+    // **탱크가 먼저다.** 처음엔 이송 펌프용 파이프를 먼저 만들게 했는데, 그 철판
+    // 2장이 탱크 예산을 밀어내 탱크조차 못 샀다(철판 10/20 에서 종료). 큰 것을 먼저
+    // 사고 작은 것을 나중에 붙인다 — 순서만 바꾸면 둘 다 된다.
     var s2 = steamSpot;
-    for (var tdx = -1; tdx <= 5; tdx++) {
-      if (G.whyPlace('tank', s2.x + tdx, s2.y + 2, 0) !== 'ok') continue;
-      steamParts.tank = G.build('tank', s2.x + tdx, s2.y + 2, 0);
-      if (steamParts.tank) break;
+    if (!steamParts.tank) {
+      // **자리 조건을 까다롭게 걸었다가 탱크 자체를 못 세웠다.** 탱크(3x3)와 이송
+      // 펌프 자리를 동시에 요구하니 맞는 열이 없었고, 재고가 20 을 넘는 짧은 순간을
+      // 그냥 흘려보냈다(실측: 건물 21종 → 20종). 넓게 훑고, 그래도 없으면 **검증된
+      // 예전 자리**(발전소에 붙이기)로 물러난다 — 탱크를 세우는 것이 먼저다.
+      for (var tdx = -2; tdx <= 7 && !steamParts.tank; tdx++) {
+        if (G.whyPlace('tank', s2.x + tdx, s2.y + 3, 0) !== 'ok') continue;
+        if (G.whyPlace('xpump', s2.x + tdx, s2.y + 2, 2) !== 'ok') continue;
+        steamParts.tank = G.build('tank', s2.x + tdx, s2.y + 3, 0);
+        if (steamParts.tank) { tankAt = s2.x + tdx; tankSplit = true; }
+      }
+      for (var tdx2 = -1; tdx2 <= 5 && !steamParts.tank; tdx2++) {
+        if (G.whyPlace('tank', s2.x + tdx2, s2.y + 2, 0) !== 'ok') continue;
+        steamParts.tank = G.build('tank', s2.x + tdx2, s2.y + 2, 0);   // 예전 자리(같은 망)
+      }
+      if (!steamParts.tank) { tankWhy = '자리 없음 (발전소 아래 3x3)'; return false; }
+      markBuilt('tank');
+      note(tankSplit ? '저장 탱크 — 발전소와 한 칸 띄워 다른 망으로 둔다'
+                     : '저장 탱크 — 발전소에 붙임(이송 펌프 자리를 못 잡았다)');
     }
-    if (!steamParts.tank) { tankWhy = '자리 없음 (발전소 아래 3x3)'; return false; }
-    markBuilt('tank');
+    // **두 번째 망에 탱크가 필요한 것은 아니다.** 처음엔 탱크를 한 칸 띄워 그쪽을
+    // 두 번째 망으로 삼으려 했는데, 3x3 자리와 펌프 자리를 동시에 요구하니 맞는 열이
+    // 없어 펌프를 아예 못 세웠다. **파이프 한 칸이면 망 하나다** — 펌프 앞에 파이프를
+    // 한 칸 두면 그것으로 충분하고, 자리 조건이 3x3 에서 두 칸으로 줄어든다.
+    // 이송 펌프 + 그 앞의 파이프 한 칸(= 두 번째 망). 파이프 3개가 든다(펌프 2 + 망 1).
+    if (!steamParts.xpump) {
+      if ((invNow()['pipe-item'] || 0) < 3) {
+        if ((invNow()['iron-plate'] || 0) < 8) { tankWhy = '펌프용 철판 대기'; return false; }
+        G.handCraft('pipe-item'); G.handCraft('pipe-item'); G.handCraft('pipe-item');
+        tankWhy = '이송 펌프용 파이프 ' + (invNow()['pipe-item'] || 0) + '/3 제작 중';
+        return false;
+      }
+      if (!afford('xpump')) { tankWhy = '이송 펌프 재료 대기'; return false; }
+      // 발전소 아래 줄에서 **두 칸이 연달아 빈 열**을 찾는다: 펌프(y+2) + 파이프(y+3).
+      for (var xk = -2; xk <= 7 && !steamParts.xpump; xk++) {
+        var px2 = s2.x + xk;
+        if (G.whyPlace('xpump', px2, s2.y + 2, 2) !== 'ok') continue;
+        if (G.whyPlace('pipe', px2, s2.y + 3, 0) !== 'ok') continue;
+        var xp = G.build('xpump', px2, s2.y + 2, 2);                 // dir 2 = 아래
+        if (!xp) continue;
+        steamParts.xpump = xp;
+        if (G.build('pipe', px2, s2.y + 3, 0)) markBuilt('pipe');    // 두 번째 망
+      }
+      if (!steamParts.xpump) { tankWhy = '이송 펌프 자리 없음 (발전소 아래 두 칸)'; return false; }
+      markBuilt('xpump'); ensureNet(steamParts.xpump);
+      note('이송 펌프 — 발전소 망에서 옆 망으로 200/s (두 망은 남남)');
+    }
     tankDone = true;
-    note('저장 탱크 — 유체망 완충 25,000');
     return true;
   }
+  var tankAt = 0, tankSplit = false;
 
   // --- 철도 (레일·역·열차) ----------------------------------------------------
   // 최소한이되 **실제로 도는** 노선이다. 한 대가 두 역 사이를 왕복하고, 출발역에는
