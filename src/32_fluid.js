@@ -25,7 +25,12 @@ var fluidAt = new Int32Array(W * H);      // 타일 → 유체 엔티티 색인+
 
 function markFluidDirty() { fluidDirty = true; }
 function isFluidEnt(e) { return !!(e && BUILDINGS[e.type] && BUILDINGS[e.type].fluid); }
-function fluidCapOf(e) { return e.w * e.h * SPEC.fluidPerTile; }
+// **탱크만 칸 수로 안 센다.** 저장 탱크의 값은 '넓다'가 아니라 '많이 담는다'이고,
+// 3x3=900 으로 두면 파이프 아홉 칸과 같아져 지을 이유가 사라진다.
+function fluidCapOf(e) {
+  if (e.type === 'tank') return SPEC.tankCap;
+  return e.w * e.h * SPEC.fluidPerTile;
+}
 
 // --- 망 재구성 --------------------------------------------------------------
 // 맞닿은 칸으로만 잇는다. 대각선은 안 잇는다 — 화면에서 안 닿아 보이는데 이어지면

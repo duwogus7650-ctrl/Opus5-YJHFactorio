@@ -796,6 +796,15 @@ var BUILDINGS = {
                  onRail: true,
                  desc: '★ 레일 위에 놓는다. 역을 순서대로 돌며 2000개까지 나른다. ' +
                        '8 타일/s — 벨트보다 4배 빠르다.' },
+  // 저장 탱크 — **버퍼를 얼마나 둘 것인가를 플레이어의 설계 결정으로 만든다.**
+  // 파이프 한 칸이 100 인데 탱크는 25,000 이다(Factorio 저장 탱크의 공개값). 파이프
+  // 250칸어치라, 증기 60/s 를 쓰는 보일러 기준으로 **7분 가까운 완충**이 생긴다.
+  // 이 게임에서 버퍼는 편의가 아니라 제어 문제의 깊이다 — 완충이 크면 "마르기 전에
+  // 끄기"의 여유가 늘고, 작으면 제어기가 더 빨리 반응해야 한다.
+  'tank':      { name: '저장 탱크', w: 3, h: 3, cost: { 'iron-plate': 20, 'steel': 5 },
+                 tech: 'steel', fluid: true,
+                 desc: '유체를 25,000 까지 담는다 — 파이프 250칸어치. 망에 붙이면 남을 때 채우고 ' +
+                       '모자랄 때 내준다. 완충이 크면 제어기가 늦게 반응해도 되고, 작으면 빨라야 한다.' },
   'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
                  tech: 'steel', fluid: true,
                  desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
@@ -824,6 +833,7 @@ var SPEC = {
   engineSteam: 30,            // 증기/s (steam engine)
   engineOutput: 900,          // kW    (steam engine)
   fluidPerTile: 100,          // 한 칸이 담는 유체 (pipe)
+  tankCap: 25000,             // 저장 탱크 하나 (Factorio storage tank)
   // 기차 — **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
   // 160타일이라 그대로 쓰면 2초에 횡단한다. 8 타일/s 면 횡단에 20초 — 벨트(1.875)보다
   // 4.3배 빠르고, 먼 광맥을 쓸 이유가 되면서 화면에서 눈으로 따라갈 수 있다.
@@ -2289,7 +2299,12 @@ var fluidAt = new Int32Array(W * H);      // 타일 → 유체 엔티티 색인+
 
 function markFluidDirty() { fluidDirty = true; }
 function isFluidEnt(e) { return !!(e && BUILDINGS[e.type] && BUILDINGS[e.type].fluid); }
-function fluidCapOf(e) { return e.w * e.h * SPEC.fluidPerTile; }
+// **탱크만 칸 수로 안 센다.** 저장 탱크의 값은 '넓다'가 아니라 '많이 담는다'이고,
+// 3x3=900 으로 두면 파이프 아홉 칸과 같아져 지을 이유가 사라진다.
+function fluidCapOf(e) {
+  if (e.type === 'tank') return SPEC.tankCap;
+  return e.w * e.h * SPEC.fluidPerTile;
+}
 
 // --- 망 재구성 --------------------------------------------------------------
 // 맞닿은 칸으로만 잇는다. 대각선은 안 잇는다 — 화면에서 안 닿아 보이는데 이어지면
@@ -4852,6 +4867,23 @@ function drawEntity(e) {
     ctx.fillRect(x + 0.32, y + h - 0.30, (w - 0.64) * sp, 0.14);
     if (!fi.connected) drawWarn(x, y, w, '파이프 없음');
     else if (fi.steam <= 0) drawWarn(x, y, w, '증기 없음');
+  } else if (e.type === 'tank') {
+    // 원통 탱크 — 옆면에 **내용물 수위**가 보인다. 이 건물의 값이 곧 '얼마나 차
+    // 있는가'이므로, 그것을 아이콘이 아니라 눈금으로 보여 준다.
+    body(x, y, w, h, '#4a565e');
+    var ti = fluidOf(e);
+    var lvl = clamp(ti.cap > 0 ? (ti.water + ti.steam) / ti.cap : 0, 0, 1);
+    ctx.fillStyle = '#20232a';
+    ctx.fillRect(x + 0.28, y + 0.3, w - 0.56, h - 0.6);
+    // 물은 파랑, 증기는 옅은 회청 — 무엇이 들었는지 색으로 구별된다
+    var tcol = (ti.steam > ti.water) ? '#9fc7dd' : '#3d7ea6';
+    ctx.fillStyle = tcol;
+    ctx.fillRect(x + 0.3, y + 0.32 + (h - 0.64) * (1 - lvl), w - 0.6, (h - 0.64) * lvl);
+    ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.06;
+    ctx.strokeRect(x + 0.28, y + 0.3, w - 0.56, h - 0.6);
+    // 테두리 띠 — 파이프와 같은 계열임을 알리는 표식
+    hazard(x + 0.16, y + 0.12, w - 0.32, 0.14);
+    if (!ti.connected) drawWarn(x, y, w, '파이프 없음');
   } else if (e.type === 'chest') {
     ctx.fillStyle = '#8a6a3d'; rr(x + 0.08, y + 0.12, 0.84, 0.78, 0.08); ctx.fill();
     ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.06; ctx.stroke();
@@ -6324,7 +6356,11 @@ function fillHelp() {
     '그래서 제어기의 과제가 "전기가 모자라면 끄기"에서 <b>"증기가 마르기 전에 끄기"</b>로 옮겨 간다.',
     '읽는 노드는 <b>유체 잔량</b>(증기%·증기·물·망연결)이고, 문장 편집기에도 <code>증기 잔량</code> 으로 있다.',
     '하고 싶은 일 카드의 <b>"증기가 마르기 전에 미리 끄기"</b>가 그 회로를 절반 채워서 열어 준다.</p>',
-    '<h4>신호를 다듬고, 나누고, 단계로 쪼갠다</h4>',
+        '<p><b>저장 탱크</b>는 그 완충을 손으로 키우는 물건이다. 파이프 한 칸이 100 인데 탱크는',
+    '<b>25,000</b> — 파이프 250칸어치다. 증기 60/s 를 쓰는 보일러 기준으로 7분 가까이 버틴다.',
+    '완충이 크면 제어기가 늦게 반응해도 되고, 작으면 빨라야 한다 — <b>얼마나 둘 것인가가',
+    '설계 결정</b>이다. 망 어디에 붙여도 같은 통이므로 자리는 편한 곳에 두면 된다.</p>',
+'<h4>신호를 다듬고, 나누고, 단계로 쪼갠다</h4>',
     '<p><b>평활 필터</b>(논리 III)는 덜덜 떨리는 값을 눅인다. <code>시상수 s</code>는 입력이 갑자기 바뀌었을 때',
     '<b>63%까지 따라가는 데 걸리는 시간</b>이다 — 5로 두면 5초에 63%, 15초에 95% 따라간다.',
     '전력 만족도나 상자 재고처럼 매 틱 튀는 값을 임계값 비교에 바로 물리면 그 경계에서 딸깍거리는데,',

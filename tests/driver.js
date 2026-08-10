@@ -2634,6 +2634,94 @@
         '개 · 건너뜀 ' + fsComp.skipped.length + ' · 유체 노드 포함 ' +
         ((G.gKinds(fsC) || []).indexOf('fluid') >= 0));
 
+      // --- 저장 탱크 -----------------------------------------------------
+      // **오라클은 설계값 25,000 이다** — 게임에서 읽어 오면 상수를 바꿔도 양변이
+      // 같이 움직여 아무것도 검정하지 않는다(교훈 16). 여기 숫자로 박아 둔다.
+      var TANK_CAP_ORACLE = 25000, PIPE_TILE_ORACLE = 100;
+      var tr = fluidRig(8208);
+      var capNoTank = G.fluid(tr.pump).cap;
+      // 탱크는 3x3 이라 자리를 넉넉히 봐야 한다. 처음에 (41,41) 로 뒀더니 보일러
+      // (42..43, 40..41) 와 겹쳐 배치가 조용히 실패했고, 게이트는 '용량이 안 늘었다'
+      // 로만 보였다 — 배치 실패와 용량 계산 오류가 같은 얼굴을 한다.
+      var tk = G.place('tank', 39, 41, 0);          // (39..41, 41..43) — 파이프A(41,40) 아래로 맞닿는다
+      var capWithTank = G.fluid(tr.pump).cap;
+      chk('fluid.tankCapacityMatchesSpec',
+        !!tk && (capWithTank - capNoTank) === TANK_CAP_ORACLE,
+        '탱크 배치 ' + (tk ? 'O' : 'X') + ' · 망 용량 ' + capNoTank + ' → ' + capWithTank + ' (차이 ' +
+        (capWithTank - capNoTank) + ' · 설계값 ' + TANK_CAP_ORACLE + ' 이어야) · ' +
+        '3x3 을 칸 수로 세면 ' + (9 * PIPE_TILE_ORACLE) + ' 밖에 안 된다');
+
+      // **버퍼는 시간이다.** 보일러를 세우고 증기가 마르는 데 걸리는 시간이
+      // 저장량 ÷ 소비량이어야 한다. 증기기관은 30/s 를 쓰므로(설계값),
+      // 증기 3000 이 남아 있으면 100초. 탱크가 있으면 같은 소비로 더 오래 버틴다.
+      var ENGINE_DRAW_ORACLE = 30;
+      // **보일러에 연료를 넣어야 증기가 생긴다.** 처음엔 그냥 30초를 돌렸는데 증기가
+      // 0 이었고, 게이트가 '0초 버텼다(예상 0초)' 로 통과할 뻔했다 — 양변이 0 이면
+      // 어떤 비교도 참이 된다. 그래서 beforeSteam > 1000 조건을 같이 걸어 둔다.
+      G.putFromStock(tr.boiler);                    // 석탄 (giveAll 로 재고에 있다)
+      // **전기 수요가 없으면 증기기관은 증기를 안 쓴다.** 부하를 안 걸고 쟀더니
+      // 400초(측정 상한)를 그대로 버텼다 — 소비가 0 이니 당연하고, 그 판의 '버퍼가
+      // 오래 간다' 는 아무것도 증명하지 않는다. 900kW 를 넘는 부하를 걸어 증기기관을
+      // 최대로 돌린다(그때 소비가 설계값 30/s 다).
+      // 전주는 5x5 공급(±2)·7.5타일 연결이다. 기계가 전주의 공급 사각형 안에 오도록
+      // **전주 줄과 기계 줄을 나란히** 둔다 — 이것을 대충 잡았더니 기계가 망 밖에 서서
+      // 수요가 0 이었고, 그 판의 '오래 버텼다' 는 소비가 없어서였다.
+      var tlPoles = 0, tlLoads = [];
+      for (var tl = 0; tl < 6; tl++) if (G.place('pole', 46 + tl * 4, 44, 0)) tlPoles++;
+      for (var tl2 = 0; tl2 < 6; tl2++) {
+        var tla = G.place('assembler', 47 + tl2 * 4, 45, 0);
+        if (tla) { G.setRecipe(tla, 'gear'); G.fillChest(tla, 'iron-plate', 400); tlLoads.push(tla); }
+      }
+      // **차면 멈추는 부하는 부하가 아니다.** 조립기는 출력 버퍼가 차면 전기를 안 쓴다.
+      // 처음엔 수요를 한 번만 재고(930kW) 60초를 돌렸는데, 그 사이 버퍼가 차서 배수를
+      // 시작할 때는 수요가 사실상 0 이었다 — 그래서 400초를 그대로 버텼다.
+      // 매 초 출력을 걷어 계속 돌게 한다.
+      function tlDrain() {
+        for (var q = 0; q < tlLoads.length; q++) {
+          G.takeOutputToStock(tlLoads[q]);
+          G.fillChest(tlLoads[q], 'iron-plate', 400);
+        }
+      }
+      G.run(1);
+      var tlPow = G.state().power;
+      for (var tw = 0; tw < 60; tw++) { G.run(1); tlDrain(); }   // 물·증기를 채운다
+      var beforeSteam = G.fluid(tr.engine).steam;
+      var tlPow2 = G.state().power;                 // 배수 **시작 시점**의 수요가 진짜다
+      G.setFuel(tr.boiler, 0);                      // 연료를 끊는다 — 이제 재고만으로 버틴다
+      G.setEnabled(tr.pump, false);                 // 물도 끊는다
+      var t0 = 0, alive = 0;
+      for (t0 = 0; t0 < 400; t0++) {
+        G.run(1); tlDrain();
+        if (G.fluid(tr.engine).steam <= 0.001) break;
+        alive++;
+      }
+      var expectAlive = beforeSteam / ENGINE_DRAW_ORACLE;
+      chk('fluid.tankBufferIsTime',
+        // 가드는 '재는 대상이 실제로 있었나' 를 보는 것이지 크기를 요구하는 게 아니다.
+        // 1000 으로 뒀더니 실측 837 에서 물리가 맞는데도 FAIL 이 났다 (예상 28 · 실측 27).
+        tlPow2.demand >= 900 && beforeSteam > 300 && alive < 399 &&
+        Math.abs(alive - expectAlive) <= 3,
+        '부하 ' + tlLoads.length + '대 · 배수 시작 수요 ' + Math.round(tlPow2.demand) + 'kW (900 이상이어야 증기기관이 ' +
+        '최대로 돈다) · 연료를 끊은 뒤 증기 ' + beforeSteam.toFixed(0) + ' 로 ' + alive +
+        '초 버텼다 (예상 ' + expectAlive.toFixed(0) + '초 = 저장량 ÷ 소비 ' +
+        ENGINE_DRAW_ORACLE + '/s · ±3)');
+
+      // 저장/복원 — 탱크의 내용물은 화물이 아니라 상태다
+      var tr2 = fluidRig(8209);
+      var tk2 = G.place('tank', 39, 41, 0);
+      G.run(20);
+      var tankBefore = G.fluid(tr2.pump);
+      G.saveRaw(); G.load(G.saveRaw());
+      var tankAfter = G.fluid(G.entAtTile(39, 41));
+      chk('fluid.tankSurvivesSave',
+        !!tk2 && tankAfter && tankAfter.cap === tankBefore.cap &&
+        Math.abs(tankAfter.water - tankBefore.water) < 1 &&
+        Math.abs(tankAfter.steam - tankBefore.steam) < 1,
+        '저장→복원 후 용량 ' + (tankAfter ? tankAfter.cap : '?') + ' (전 ' + tankBefore.cap +
+        ') · 물 ' + (tankAfter ? tankAfter.water.toFixed(0) : '?') + ' (전 ' +
+        tankBefore.water.toFixed(0) + ') · 증기 ' + (tankAfter ? tankAfter.steam.toFixed(0) : '?') +
+        ' (전 ' + tankBefore.steam.toFixed(0) + ')');
+
       // ================= 11.7 청사진 =====================================
       // 이 기능의 값은 **배선이 따라오는가**에 있다. 벨트만 복사하는 것은 편의지만,
       // 제어기의 규칙·그래프가 새 대상으로 갈아 끼워진 채 따라오면 "잘 도는 라인"을

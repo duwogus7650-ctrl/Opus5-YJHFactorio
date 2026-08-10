@@ -504,6 +504,23 @@ function drawEntity(e) {
     ctx.fillRect(x + 0.32, y + h - 0.30, (w - 0.64) * sp, 0.14);
     if (!fi.connected) drawWarn(x, y, w, '파이프 없음');
     else if (fi.steam <= 0) drawWarn(x, y, w, '증기 없음');
+  } else if (e.type === 'tank') {
+    // 원통 탱크 — 옆면에 **내용물 수위**가 보인다. 이 건물의 값이 곧 '얼마나 차
+    // 있는가'이므로, 그것을 아이콘이 아니라 눈금으로 보여 준다.
+    body(x, y, w, h, '#4a565e');
+    var ti = fluidOf(e);
+    var lvl = clamp(ti.cap > 0 ? (ti.water + ti.steam) / ti.cap : 0, 0, 1);
+    ctx.fillStyle = '#20232a';
+    ctx.fillRect(x + 0.28, y + 0.3, w - 0.56, h - 0.6);
+    // 물은 파랑, 증기는 옅은 회청 — 무엇이 들었는지 색으로 구별된다
+    var tcol = (ti.steam > ti.water) ? '#9fc7dd' : '#3d7ea6';
+    ctx.fillStyle = tcol;
+    ctx.fillRect(x + 0.3, y + 0.32 + (h - 0.64) * (1 - lvl), w - 0.6, (h - 0.64) * lvl);
+    ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.06;
+    ctx.strokeRect(x + 0.28, y + 0.3, w - 0.56, h - 0.6);
+    // 테두리 띠 — 파이프와 같은 계열임을 알리는 표식
+    hazard(x + 0.16, y + 0.12, w - 0.32, 0.14);
+    if (!ti.connected) drawWarn(x, y, w, '파이프 없음');
   } else if (e.type === 'chest') {
     ctx.fillStyle = '#8a6a3d'; rr(x + 0.08, y + 0.12, 0.84, 0.78, 0.08); ctx.fill();
     ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.06; ctx.stroke();

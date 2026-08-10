@@ -758,9 +758,16 @@
   // 레일·역·열차가 강철을 먹는다. 4에서 멈추면 철도 단계가 영원히 재료를 기다리고,
   // 그건 "기능이 안 된다"가 아니라 "드라이버가 안 사 준다"이다 — 둘은 다른 문장이고
   // 게이트는 구별하지 못한다. 목표를 철도 예산까지 올린다.
-  //   레일 6 + 역 2대(4) + 열차(10) + 분배기(2) = 22, 여유 2 = 24
   // 강철 1개는 철판 5장·16초다. 24개면 철판 120장이 철도로 빠진다 — 그만큼 연구가
   // 늦어질 수 있고, 그 대가는 아래 (가) 무리의 숫자로 드러난다. 감추지 않는다.
+  //   레일 6 + 역 2대(4) + 열차(10) + 분배기(2) = 22, 여유 2 = 24
+  //
+  // **저장 탱크(강철 5)는 이 예산에 안 들어간다.** 26·28·30 으로 올려도 봤는데, 강철
+  // 1개는 철판 5장이고 그 철판은 회로를 거쳐 제어기가 된다 — 예산을 올릴 때마다
+  // 제어기 2·4 가 못 서서 노드 커버리지가 32 → 29 로 떨어졌다. 노선을 4칸으로 줄여
+  // 그 몫을 돌려 봐도 같았고 연구까지 6/8 로 내려갔다. 이 공장에서 **강철 예산은 곧
+  // 제어기 예산**이고, 40분 안에서는 둘 다 살 수 없다. 탱크는 남는 자재가 있을 때만
+  // 산다(그래서 이 주행에서는 대개 안 선다 — 게이트가 그 사실을 그대로 말한다).
   var STEEL_WANT = 24;
   // 재고에 잡아 두는 철판. 강철 연구 전에는 0 — 그 전에 잡으면 초반 공장이 굶는다.
   // 증기 발전소를 살 때까지 40, 그 뒤로는 철도용 강철을 굽는 동안 25 를 남긴다
@@ -774,6 +781,10 @@
     var st0 = G.state();
     var needTur = techOk('turret') && TURRETS < wantTurrets(st0.evolution);
     if (!researched('steel')) { ironHold = needTur ? 32 : 0; return; }
+    // **탱크를 위한 재고 확보는 넣었다가 뺐다.** 효과가 없었기 때문이다(철판 0/20 이
+    // 그대로였다) — ironHold 는 craft 의 여유분만 줄일 뿐, 작업 줄(runJobs)이 건물을
+    // 지으며 쓰는 철판은 못 막는다. 안 듣는 장치를 주석과 함께 남겨 두면 다음 사람이
+    // 그것을 이미 시도된 해법으로 착각한다.
     if (!steamDone) ironHold = 40;
     else if (!railDone) ironHold = 25;
     else ironHold = needTur ? 32 : 0;
@@ -1321,7 +1332,39 @@
     note('증기 발전소: 펌프·보일러·증기기관 (' + s.x + ',' + s.y + ')');
     return true;
   }
-  var steamEnt = null, steamParts = { pump: null, boiler: null, engine: null, pipe: null };
+  var steamEnt = null, steamParts = { pump: null, boiler: null, engine: null, pipe: null, tank: null };
+
+  // --- 저장 탱크 --------------------------------------------------------------
+  // **발전소가 선 뒤에 따로 산다.** 처음엔 발전소 단계 안에 넣고 파이프 저축 목표를
+  // 11 → 21 로 올렸는데, 그러면 탱크 재료를 모으느라 발전소 자체가 늦어져 제어기
+  // 2·4·5 가 통째로 밀렸다(노드 32 → 26). 나중에 사는 것은 나중에 사야 한다.
+  var tankDone = false, tankWhy = '아직 시도 전';
+  function stageTank() {
+    if (tankDone) return true;
+    if (!steamDone || !steamSpot) return false;      // 붙일 망이 먼저다
+    if (!ctrl2 || !ctrl4 || !ctrl5) { tankWhy = '제어기 먼저 (2·4·5)'; return false; }
+    var iv = invNow();
+    if (!afford('tank')) {
+      tankWhy = '재료 대기 — 강철 ' + (iv['steel'] || 0) + '/5 철판 ' + (iv['iron-plate'] || 0) + '/20';
+      return false;
+    }
+    // **제어기가 다 선 뒤에 산다.** 탱크는 철판 20 과 파이프 10(= 철판 10)을 먹는데,
+    // 제어기의 병목은 철판이 아니라 **회로**이고 회로도 철을 거쳐 온다. 철판 여유분만
+    // 남겨 봤지만 제어기 2·4 가 여전히 못 섰다(노드 32 → 29). 탱크는 후반의 완충이라
+    // 순서를 뒤로 미루는 편이 맞다 — 커버리지를 지키면서 늦게 사면 둘 다 된다.
+    // 발전소와 **같은 망**에 붙인다. 3x3 이라 자리를 따로 훑는다.
+    var s2 = steamSpot;
+    for (var tdx = -1; tdx <= 5; tdx++) {
+      if (G.whyPlace('tank', s2.x + tdx, s2.y + 2, 0) !== 'ok') continue;
+      steamParts.tank = G.build('tank', s2.x + tdx, s2.y + 2, 0);
+      if (steamParts.tank) break;
+    }
+    if (!steamParts.tank) { tankWhy = '자리 없음 (발전소 아래 3x3)'; return false; }
+    markBuilt('tank');
+    tankDone = true;
+    note('저장 탱크 — 유체망 완충 25,000');
+    return true;
+  }
 
   // --- 철도 (레일·역·열차) ----------------------------------------------------
   // 최소한이되 **실제로 도는** 노선이다. 한 대가 두 역 사이를 왕복하고, 출발역에는
@@ -1451,9 +1494,9 @@
   // 버퍼로 다 밀어 넣은 뒤라 철판이 언제나 0 이었다 — 40분 내내 '0/40'.
   // 재고를 잡아 두는 것(ironHold)만으로는 안 됐다. 그건 craft 만 막고 feed 는
   // 그대로 퍼 갔기 때문이다. **큰 것을 사려면 줄의 앞에 서야 한다.**
-  var buyDone = [0, 0];
+  var buyDone = [0, 0, 0];
   function runBuyStages() {
-    var BUY = [stageSteam, stageTrain];
+    var BUY = [stageSteam, stageTank, stageTrain];
     for (var i = 0; i < BUY.length; i++) {
       if (buyDone[i]) continue;
       var ok = false;
@@ -1757,7 +1800,10 @@
       st.research.done.join(','));
     chk('clear.allBuildingsUsed', missingB.length === 0,
       '건물 ' + Object.keys(built).length + '/' + allTypes.length + '종 사용' +
-      (missingB.length ? ' · 안 쓴 것: ' + missingB.join(',') : ''));
+      (missingB.length ? ' · 안 쓴 것: ' + missingB.join(',') : '') +
+      // 안 쓴 것이 무엇을 기다리다 못 섰는지까지 말한다 — 개수만으로는 재료인지
+      // 자리인지 순서인지 구별할 수 없다.
+      (missingB.indexOf('tank') >= 0 ? ' · 탱크: ' + tankWhy : ''));
     // **지었다는 사실만으로는 모자란다.** 위 게이트는 배치한 순간을 세므로 연료
     // 없는 보일러와 붙박이 열차도 통과시킨다. 두 설비가 실제로 돌았는지는 따로 잰다
     // — 이게 없으면 "커버리지를 메웠다"가 "커버리지 표를 채웠다"로 미끄러진다.

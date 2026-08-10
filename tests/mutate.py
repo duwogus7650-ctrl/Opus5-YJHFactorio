@@ -279,6 +279,22 @@ MUTATIONS = [
      b'function curSteps() { return TUTORIAL_STEPS; }',
      ['adv.terminates']),
 
+    # ---- 저장 탱크 ----
+    # 탱크를 칸 수로 세면 3x3=900 이라 파이프 아홉 칸과 같아지고, 지을 이유가 사라진다.
+    ('탱크 용량을 칸 수로 센다 (파이프 9칸과 같아진다)', '32_fluid.js',
+     b"  if (e.type === 'tank') return SPEC.tankCap;",
+     b"  if (false) return SPEC.tankCap;",
+     # tankBufferIsTime 은 여기 안 넣는다 — 그 게이트가 재는 것은 용량이 아니라
+     # **소비율**(저장량 ÷ 30/s)이라, 용량을 어떻게 세든 그 관계는 그대로 성립한다.
+     # 돌연변이가 그 사실을 MISS 로 알려 줬다.
+     ['fluid.tankCapacityMatchesSpec']),
+
+    # 완충은 곧 시간이다 — 용량을 반으로 줄이면 버티는 시간도 반이 된다.
+    ('탱크 용량이 규격의 절반이다', '05_data.js',
+     b'  tankCap: 25000,',
+     b'  tankCap: 12500,',
+     ['fluid.tankCapacityMatchesSpec']),
+
     # ---- 청사진 회전 ----
     # 좌표만 돌리고 방향을 안 돌리면 라인 모양은 맞는데 흐름이 옛 방향 그대로다.
     # 4회전 항등이 그것을 잡는다(방향이 안 돌면 절대 제자리로 안 온다).
