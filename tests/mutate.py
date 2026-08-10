@@ -279,6 +279,29 @@ MUTATIONS = [
      b'function curSteps() { return TUTORIAL_STEPS; }',
      ['adv.terminates']),
 
+    # ---- 최고·최저 기록 노드 ----
+    # 씨앗을 0 으로 박으면 최저 기록은 영원히 0 이다 — 평활 필터가 겪은 것과 같은 부류.
+    # JS 안에 홑따옴표가 있으니 바이트 리터럴은 겹따옴표로 쓴다.
+    ('최저 기록의 씨앗을 0 으로 박는다', '35_logic.js',
+     b"      if (typeof n.state.rec !== 'number' || !isFinite(n.state.rec)) n.state.rec = pv;",
+     b"      if (typeof n.state.rec !== 'number' || !isFinite(n.state.rec)) n.state.rec = 0;",
+     # **한 돌연변이는 한 드라이버의 게이트만 지목한다** — 이 파일에서 두 번째로
+     # 걸렸다(변화율 때도 같았다). 같은 결함을 두 각도에서 보려면 항목을 나눈다.
+     ['peak.seedsFromFirstInput']),
+
+    ('최저 기록의 씨앗을 0 으로 박는다 — 전수 스윕 쪽', '35_logic.js',
+     b"      if (typeof n.state.rec !== 'number' || !isFinite(n.state.rec)) n.state.rec = pv;",
+     b"      if (typeof n.state.rec !== 'number' || !isFinite(n.state.rec)) n.state.rec = 0;",
+     ['node.peak'], 'fullplay.js'),
+
+    # 최저·최고 구분이 없으면 한쪽 모드가 조용히 반대로 돈다.
+    # **바이트 리터럴에는 한글을 못 넣는다**(이 파일에서 두 번째로 걸렸다) — 줄의
+    # ASCII 접두만 겨냥하고 나머지는 그대로 둔다.
+    ('기록 모드를 무시하고 언제나 최저로 본다', '35_logic.js',
+     b'      var pLow = (n.cfg.mode',
+     b'      var pLow = true; var pUnused = (n.cfg.mode',
+     ['peak.maxModeKeepsHigh']),
+
     # ---- 지속 조건 노드 ----
     # 조건이 끊겨도 시계를 안 지우면 '연속'이 '누적'이 되어, 짧은 튐이 모여 참이 된다.
     ('지속 조건이 끊겨도 시계를 안 지운다 (누적이 된다)', '35_logic.js',

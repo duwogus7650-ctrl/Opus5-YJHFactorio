@@ -1592,6 +1592,12 @@
     var fl5 = nd(c, 'fluid', 20, 20); G.gCfg(c, fl5, 'ent', steamEnt.engine);
     var d51 = nd(c, 'display', 460, 20); G.gCfg(c, d51, 'label', '증기%');
     G.gLink(c, fl5, 0, d51, 0);
+    // **완충을 얼마나 둘지는 최악치가 정한다.** 증기%가 가장 낮았을 때를 기록해 두면
+    // 탱크를 더 둘지 말지를 눈으로 판단할 수 있다 — 이 게임에서 탱크의 값이 그것이다.
+    var pk5 = nd(c, 'peak', 660, 20); G.gCfg(c, pk5, 'mode', '최저');
+    G.gLink(c, fl5, 0, pk5, 0);
+    var d53 = nd(c, 'display', 880, 20); G.gCfg(c, d53, 'label', '증기% 최저');
+    G.gLink(c, pk5, 0, d53, 0);
     // 배차: 화물이 절반을 넘으면 보낸다. **아니면 20초마다 한 번은 보낸다.**
     //
     // 조건을 화물% 하나로만 두면 짐이 안 실리는 판에서 열차가 영원히 안 떠나고,

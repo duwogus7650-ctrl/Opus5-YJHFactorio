@@ -134,6 +134,16 @@ var NODE_DEFS = {
   //   "전기가 모자라다" 가 한 틱 스쳤다 → 지속 3초면 무시된다
   //   진짜로 3초 넘게 모자라면 → 그 순간 즉시 참이 된다(지연이 아니라 확인이다)
   // 조건이 끊기면 시계는 0 으로 돌아간다 — '누적'이 아니라 '연속'이라야 한다.
+  // 최고·최저 기록 — **완충을 얼마나 둘지 정하려면 최악치를 알아야 한다.**
+  // 저장 탱크가 들어오면서 "얼마나 두는가" 가 플레이어의 설계 결정이 됐는데, 그
+  // 결정의 근거는 "이번 판에서 증기가 가장 낮았을 때 몇 %였나" 다. 순간값은 눈
+  // 깜짝할 사이에 지나가므로 회로가 대신 기억해 준다.
+  //
+  // **씨앗을 0 으로 박으면 안 된다.** 최저 기록은 0 보다 낮은 값이 없어서 영원히
+  // 0 을 낸다 — 평활 필터가 같은 함정을 겪었다(교훈 15). 첫 실제 입력에서 출발한다.
+  'peak':    { label: '최고·최저 기록', cat: 'op', ins: ['값', '리셋'], outs: ['기록'],
+               cfg: [{ k: 'mode', t: 'opsel', label: '기록', opts: ['최저', '최고'], def: '최저' }],
+               tech: 'logic-mem' },
   'sustain': { label: '지속 조건', cat: 'op', ins: ['조건'], outs: ['참'],
                cfg: [{ k: 'sec', t: 'num', label: '지속 s', def: 3 }], tech: 'logic-mem' },
   // 변화율 — **얼마나 남았나가 아니라 얼마나 빨리 줄고 있나.**
@@ -488,6 +498,18 @@ function evalNode(g, n, dt, ctrl) {
     case 'hold': {
       if (truthy(readIn(g, n, 1))) n.state.v = readIn(g, n, 0);
       n.out[0] = n.state.v || 0;
+      break;
+    }
+    case 'peak': {
+      // 리셋이 먼저다 — 리셋과 값이 같은 틱에 들어오면 '지우고 다시 시작' 이라야
+      // 사람이 짐작한 대로다(래치의 RESET 우선과 같은 규약).
+      if (truthy(readIn(g, n, 1))) { delete n.state.rec; n.out[0] = 0; break; }
+      if (!inputFed(g, n, 0)) { delete n.state.rec; n.out[0] = 0; break; }
+      var pv = readIn(g, n, 0);
+      var pLow = (n.cfg.mode !== '최고');
+      if (typeof n.state.rec !== 'number' || !isFinite(n.state.rec)) n.state.rec = pv;
+      else if (pLow ? (pv < n.state.rec) : (pv > n.state.rec)) n.state.rec = pv;
+      n.out[0] = n.state.rec;
       break;
     }
     case 'sustain': {

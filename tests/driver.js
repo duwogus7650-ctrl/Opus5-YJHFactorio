@@ -1659,6 +1659,43 @@
         '물린 채로 500 → 1000 계단, 한 틱 뒤 ' + sdStep.toFixed(3) +
         ' (500 바로 위여야 · 1000 이면 필터가 아무 일도 안 한다)');
 
+      // --- 최고·최저 기록 -------------------------------------------------
+      // **이 노드의 함정은 씨앗이다.** 최저 기록을 0 에서 출발시키면 0 보다 낮은 값이
+      // 없어 영원히 0 을 낸다 — 평활 필터가 겪은 것과 같은 부류다(교훈 15).
+      G.reset(6290); G.clearEntities(); G.clearEnemies();
+      G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+      var pkC = G.place('controller', 40, 40, 0);
+      var pkK = G.gAdd(pkC, 'const', 10, 10);  G.gCfg(pkC, pkK, 'value', 500);
+      var pkN = G.gAdd(pkC, 'peak', 300, 10);  G.gCfg(pkC, pkN, 'mode', '최저');
+      G.gLink(pkC, pkK, 0, pkN, 0);
+      G.run(0.5);
+      var pkSeed = G.gOut(pkC, pkN, 0);
+      chk('peak.seedsFromFirstInput',
+        pkSeed === 500,
+        '상수 500 만 물린 최저 기록 → ' + pkSeed +
+        ' (500이어야 · 0이면 씨앗을 0 으로 박아 최저가 영원히 0 이 된다)');
+
+      // 리셋은 값보다 우선한다 — 같은 틱에 둘 다 들어오면 '지우고 다시' 여야 한다
+      var pkR = G.gAdd(pkC, 'const', 10, 300); G.gCfg(pkC, pkR, 'value', 1);
+      G.gLink(pkC, pkR, 0, pkN, 1);
+      G.tickOnce();
+      chk('peak.resetWinsOverValue',
+        G.gOut(pkC, pkN, 0) === 0,
+        '리셋과 값이 같은 틱에 → ' + G.gOut(pkC, pkN, 0) +
+        ' (0이어야 · 래치의 RESET 우선과 같은 규약)');
+
+      // 음성 대조군 — 최고 모드는 반대로 움직여야 한다. 없으면 위 검사들은
+      // "언제나 입력을 그대로 낸다" 는 구현도 통과시킨다.
+      var pkH = G.gAdd(pkC, 'peak', 300, 600); G.gCfg(pkC, pkH, 'mode', '최고');
+      G.gLink(pkC, pkK, 0, pkH, 0);
+      G.run(0.2);
+      G.gCfg(pkC, pkK, 'value', 100);
+      G.run(0.2);
+      chk('peak.maxModeKeepsHigh',
+        G.gOut(pkC, pkH, 0) === 500,
+        '500 → 100 으로 내린 뒤 최고 기록 ' + G.gOut(pkC, pkH, 0) +
+        ' (500 을 지켜야 · 100 이면 그냥 통과다)');
+
       // --- 지속 조건 -----------------------------------------------------
       // **이 노드의 값은 평활 필터와 다른 자리에 있다.** 평활은 값을 눅여 모든 반응을
       // 늦추고, 지속은 값을 안 건드린 채 짧은 튐만 버린다. 그래서 게이트도 둘을

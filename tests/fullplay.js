@@ -58,7 +58,7 @@
       // **이 숫자는 덫이다.** 노드 종류를 늘리면 여기가 RED 로 갈리고, 그때 이 파일
       // 아래의 전수 시험도 같이 채우라는 뜻이다. 숫자만 올리고 시험을 안 채우면
       // 그 종류는 "안 깨진 기능"이 아니라 **아직 안 들킨 기능**으로 남는다.
-      chk('sweep.allNodeKindsKnown', kinds.length === 34,
+      chk('sweep.allNodeKindsKnown', kinds.length === 35,
         '노드 종류 ' + kinds.length + '개: ' + kinds.join(','));
 
       // ---- 입력: 상수 ----
@@ -371,6 +371,33 @@
         Math.abs(flAtTau - 6.32121) < 0.01 && Math.abs(flAt3 - 9.50213) < 0.01,
         'τ=2, 입력 0→10 계단: t=0 에서 ' + r2(flZero) + ' · t=τ 에서 ' + r2(flAtTau) +
         ' (오라클 6.32) · t=3τ 에서 ' + r2(flAt3) + ' (오라클 9.50)');
+
+      // ---- 연산: 최고·최저 기록 ----
+      // 오라클은 넣은 수열 그 자체다. 50 → 20 → 80 을 넣으면 최저는 20, 최고는 80.
+      // **씨앗을 0 으로 박으면 최저가 영원히 0 이 된다** — 그래서 첫 값이 50 일 때
+      // 곧바로 50 이 나오는지부터 본다.
+      freshCtrl();
+      var pkIn = K(50, 0, 0);
+      var pkRst = K(0, 0, 200);
+      var pkLo = N('peak', 300, 0);   G.gCfg(CT, pkLo, 'mode', '최저');
+      var pkHi = N('peak', 300, 200); G.gCfg(CT, pkHi, 'mode', '최고');
+      L(pkIn, 0, pkLo, 0); L(pkRst, 0, pkLo, 1);
+      L(pkIn, 0, pkHi, 0); L(pkRst, 0, pkHi, 1);
+      G.run(0.2);
+      var pkFirst = O(pkLo);                        // 첫 값 50 (0 이면 씨앗을 박은 것)
+      G.gCfg(CT, pkIn, 'value', 20); G.run(0.2);
+      G.gCfg(CT, pkIn, 'value', 80); G.run(0.2);
+      var pkLoV = O(pkLo), pkHiV = O(pkHi);
+      G.gCfg(CT, pkRst, 'value', 1); G.tickOnce();  // 리셋
+      var pkAfterRst = O(pkLo);
+      G.gCfg(CT, pkRst, 'value', 0); G.run(0.2);
+      var pkRestart = O(pkLo);                      // 지금 값 80 에서 다시 시작
+      chk('node.peak',
+        pkFirst === 50 && pkLoV === 20 && pkHiV === 80 &&
+        pkAfterRst === 0 && pkRestart === 80,
+        '50→20→80 수열: 첫 값 ' + pkFirst + ' (50이어야 · 0이면 씨앗을 0으로 박은 것) · ' +
+        '최저 ' + pkLoV + ' (20) · 최고 ' + pkHiV + ' (80) · 리셋 직후 ' + pkAfterRst +
+        ' (0) · 리셋 뒤 ' + pkRestart + ' (80 에서 다시)');
 
       // ---- 연산: 지속 조건 ----
       // 오라클은 정의 그 자체다: 조건이 참이 된 지 **정확히 sec 초** 뒤에 1 이 되고,

@@ -160,9 +160,9 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 ```bash
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
-python tests/harness.py              # 모델 게이트 227건 (헤드리스 Edge)
+python tests/harness.py              # 모델 게이트 230건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
-python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 39건
+python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 40건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
 python tests/harness.py determinism.js  # 재현성 게이트 7건 (같은 씨앗 = 같은 결과)
 python tests/harness.py clear.js     # 40분 자력 완주 주행 (게이트 13건)
@@ -187,18 +187,18 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
-harness.py             GREEN — 실검사 227건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 230건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
-harness.py fullplay.js GREEN — 노드 34종·건물 21종 전수 39건 (고의 실패 1건 정상 검출)
+harness.py fullplay.js GREEN — 노드 35종·건물 21종 전수 40건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 145건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 148건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 13건 중 12건 통과 (아래 "완주 주행은 아직 RED다")
 ```
 
-| 엔진 | 모델 227 | 클릭 79 | 전수 39 | 부하차단 10 |
+| 엔진 | 모델 230 | 클릭 79 | 전수 40 | 부하차단 10 |
 |---|---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | GREEN | GREEN |
 | Chromium (Playwright) | GREEN | GREEN | GREEN | GREEN |
@@ -686,6 +686,20 @@ peek 과 take 가 서로 다른 아이템을 고르던 그 실패가 원형이�
 차면 멈추는 부하는 부하가 아니다. 마지막으로 3x3 탱크를 보일러와 겹치는 자리에 두어
 배치가 조용히 실패했는데, 게이트에는 "용량이 안 늘었다"로만 보였다 — 배치 실패와 용량
 계산 오류가 같은 얼굴을 한다. 지금은 배치 여부를 메시지에 같이 찍는다.
+
+### 최고·최저 기록 — 완충을 얼마나 둘지는 최악치가 정한다
+
+저장 탱크가 들어오면서 "완충을 얼마나 둘 것인가" 가 플레이어의 설계 결정이 됐다. 그
+결정의 근거는 **"이번 판에서 증기가 가장 낮았을 때 몇 %였나"** 인데, 순간값은 눈 깜짝할
+사이에 지나간다. 이 노드가 대신 기억한다. 리셋을 물리면 그 순간부터 다시 재고, **리셋이
+값보다 우선한다**(래치의 RESET 과 같은 규약).
+
+**함정은 씨앗이다.** 최저 기록을 0 에서 출발시키면 0 보다 낮은 값이 없어 영원히 0 을 낸다 —
+평활 필터가 겪은 것과 같은 부류다(교훈 15). 첫 실제 입력에서 출발하고, 그 성질을 겨냥한
+돌연변이(씨앗을 0 으로 박기)가 게이트를 실제로 뒤집는 것까지 확인했다.
+
+문장 편집기에는 넣지 않았다 — 문장 한 줄은 "조건 하나에 행동 하나" 인데 기록은 값
+변환이라 한 줄로 접히지 않는다(상태기계를 뺀 것과 같은 이유다).
 
 ### 지속 조건 — 늦추는 것이 아니라 확인하는 것
 
