@@ -93,9 +93,14 @@ var RULE_MATHS = [
   { op: '-', label: '에서 뺀 값' }, { op: '+', label: '을 더한 값' },
   { op: '*', label: '을 곱한 값' }, { op: '/', label: '으로 나눈 값' },
   { op: 'min', label: '과 둘 중 작은 값' }, { op: 'max', label: '과 둘 중 큰 값' },
-  // 유일한 단항이다 — 두 값을 계산하는 게 아니라 한 값을 시간으로 눅인다.
-  // b 는 상수가 아니라 **시상수(초)** 라서 문장도 다르게 읽는다.
-  { op: 'smooth', label: '초로 눅인 값', unary: true, tech: 'logic-ctrl' }
+  // 단항 — 두 값을 계산하는 게 아니라 한 값을 시간으로 다룬다. b 는 상수가 아니라
+  // **시간(초)** 이라서 문장도 다르게 읽는다. 어떤 노드로 컴파일되는지와 그 설정
+  // 열쇠를 여기 적어 둔다 — 컴파일러가 'smooth' 를 손으로 박아 두면 단항을 하나
+  // 더 넣을 때 그 자리를 놓치기 쉽다.
+  { op: 'smooth', label: '초로 눅인 값', unary: true, node: 'smooth', cfgKey: 'tau',
+    tech: 'logic-ctrl' },
+  { op: 'rate', label: '초 창으로 잰 초당 변화', unary: true, node: 'rate', cfgKey: 'win',
+    tech: 'logic-ctrl' }
 ];
 
 // 기억(memory) — 문장 뒤에 붙는 선택지. 각각 어떤 노드가 필요한지 함께 적는다.
@@ -220,9 +225,9 @@ function compileCondition(g, w, x0, y0, named) {
   if (w.math && w.math.op) {
     var mdef = ruleMath(w.math.op);
     if (mdef && mdef.unary) {
-      // 눅이기는 상수를 하나 더 놓지 않는다 — b 는 시상수라 노드의 설정값이다
-      var sm = graphAddNode(g, 'smooth', x, y0);
-      sm.cfg.tau = +w.math.b || 0;
+      // 단항은 상수를 하나 더 놓지 않는다 — b 는 시간이라 노드의 설정값이다
+      var sm = graphAddNode(g, mdef.node || 'smooth', x, y0);
+      sm.cfg[mdef.cfgKey || 'tau'] = +w.math.b || 0;
       graphLink(g, vNid, vPort, sm.nid, 0);
       vNid = sm.nid; vPort = 0; x += RULE_COL;
     } else {

@@ -160,9 +160,9 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 ```bash
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
-python tests/harness.py              # 모델 게이트 218건 (헤드리스 Edge)
+python tests/harness.py              # 모델 게이트 224건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
-python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 37건
+python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 38건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
 python tests/harness.py determinism.js  # 재현성 게이트 7건 (같은 씨앗 = 같은 결과)
 python tests/harness.py clear.js     # 40분 자력 완주 주행 (게이트 13건)
@@ -187,18 +187,18 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
-harness.py             GREEN — 실검사 218건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 224건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
-harness.py fullplay.js GREEN — 노드 32종·건물 20종 전수 37건 (고의 실패 1건 정상 검출)
+harness.py fullplay.js GREEN — 노드 33종·건물 21종 전수 38건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 138건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 142건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 13건 중 11건 통과 (아래 "완주 주행은 아직 RED다")
 ```
 
-| 엔진 | 모델 218 | 클릭 79 | 전수 37 | 부하차단 10 |
+| 엔진 | 모델 224 | 클릭 79 | 전수 38 | 부하차단 10 |
 |---|---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | GREEN | GREEN |
 | Chromium (Playwright) | GREEN | GREEN | GREEN | GREEN |
@@ -639,6 +639,25 @@ peek 과 take 가 서로 다른 아이템을 고르던 그 실패가 원형이�
 차면 멈추는 부하는 부하가 아니다. 마지막으로 3x3 탱크를 보일러와 겹치는 자리에 두어
 배치가 조용히 실패했는데, 게이트에는 "용량이 안 늘었다"로만 보였다 — 배치 실패와 용량
 계산 오류가 같은 얼굴을 한다. 지금은 배치 여부를 메시지에 같이 찍는다.
+
+### 변화율 — 얼마나 남았나가 아니라 얼마나 빨리 줄고 있나
+
+완충(저장 탱크)이 커질수록 **수위 자체는 느리게 움직여 신호로 약해진다.** 그때 쓸 수
+있는 것이 기울기다: 증기가 초당 12씩 줄고 3,000 남았다면 250초 뒤에 마른다 — 그 나눗셈은
+[계산] 노드가 이미 하고, `변화율` 노드는 그 분모를 만든다. `평활 창 s` 로 튀는 값을 눅이고,
+0 이면 날것이다. 문장 편집기에서도 `초 창으로 잰 초당 변화` 로 고를 수 있다.
+
+**오라클을 두 번 갈아 끼웠다.** 처음엔 타이머의 `위상%` 를 썼다 — 주기 동안 0→100 을
+선형으로 오르니 기울기가 정확히 100/주기 라고 본 것이다. 그런데 그 출력은 **정수로
+반올림**된 계단이라(`Math.round`) 대부분의 틱에서 변화가 0 이고 가끔 1 씩 뛴다. 날것의
+변화율이 0.000 으로 나왔고, 평활을 걸었더니 주기 경계의 100→0 이 튀어 음수가 됐다 —
+**계단을 미분해 놓고 미분이 틀렸다고 읽을 뻔했다.** 취수 펌프가 붓는 물(1200/s, 반올림
+없는 연속량)로 바꾸자 1200.0 이 나왔다.
+
+문장 편집기 쪽에도 갈림길이 생겼다. 단항 계산이 `눅이기` 하나뿐이던 시절 컴파일러가
+`smooth` 를 손으로 박아 두고 있어서, 그대로 두면 **변화율을 골라도 평활이 걸린다.**
+정의에 노드 이름과 설정 열쇠를 적어 컴파일러가 그것을 읽게 했고, 돌연변이로 그 갈림길이
+실제로 갈리는지 확인했다.
 
 ## 신호를 다듬고, 나누고, 단계로 쪼갠다
 

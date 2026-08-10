@@ -279,6 +279,33 @@ MUTATIONS = [
      b'function curSteps() { return TUTORIAL_STEPS; }',
      ['adv.terminates']),
 
+    # ---- 변화율 노드 ----
+    # dt 로 안 나누면 '틱당 변화' 가 되어 프레임 수에 딸려 간다 — 이 레포가 반복해 겪은 부류다.
+    # 한 돌연변이는 **한 드라이버의 게이트만** 지목할 수 있다 — 둘을 섞었더니
+    # '게이트가 실행조차 안 됐다(INVALID)' 가 났다. 같은 결함을 두 각도에서 보려면
+    # 항목을 나눈다.
+    ('변화율이 dt 로 안 나눈다 (틱당 변화가 된다)', '35_logic.js',
+     b'      var raw = dt > 0 ? (xr - n.state.px) / dt : 0;',
+     b'      var raw = xr - n.state.px;',
+     ['rate.matchesKnownSlope']),
+
+    ('변화율이 dt 로 안 나눈다 — 전수 스윕 쪽', '35_logic.js',
+     b'      var raw = dt > 0 ? (xr - n.state.px) / dt : 0;',
+     b'      var raw = xr - n.state.px;',
+     ['node.rate'], 'fullplay.js'),
+
+    # 끊긴 사이의 변화가 한꺼번에 튀면, 배선을 고칠 때마다 거짓 경보가 뜬다.
+    ('배선을 끊어도 이전 값을 기억한다 (다시 물면 튄다)', '35_logic.js',
+     b"      if (!inputFed(g, n, 0)) { delete n.state.px; delete n.state.r; n.out[0] = 0; break; }",
+     b"      if (!inputFed(g, n, 0)) { n.out[0] = 0; break; }",
+     ['rate.rewireDoesNotSpike']),
+
+    # 단항이 둘인데 컴파일러가 한쪽만 안다면, 변화율을 골라도 평활이 걸린다.
+    ('문장의 단항이 언제나 평활로 컴파일된다', '37_rules.js',
+     b"      var sm = graphAddNode(g, mdef.node || 'smooth', x, y0);",
+     b"      var sm = graphAddNode(g, 'smooth', x, y0);",
+     ['rule.rateCompilesAsItsOwnNode']),
+
     # ---- 저장 탱크 ----
     # 탱크를 칸 수로 세면 3x3=900 이라 파이프 아홉 칸과 같아지고, 지을 이유가 사라진다.
     ('탱크 용량을 칸 수로 센다 (파이프 9칸과 같아진다)', '32_fluid.js',
@@ -752,9 +779,9 @@ MUTATIONS = [
      b'  if (false) {',
      ['rule.displayShowsTheNumber']),
 
-    ('문장의 눅이기가 시상수를 무시한다 (그대로 통과)', '37_rules.js',
-     b'      sm.cfg.tau = +w.math.b || 0;',
-     b'      sm.cfg.tau = 0;',
+    ('문장의 단항이 시간 설정을 무시한다 (그대로 통과)', '37_rules.js',
+     b"      sm.cfg[mdef.cfgKey || 'tau'] = +w.math.b || 0;",
+     b"      sm.cfg[mdef.cfgKey || 'tau'] = 0;",
      ['rule.smoothCompilesAndFilters']),
 
     ('문장이 계산 한 단의 연구 관문을 안 본다', '37_rules.js',

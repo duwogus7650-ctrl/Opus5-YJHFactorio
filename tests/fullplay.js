@@ -58,7 +58,7 @@
       // **이 숫자는 덫이다.** 노드 종류를 늘리면 여기가 RED 로 갈리고, 그때 이 파일
       // 아래의 전수 시험도 같이 채우라는 뜻이다. 숫자만 올리고 시험을 안 채우면
       // 그 종류는 "안 깨진 기능"이 아니라 **아직 안 들킨 기능**으로 남는다.
-      chk('sweep.allNodeKindsKnown', kinds.length === 32,
+      chk('sweep.allNodeKindsKnown', kinds.length === 33,
         '노드 종류 ' + kinds.length + '개: ' + kinds.join(','));
 
       // ---- 입력: 상수 ----
@@ -371,6 +371,26 @@
         Math.abs(flAtTau - 6.32121) < 0.01 && Math.abs(flAt3 - 9.50213) < 0.01,
         'τ=2, 입력 0→10 계단: t=0 에서 ' + r2(flZero) + ' · t=τ 에서 ' + r2(flAtTau) +
         ' (오라클 6.32) · t=3τ 에서 ' + r2(flAt3) + ' (오라클 9.50)');
+
+      // ---- 연산: 변화율 ----
+      // 홀로 세워 놓고 **계단이 아니라 경사**를 준다. 상수 노드를 한 틱마다 일정
+      // 폭으로 올리면 기울기가 정확히 (폭 × 60)/s 다 — 이 수는 게임의 어느 상수도
+      // 아니고 시험이 만든 입력에서 나온다.
+      freshCtrl();
+      var rtIn = K(0, 0, 0);
+      var rtn = N('rate', 300, 0); G.gCfg(CT, rtn, 'win', 0);
+      L(rtIn, 0, rtn, 0);
+      G.tickOnce();
+      var rtFirst = O(rtn);                        // 첫 평가 — 이전 값이 없으니 0
+      var vv = 0;
+      for (var rq = 0; rq < 30; rq++) { vv += 2; G.gCfg(CT, rtIn, 'value', vv); G.tickOnce(); }
+      var rtSlope = O(rtn);
+      G.run(1);                                    // 값을 멈추면 기울기도 멈춘다
+      var rtStop = O(rtn);
+      chk('node.rate',
+        Math.abs(rtFirst) < 1e-9 && Math.abs(rtSlope - 120) < 1e-6 && Math.abs(rtStop) < 1e-9,
+        '첫 평가 ' + r2(rtFirst) + ' (0이어야) · 틱마다 +2 → ' + r2(rtSlope) +
+        ' /s (오라클 2×60 = 120) · 값을 멈추면 ' + r2(rtStop) + ' (0이어야)');
 
       // ---- 연산: 상태기계 ----
       // 네 전이를 같은 신호에 물려 순환시킨다. 상승엣지 한 번에 한 칸이어야 한다.

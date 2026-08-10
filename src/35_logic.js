@@ -128,6 +128,15 @@ var NODE_DEFS = {
   // 게이트의 오라클이 된다. τ 는 63% 에 도달하는 시간이다.
   'smooth':  { label: '평활 필터', cat: 'op', ins: ['값'], outs: ['평활값'],
                cfg: [{ k: 'tau', t: 'num', label: '시상수 s', def: 5 }], tech: 'logic-ctrl' },
+  // 변화율 — **얼마나 남았나가 아니라 얼마나 빨리 줄고 있나.**
+  // 완충(저장 탱크)이 커질수록 수위 자체는 느리게 움직여 신호로 약해진다. 그때
+  // 쓸 수 있는 것이 기울기다: 증기가 초당 12씩 줄고 있고 3000 남았다면 250초 뒤에
+  // 마른다 — 그 나눗셈은 [계산] 노드가 이미 할 수 있다. 이 노드는 그 분모를 만든다.
+  //
+  // 원 미분은 60 Hz 에서 톱니처럼 튀므로 평활 필터와 같은 지수 평활을 얹는다.
+  // 창(win)이 0 이면 평활 없이 그대로 — 음성 대조군용이자 "날것을 보고 싶다" 용이다.
+  'rate':    { label: '변화율', cat: 'op', ins: ['값'], outs: ['초당 변화'],
+               cfg: [{ k: 'win', t: 'num', label: '평활 창 s', def: 2 }], tech: 'logic-ctrl' },
   // 4단계 상태기계(SFC). 전이는 **상승엣지**다 — 레벨로 하면 조건이 참인 동안
   // 60 Hz 로 단계가 돌아버린다. 카운터의 '증가' 입력이 이미 같은 규약이다.
   // 리셋은 레벨이고 전이보다 우선한다(SR 래치의 RESET 과 같다).
@@ -471,6 +480,24 @@ function evalNode(g, n, dt, ctrl) {
     case 'hold': {
       if (truthy(readIn(g, n, 1))) n.state.v = readIn(g, n, 0);
       n.out[0] = n.state.v || 0;
+      break;
+    }
+    case 'rate': {
+      // 평활 필터와 같은 규약: 안 물렸으면 상태를 지우고 0 을 낸다. 안 그러면
+      // 배선을 끊었다 다시 이을 때 그 사이의 '변화' 가 한꺼번에 튀어나온다.
+      if (!inputFed(g, n, 0)) { delete n.state.px; delete n.state.r; n.out[0] = 0; break; }
+      var xr = readIn(g, n, 0);
+      // 첫 평가에는 기울기를 낼 수 없다 — 이전 값이 없으면 변화도 없다. 0 을 낸다.
+      if (typeof n.state.px !== 'number' || !isFinite(n.state.px)) {
+        n.state.px = xr; n.state.r = 0; n.out[0] = 0; break;
+      }
+      var raw = dt > 0 ? (xr - n.state.px) / dt : 0;
+      n.state.px = xr;
+      var win = +n.cfg.win || 0;
+      if (typeof n.state.r !== 'number' || !isFinite(n.state.r)) n.state.r = raw;
+      if (win <= 0) n.state.r = raw;
+      else n.state.r += (raw - n.state.r) * (1 - Math.exp(-dt / win));
+      n.out[0] = n.state.r;
       break;
     }
     case 'smooth': {

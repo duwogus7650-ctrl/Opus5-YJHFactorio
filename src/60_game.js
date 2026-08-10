@@ -615,6 +615,12 @@ window.__GAME = {
     var e = entities[ctrlId]; if (!e) return false;
     return graphLink(e.graph, fn, fp, tn, tp);
   },
+  // 배선을 끊는다. 시험이 "끊었다 다시 이었을 때" 를 재려면 필요한데, 화면에는
+  // 이미 있는 동작(선을 잡아 떼기)이고 모델 쪽 훅만 없었다.
+  gUnlink: function (ctrlId, tn, tp) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return false;
+    graphUnlink(e.graph, tn, tp); return true;
+  },
   // 노드의 화면상 위치 (터치 드래그가 실제로 옮겼는지 보려면 좌표가 필요하다)
   // 노드의 대상 목록 필터 (게이트가 '고를 수 있는 건물' 을 검정한다)
   // 컴파일 전 그래프에서 readIn 이 안전한지 검정하기 위한 훅

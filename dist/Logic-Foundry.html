@@ -2819,6 +2819,15 @@ var NODE_DEFS = {
   // 게이트의 오라클이 된다. τ 는 63% 에 도달하는 시간이다.
   'smooth':  { label: '평활 필터', cat: 'op', ins: ['값'], outs: ['평활값'],
                cfg: [{ k: 'tau', t: 'num', label: '시상수 s', def: 5 }], tech: 'logic-ctrl' },
+  // 변화율 — **얼마나 남았나가 아니라 얼마나 빨리 줄고 있나.**
+  // 완충(저장 탱크)이 커질수록 수위 자체는 느리게 움직여 신호로 약해진다. 그때
+  // 쓸 수 있는 것이 기울기다: 증기가 초당 12씩 줄고 있고 3000 남았다면 250초 뒤에
+  // 마른다 — 그 나눗셈은 [계산] 노드가 이미 할 수 있다. 이 노드는 그 분모를 만든다.
+  //
+  // 원 미분은 60 Hz 에서 톱니처럼 튀므로 평활 필터와 같은 지수 평활을 얹는다.
+  // 창(win)이 0 이면 평활 없이 그대로 — 음성 대조군용이자 "날것을 보고 싶다" 용이다.
+  'rate':    { label: '변화율', cat: 'op', ins: ['값'], outs: ['초당 변화'],
+               cfg: [{ k: 'win', t: 'num', label: '평활 창 s', def: 2 }], tech: 'logic-ctrl' },
   // 4단계 상태기계(SFC). 전이는 **상승엣지**다 — 레벨로 하면 조건이 참인 동안
   // 60 Hz 로 단계가 돌아버린다. 카운터의 '증가' 입력이 이미 같은 규약이다.
   // 리셋은 레벨이고 전이보다 우선한다(SR 래치의 RESET 과 같다).
@@ -3162,6 +3171,24 @@ function evalNode(g, n, dt, ctrl) {
     case 'hold': {
       if (truthy(readIn(g, n, 1))) n.state.v = readIn(g, n, 0);
       n.out[0] = n.state.v || 0;
+      break;
+    }
+    case 'rate': {
+      // 평활 필터와 같은 규약: 안 물렸으면 상태를 지우고 0 을 낸다. 안 그러면
+      // 배선을 끊었다 다시 이을 때 그 사이의 '변화' 가 한꺼번에 튀어나온다.
+      if (!inputFed(g, n, 0)) { delete n.state.px; delete n.state.r; n.out[0] = 0; break; }
+      var xr = readIn(g, n, 0);
+      // 첫 평가에는 기울기를 낼 수 없다 — 이전 값이 없으면 변화도 없다. 0 을 낸다.
+      if (typeof n.state.px !== 'number' || !isFinite(n.state.px)) {
+        n.state.px = xr; n.state.r = 0; n.out[0] = 0; break;
+      }
+      var raw = dt > 0 ? (xr - n.state.px) / dt : 0;
+      n.state.px = xr;
+      var win = +n.cfg.win || 0;
+      if (typeof n.state.r !== 'number' || !isFinite(n.state.r)) n.state.r = raw;
+      if (win <= 0) n.state.r = raw;
+      else n.state.r += (raw - n.state.r) * (1 - Math.exp(-dt / win));
+      n.out[0] = n.state.r;
       break;
     }
     case 'smooth': {
@@ -3696,9 +3723,14 @@ var RULE_MATHS = [
   { op: '-', label: '에서 뺀 값' }, { op: '+', label: '을 더한 값' },
   { op: '*', label: '을 곱한 값' }, { op: '/', label: '으로 나눈 값' },
   { op: 'min', label: '과 둘 중 작은 값' }, { op: 'max', label: '과 둘 중 큰 값' },
-  // 유일한 단항이다 — 두 값을 계산하는 게 아니라 한 값을 시간으로 눅인다.
-  // b 는 상수가 아니라 **시상수(초)** 라서 문장도 다르게 읽는다.
-  { op: 'smooth', label: '초로 눅인 값', unary: true, tech: 'logic-ctrl' }
+  // 단항 — 두 값을 계산하는 게 아니라 한 값을 시간으로 다룬다. b 는 상수가 아니라
+  // **시간(초)** 이라서 문장도 다르게 읽는다. 어떤 노드로 컴파일되는지와 그 설정
+  // 열쇠를 여기 적어 둔다 — 컴파일러가 'smooth' 를 손으로 박아 두면 단항을 하나
+  // 더 넣을 때 그 자리를 놓치기 쉽다.
+  { op: 'smooth', label: '초로 눅인 값', unary: true, node: 'smooth', cfgKey: 'tau',
+    tech: 'logic-ctrl' },
+  { op: 'rate', label: '초 창으로 잰 초당 변화', unary: true, node: 'rate', cfgKey: 'win',
+    tech: 'logic-ctrl' }
 ];
 
 // 기억(memory) — 문장 뒤에 붙는 선택지. 각각 어떤 노드가 필요한지 함께 적는다.
@@ -3823,9 +3855,9 @@ function compileCondition(g, w, x0, y0, named) {
   if (w.math && w.math.op) {
     var mdef = ruleMath(w.math.op);
     if (mdef && mdef.unary) {
-      // 눅이기는 상수를 하나 더 놓지 않는다 — b 는 시상수라 노드의 설정값이다
-      var sm = graphAddNode(g, 'smooth', x, y0);
-      sm.cfg.tau = +w.math.b || 0;
+      // 단항은 상수를 하나 더 놓지 않는다 — b 는 시간이라 노드의 설정값이다
+      var sm = graphAddNode(g, mdef.node || 'smooth', x, y0);
+      sm.cfg[mdef.cfgKey || 'tau'] = +w.math.b || 0;
       graphLink(g, vNid, vPort, sm.nid, 0);
       vNid = sm.nid; vPort = 0; x += RULE_COL;
     } else {
@@ -6365,6 +6397,11 @@ function fillHelp() {
     '<b>63%까지 따라가는 데 걸리는 시간</b>이다 — 5로 두면 5초에 63%, 15초에 95% 따라간다.',
     '전력 만족도나 상자 재고처럼 매 틱 튀는 값을 임계값 비교에 바로 물리면 그 경계에서 딸깍거리는데,',
     '필터를 한 단 끼우면 잦아든다. <b>대신 반응이 느려진다</b> — 그 맞바꿈이 이 노드의 전부다.</p>',
+    '<p><b>변화율</b>(논리 III)은 <b>얼마나 남았나가 아니라 얼마나 빨리 줄고 있나</b>를 잰다.',
+    '완충(저장 탱크)이 커질수록 수위 자체는 느리게 움직여 신호로 약해진다 — 그때 쓰는 것이 기울기다.',
+    '증기가 초당 12씩 줄고 3,000 남았다면 <b>250초 뒤에 마른다</b>. 그 나눗셈은 [계산] 노드가 하고,',
+    '이 노드는 그 분모를 만든다. <code>평활 창 s</code>는 튀는 값을 눅이는 시간이고, 0으로 두면 날것이다.',
+    '문장에서도 <code>초 창으로 잰 초당 변화</code> 로 고를 수 있다.</p>',
     '<p><b>상태기계</b>(논리 II)는 공정을 <b>1→2→3→4→1</b> 단계로 돌린다. 각 입력은 그 단계에서만 보고,',
     '<b>거짓에서 참으로 올라가는 순간</b>에만 넘어간다(참인 채로 두어도 한 칸만 간다). 리셋은 언제나 1단계로,',
     '전이보다 우선한다. 단계별 출구 <code>1단계~4단계</code>가 그 단계에서만 1이므로,',
@@ -8794,6 +8831,12 @@ window.__GAME = {
   gLink: function (ctrlId, fn, fp, tn, tp) {
     var e = entities[ctrlId]; if (!e) return false;
     return graphLink(e.graph, fn, fp, tn, tp);
+  },
+  // 배선을 끊는다. 시험이 "끊었다 다시 이었을 때" 를 재려면 필요한데, 화면에는
+  // 이미 있는 동작(선을 잡아 떼기)이고 모델 쪽 훅만 없었다.
+  gUnlink: function (ctrlId, tn, tp) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return false;
+    graphUnlink(e.graph, tn, tp); return true;
   },
   // 노드의 화면상 위치 (터치 드래그가 실제로 옮겼는지 보려면 좌표가 필요하다)
   // 노드의 대상 목록 필터 (게이트가 '고를 수 있는 건물' 을 검정한다)

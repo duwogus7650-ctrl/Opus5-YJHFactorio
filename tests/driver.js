@@ -1659,6 +1659,80 @@
         '물린 채로 500 → 1000 계단, 한 틱 뒤 ' + sdStep.toFixed(3) +
         ' (500 바로 위여야 · 1000 이면 필터가 아무 일도 안 한다)');
 
+      // --- 변화율 --------------------------------------------------------
+      // **오라클은 기울기를 아는 입력에서 가져온다.** 처음엔 타이머의 '위상%' 를
+      // 썼는데 그 출력은 **정수로 반올림**된 계단이라(Math.round) 대부분의 틱에서
+      // 변화가 0 이고 가끔 1 씩 뛴다 — 순간 기울기의 오라클로 못 쓴다. 실제로
+      // 날것의 변화율이 0.000 으로 나왔고, 평활을 걸어도 주기 경계에서 100 → 0 이
+      // 튀어 음수가 됐다. **계단 신호를 미분해 놓고 미분이 틀렸다고 읽을 뻔했다.**
+      //
+      // 대신 유체 수위를 쓴다. 취수 펌프는 1200/s 로 붓고 그 값은 반올림 없는
+      // 연속량이다 — 이 노드가 실제로 쓰일 자리이기도 하다(완충이 얼마나 빨리 주는가).
+      var PUMP_RATE_ORACLE = 1200;                 // Factorio offshore pump, 설계값
+      G.reset(6270); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+      G.research('steel');
+      var rtPump = G.place('pump', 40, 44, 0);
+      G.place('pipe', 41, 44, 0);
+      var rtTank = G.place('tank', 42, 43, 0);      // 큰 통 — 3초 안에 안 찬다
+      var rtC = G.place('controller', 40, 40, 0);
+      var rtF = G.gAdd(rtC, 'fluid', 10, 10);  G.gCfg(rtC, rtF, 'ent', rtPump);
+      var rtR = G.gAdd(rtC, 'rate', 300, 10);  G.gCfg(rtC, rtR, 'win', 0);   // 날것
+      G.gLink(rtC, rtF, 2, rtR, 0);                                          // 물 → 변화율
+      G.run(3);
+      var rtRaw = G.gOut(rtC, rtR, 0);
+      chk('rate.matchesKnownSlope',
+        !!rtTank && Math.abs(rtRaw - PUMP_RATE_ORACLE) < 1,
+        '취수 펌프가 붓는 물의 기울기 → ' + rtRaw.toFixed(1) + ' /s (설계값 ' +
+        PUMP_RATE_ORACLE + ' 이어야)');
+
+      // 평활 창이 있으면 같은 기울기로 **지수적으로** 수렴한다.
+      var rtR2 = G.gAdd(rtC, 'rate', 300, 200); G.gCfg(rtC, rtR2, 'win', 2);
+      G.gLink(rtC, rtF, 2, rtR2, 0);
+      G.run(0.5);
+      var rtEarly = G.gOut(rtC, rtR2, 0);
+      G.run(6);
+      var rtLate = G.gOut(rtC, rtR2, 0);
+      chk('rate.windowConverges',
+        rtEarly < rtLate * 0.9 && Math.abs(rtLate - PUMP_RATE_ORACLE) < 60,
+        '창 2초: 0.5초 뒤 ' + rtEarly.toFixed(0) + ' → 6.5초 뒤 ' + rtLate.toFixed(0) +
+        ' (같은 ' + PUMP_RATE_ORACLE + ' 으로 수렴하되 지수적으로 · 첫 값이 이미 다 오르면 ' +
+        '평활이 안 걸린 것)');
+
+      // 멈춘 값의 변화율은 0 이다 — 음성 대조군. 없으면 '무조건 기울기를 낸다' 도 통과한다.
+      var rtK = G.gAdd(rtC, 'const', 10, 400); G.gCfg(rtC, rtK, 'value', 777);
+      var rtR3 = G.gAdd(rtC, 'rate', 300, 400); G.gCfg(rtC, rtR3, 'win', 0);
+      G.gLink(rtC, rtK, 0, rtR3, 0);
+      G.run(2);
+      chk('rate.steadyIsZero',
+        Math.abs(G.gOut(rtC, rtR3, 0)) < 1e-9,
+        '변하지 않는 상수 777 의 변화율 ' + G.gOut(rtC, rtR3, 0) + ' (0이어야 · 조건 발생 확인)');
+
+      // 줄어드는 값은 음수여야 한다. **이 게임에서 쓰는 방향이 바로 이쪽이다** —
+      // '증기가 초당 얼마나 줄고 있나' 로 마르기 전에 끈다.
+      G.gCfg(rtC, rtK, 'value', 700);
+      G.tickOnce();
+      var rtDown = G.gOut(rtC, rtR3, 0);
+      chk('rate.fallingIsNegative',
+        rtDown < -1000,
+        '777 → 700 한 틱(1/60초) 계단의 변화율 ' + rtDown.toFixed(0) +
+        ' /s (음수여야 · -77×60 = -4620 근처)');
+
+      // 배선을 끊었다 다시 이으면 그 사이의 변화가 한꺼번에 튀면 안 된다
+      G.gCfg(rtC, rtK, 'value', 700);
+      G.run(1);
+      G.gUnlink(rtC, rtR3, 0);
+      G.run(1);
+      var rtUnfed = G.gOut(rtC, rtR3, 0);
+      G.gCfg(rtC, rtK, 'value', 99999);             // 끊긴 동안 크게 바뀐다
+      G.gLink(rtC, rtK, 0, rtR3, 0);
+      G.tickOnce();
+      var rtRewire = G.gOut(rtC, rtR3, 0);
+      chk('rate.rewireDoesNotSpike',
+        Math.abs(rtUnfed) < 1e-9 && Math.abs(rtRewire) < 1e-9,
+        '끊긴 동안 ' + rtUnfed + ' (0이어야) → 값이 크게 바뀐 뒤 다시 물린 첫 틱 ' +
+        rtRewire + ' (0이어야 · 끊긴 사이의 변화가 한꺼번에 튀면 안 된다)');
+
       // === 상태기계 — 상승엣지 전이, 리셋 우선, 원핫 ========================
       G.reset(6263); G.clearEntities(); G.clearEnemies();
       G.research('logistics'); G.research('logic-mem');
@@ -2171,6 +2245,36 @@
         smComp.skipped.length === 0 && Math.abs(smVal - 63.2121) < 0.5,
         '문장 "재고를 4초로 눅인 값" → 계단 0→100 후 t=τ 에서 ' + smVal.toFixed(3) +
         ' (오라클 63.21 · 100이면 눅이기가 안 걸린 것)');
+
+      // 변화율도 문장 한 줄로 걸리는가 — **단항이 둘이 되면서 갈림길이 생긴 자리다.**
+      // 컴파일러가 'smooth' 를 손으로 박아 두고 있었으므로, 두 번째 단항이 실제로
+      // 자기 노드로 컴파일되는지 확인해야 한다(그냥 두면 변화율을 골라도 평활이 걸린다).
+      G.reset(8106); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+      var raC = G.place('controller', 40, 40, 0);
+      var raBox = G.place('chest', 44, 40, 0);
+      G.ruleAdd(raC, {
+        when: { src: 'chest', ent: raBox, item: 'iron-plate', cmp: '>=', value: -1e9,
+                math: { op: 'rate', b: 0 } },
+        then: { act: 'display', label: '재고변화' } });
+      var raComp = G.ruleCompile(raC);
+      G.fillChest(raBox, 'iron-plate', 60);
+      G.run(1);                                          // 멈춘 재고 → 변화 0
+      var raSteady = G.state().displays.filter(function (d) { return d.label === '재고변화'; });
+      var raS = raSteady.length ? raSteady[0].value : -1;
+      G.fillChest(raBox, 'iron-plate', 60);              // 한 틱에 60 늘린다
+      G.tickOnce();
+      var raJump = G.state().displays.filter(function (d) { return d.label === '재고변화'; });
+      var raJ = raJump.length ? raJump[0].value : -1;
+      chk('rule.rateCompilesAsItsOwnNode',
+        raComp.skipped.length === 0 &&
+        (G.gKinds(raC) || []).indexOf('rate') >= 0 &&
+        (G.gKinds(raC) || []).indexOf('smooth') < 0 &&
+        Math.abs(raS) < 1e-9 && Math.abs(raJ - 3600) < 1,
+        '문장 "재고를 0초 창으로 잰 초당 변화" → 노드에 rate 포함 ' +
+        ((G.gKinds(raC) || []).indexOf('rate') >= 0) + ' · smooth 없음 ' +
+        ((G.gKinds(raC) || []).indexOf('smooth') < 0) + ' · 멈춘 재고 ' + raS +
+        ' (0이어야) · 한 틱에 +60 → ' + raJ.toFixed(0) + ' /s (오라클 60×60 = 3600)');
 
       // 연구 전에는 문장이 컴파일을 거부해야 한다 — 잠긴 노드는 조용히 0 을 낸다.
       // 눅이기(평활 필터)는 논리 III 이므로 계산 한 단에도 관문이 걸려야 한다.

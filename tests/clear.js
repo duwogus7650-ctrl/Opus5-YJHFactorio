@@ -1211,6 +1211,13 @@
     // 신호 버스 A 로 내보낸다 — 받는 쪽은 제어기 4다.
     var smo = nd(c, 'smooth', 460, 900); G.gCfg(c, smo, 'tau', 10);
     G.gLink(c, iv, 0, smo, 0);
+    // 변화율 — **얼마나 남았나가 아니라 얼마나 빨리 줄고 있나.** 눅인 재고의 기울기를
+    // 띄워 두면 "줄고 있다" 를 눈으로 볼 수 있다. 노드를 늘리면 이 주행도 같이 늘어야
+    // 한다(clear.allNodeKindsWired 가 기준을 게임의 목록에서 읽는다 — 교훈 17).
+    var rt = nd(c, 'rate', 660, 900); G.gCfg(c, rt, 'win', 5);
+    G.gLink(c, smo, 0, rt, 0);
+    var d6 = nd(c, 'display', 880, 1320); G.gCfg(c, d6, 'label', '철판 변화/s');
+    G.gLink(c, rt, 0, d6, 0);
     var d4 = nd(c, 'display', 880, 900); G.gCfg(c, d4, 'label', '철판(평활)');
     G.gLink(c, smo, 0, d4, 0);
     var snd = nd(c, 'bussend', 880, 1040); G.gCfg(c, snd, 'ch', 'A');
