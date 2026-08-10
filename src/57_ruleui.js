@@ -210,6 +210,8 @@ function ruleCardHtml(r, i) {
     h.push('<span class="kw">· 되돌리기는</span>');
     h.push(numHtml('memo.everySec', r.id, r.memo.everySec));
     h.push('<span class="kw">초에 한 번만 (0 = 즉시)</span>');
+  } else if (r.memo.kind === 'sustain') {
+    h.push(numHtml('memo.sec', r.id, r.memo.sec) + '<span class="kw">초 이상 계속될 때만</span>');
   } else if (r.memo.kind === 'count') {
     h.push(numHtml('memo.times', r.id, r.memo.times) + '<span class="kw">번 넘게</span>');
   }

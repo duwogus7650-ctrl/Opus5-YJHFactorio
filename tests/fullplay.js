@@ -58,7 +58,7 @@
       // **이 숫자는 덫이다.** 노드 종류를 늘리면 여기가 RED 로 갈리고, 그때 이 파일
       // 아래의 전수 시험도 같이 채우라는 뜻이다. 숫자만 올리고 시험을 안 채우면
       // 그 종류는 "안 깨진 기능"이 아니라 **아직 안 들킨 기능**으로 남는다.
-      chk('sweep.allNodeKindsKnown', kinds.length === 33,
+      chk('sweep.allNodeKindsKnown', kinds.length === 34,
         '노드 종류 ' + kinds.length + '개: ' + kinds.join(','));
 
       // ---- 입력: 상수 ----
@@ -371,6 +371,30 @@
         Math.abs(flAtTau - 6.32121) < 0.01 && Math.abs(flAt3 - 9.50213) < 0.01,
         'τ=2, 입력 0→10 계단: t=0 에서 ' + r2(flZero) + ' · t=τ 에서 ' + r2(flAtTau) +
         ' (오라클 6.32) · t=3τ 에서 ' + r2(flAt3) + ' (오라클 9.50)');
+
+      // ---- 연산: 지속 조건 ----
+      // 오라클은 정의 그 자체다: 조건이 참이 된 지 **정확히 sec 초** 뒤에 1 이 되고,
+      // 조건이 끊기면 즉시 0 이며 시계는 0 으로 돌아간다(누적이 아니라 연속).
+      freshCtrl();
+      var suIn = K(0, 0, 0);
+      var sun = N('sustain', 300, 0); G.gCfg(CT, sun, 'sec', 2);
+      L(suIn, 0, sun, 0);
+      G.gCfg(CT, suIn, 'value', 1);
+      G.run(1.9);
+      var suEarly = O(sun);                        // 아직 2초가 안 됐다
+      G.run(0.2);
+      var suLate = O(sun);                         // 2초를 넘겼다
+      G.gCfg(CT, suIn, 'value', 0);
+      G.tickOnce();
+      var suOff = O(sun);                          // 조건이 끊기면 즉시 0
+      G.gCfg(CT, suIn, 'value', 1);
+      G.run(1.0);
+      var suRetry = O(sun);                        // 시계가 0 부터 다시 — 1초로는 부족
+      chk('node.sustain',
+        suEarly === 0 && suLate === 1 && suOff === 0 && suRetry === 0,
+        '2초 지속: 1.9초 ' + suEarly + ' (0이어야) · 2.1초 ' + suLate + ' (1이어야) · ' +
+        '끊긴 직후 ' + suOff + ' (0이어야) · 다시 1초 ' + suRetry +
+        ' (0이어야 — 시계가 누적되면 여기서 1이 된다)');
 
       // ---- 연산: 변화율 ----
       // 홀로 세워 놓고 **계단이 아니라 경사**를 준다. 상수 노드를 한 틱마다 일정

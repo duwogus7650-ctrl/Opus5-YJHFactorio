@@ -279,6 +279,26 @@ MUTATIONS = [
      b'function curSteps() { return TUTORIAL_STEPS; }',
      ['adv.terminates']),
 
+    # ---- 지속 조건 노드 ----
+    # 조건이 끊겨도 시계를 안 지우면 '연속'이 '누적'이 되어, 짧은 튐이 모여 참이 된다.
+    ('지속 조건이 끊겨도 시계를 안 지운다 (누적이 된다)', '35_logic.js',
+     b"      if (!truthy(readIn(g, n, 0))) { n.state.held = 0; n.out[0] = 0; break; }",
+     b"      if (!truthy(readIn(g, n, 0))) { n.out[0] = 0; break; }",
+     ['node.sustain'], 'fullplay.js'),
+
+    # dt 를 안 더하면 틱을 세게 되어 60배 빨리 참이 된다.
+    # **앵커는 한 줄로.** 여러 줄 바이트 리터럴은 이 파일에서 두 번째로 깨뜨렸다.
+    ('지속 조건이 dt 대신 틱을 센다 (60배 빨리 참이 된다)', '35_logic.js',
+     b'      n.state.held = (n.state.held || 0) + dt;',
+     b'      n.state.held = (n.state.held || 0) + 1;',
+     ['sustain.dropsSpikesKeepsReal']),
+
+    # 문장의 기억 종류가 sustain 을 모르면, 골라도 아무 일도 안 일어난다.
+    ('문장의 지속 조건이 노드를 안 만든다', '37_rules.js',
+     b"  } else if (m.kind === 'sustain') {",
+     b'  } else if (false) {',
+     ['rule.sustainCompilesAndWaits']),
+
     # ---- 변화율 노드 ----
     # dt 로 안 나누면 '틱당 변화' 가 되어 프레임 수에 딸려 간다 — 이 레포가 반복해 겪은 부류다.
     # 한 돌연변이는 **한 드라이버의 게이트만** 지목할 수 있다 — 둘을 섞었더니

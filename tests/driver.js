@@ -1659,6 +1659,64 @@
         '물린 채로 500 → 1000 계단, 한 틱 뒤 ' + sdStep.toFixed(3) +
         ' (500 바로 위여야 · 1000 이면 필터가 아무 일도 안 한다)');
 
+      // --- 지속 조건 -----------------------------------------------------
+      // **이 노드의 값은 평활 필터와 다른 자리에 있다.** 평활은 값을 눅여 모든 반응을
+      // 늦추고, 지속은 값을 안 건드린 채 짧은 튐만 버린다. 그래서 게이트도 둘을
+      // 같은 리그에서 나란히 재서 그 차이가 실제로 나타나는지 본다.
+      G.reset(6280); G.clearEntities(); G.clearEnemies();
+      G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+      var svC = G.place('controller', 40, 40, 0);
+      var svK = G.gAdd(svC, 'const', 10, 10);   G.gCfg(svC, svK, 'value', 0);
+      var svS = G.gAdd(svC, 'sustain', 300, 10); G.gCfg(svC, svS, 'sec', 3);
+      G.gLink(svC, svK, 0, svS, 0);
+      // (가) 한 틱짜리 튐 — 지속 조건은 이것을 통째로 버려야 한다
+      G.gCfg(svC, svK, 'value', 1); G.tickOnce();
+      G.gCfg(svC, svK, 'value', 0); G.run(1);
+      var svSpike = G.gOut(svC, svS, 0);
+      // (나) 진짜로 3초 넘게 계속되면 **그 순간** 참이 된다 — 늦추는 게 아니라 확인이다
+      G.gCfg(svC, svK, 'value', 1);
+      G.run(2.9);
+      var svBefore = G.gOut(svC, svS, 0);
+      G.run(0.2);
+      var svAfter = G.gOut(svC, svS, 0);
+      chk('sustain.dropsSpikesKeepsReal',
+        svSpike === 0 && svBefore === 0 && svAfter === 1,
+        '한 틱 튐 → ' + svSpike + ' (0이어야) · 3초 지속 직전 ' + svBefore +
+        ' (0이어야) · 직후 ' + svAfter + ' (1이어야)');
+
+      // 음성 대조군 — sec=0 이면 그대로 통과해야 한다. 없으면 위 검사는
+      // "언제나 0 을 낸다" 는 구현도 통과시킨다.
+      var svZ = G.gAdd(svC, 'sustain', 300, 300); G.gCfg(svC, svZ, 'sec', 0);
+      G.gLink(svC, svK, 0, svZ, 0);
+      G.tickOnce();
+      chk('sustain.zeroSecondsPassesThrough',
+        G.gOut(svC, svZ, 0) === 1,
+        'sec=0 인 지속 조건 → ' + G.gOut(svC, svZ, 0) + ' (조건이 참이니 1이어야 · 조건 발생 확인)');
+
+      // 문장으로도 걸리는가 — 기억 종류가 하나 늘었다
+      G.reset(6281); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.research('logistics'); G.research('logic-mem'); G.research('logic-ctrl');
+      var ssC = G.place('controller', 40, 40, 0);
+      var ssBox = G.place('chest', 44, 40, 0);
+      var ssAsm = G.place('assembler', 48, 40, 0);
+      G.setRecipe(ssAsm, 'gear');
+      G.ruleAdd(ssC, {
+        when: { src: 'chest', ent: ssBox, item: 'iron-plate', cmp: '<', value: 50 },
+        memo: { kind: 'sustain', sec: 2 },
+        then: { act: 'run', ent: ssAsm, onWhenTrue: false } });
+      var ssComp = G.ruleCompile(ssC);
+      G.run(1.0);
+      var ssEarly = G.ent(ssAsm).enabled;                 // 아직 2초가 안 됐다
+      G.run(1.5);
+      var ssLate = G.ent(ssAsm).enabled;                  // 2초를 넘겼다 → 꺼진다
+      chk('rule.sustainCompilesAndWaits',
+        ssComp.skipped.length === 0 &&
+        (G.gKinds(ssC) || []).indexOf('sustain') >= 0 &&
+        ssEarly === true && ssLate === false,
+        '문장 "철판이 50 미만이 2초 이상 계속되면 조립기를 끈다" → 노드에 sustain 포함 ' +
+        ((G.gKinds(ssC) || []).indexOf('sustain') >= 0) + ' · 1초 뒤 가동 ' + ssEarly +
+        ' (아직 켜져야) · 2.5초 뒤 가동 ' + ssLate + ' (꺼져야)');
+
       // --- 변화율 --------------------------------------------------------
       // **오라클은 기울기를 아는 입력에서 가져온다.** 처음엔 타이머의 '위상%' 를
       // 썼는데 그 출력은 **정수로 반올림**된 계단이라(Math.round) 대부분의 틱에서

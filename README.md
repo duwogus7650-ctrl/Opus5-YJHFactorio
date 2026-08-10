@@ -160,9 +160,9 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 ```bash
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
-python tests/harness.py              # 모델 게이트 224건 (헤드리스 Edge)
+python tests/harness.py              # 모델 게이트 227건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
-python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 38건
+python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 39건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
 python tests/harness.py determinism.js  # 재현성 게이트 7건 (같은 씨앗 = 같은 결과)
 python tests/harness.py clear.js     # 40분 자력 완주 주행 (게이트 13건)
@@ -187,18 +187,18 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
-harness.py             GREEN — 실검사 224건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 227건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
-harness.py fullplay.js GREEN — 노드 33종·건물 21종 전수 38건 (고의 실패 1건 정상 검출)
+harness.py fullplay.js GREEN — 노드 34종·건물 21종 전수 39건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 142건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 145건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 13건 중 12건 통과 (아래 "완주 주행은 아직 RED다")
 ```
 
-| 엔진 | 모델 224 | 클릭 79 | 전수 38 | 부하차단 10 |
+| 엔진 | 모델 227 | 클릭 79 | 전수 39 | 부하차단 10 |
 |---|---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | GREEN | GREEN |
 | Chromium (Playwright) | GREEN | GREEN | GREEN | GREEN |
@@ -686,6 +686,16 @@ peek 과 take 가 서로 다른 아이템을 고르던 그 실패가 원형이�
 차면 멈추는 부하는 부하가 아니다. 마지막으로 3x3 탱크를 보일러와 겹치는 자리에 두어
 배치가 조용히 실패했는데, 게이트에는 "용량이 안 늘었다"로만 보였다 — 배치 실패와 용량
 계산 오류가 같은 얼굴을 한다. 지금은 배치 여부를 메시지에 같이 찍는다.
+
+### 지속 조건 — 늦추는 것이 아니라 확인하는 것
+
+`조건이 N초 이상 계속돼야` 참이 된다. **평활 필터와 자리가 다르다** — 평활은 값을 눅여서
+모든 반응을 늦추는 대신 진짜 변화도 늦게 알리고, 지속은 값을 안 건드린 채 짧은 튐만
+버린다. 3초를 넘기는 순간 바로 참이 되므로 지연이 아니라 확인이다. 조건이 한 번 끊기면
+시계는 0 으로 돌아간다 — **'누적'이 아니라 '연속'** 이라야 한다(그 성질이 게이트의 오라클이고,
+시계를 안 지우는 돌연변이가 거기서 걸린다).
+
+문장 편집기의 기억 자리에서 `초 이상 계속되면` 으로도 고를 수 있다.
 
 ### 변화율 — 얼마나 남았나가 아니라 얼마나 빨리 줄고 있나
 

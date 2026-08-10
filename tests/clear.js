@@ -1295,6 +1295,12 @@
     // 변화율 — **얼마나 남았나가 아니라 얼마나 빨리 줄고 있나.** 눅인 재고의 기울기를
     // 띄워 두면 "줄고 있다" 를 눈으로 볼 수 있다. 노드를 늘리면 이 주행도 같이 늘어야
     // 한다(clear.allNodeKindsWired 가 기준을 게임의 목록에서 읽는다 — 교훈 17).
+    // 지속 조건 — 습격 감지가 한 틱 스쳐도 경보가 켜지지 않게 3초를 요구한다.
+    // 노드를 늘리면 이 주행도 같이 늘어야 한다(clear.allNodeKindsWired · 교훈 17).
+    var su = nd(c, 'sustain', 660, 20); G.gCfg(c, su, 'sec', 3);
+    G.gLink(c, cA, 0, su, 0);
+    var d7 = nd(c, 'display', 880, 20); G.gCfg(c, d7, 'label', '습격 3초+');
+    G.gLink(c, su, 0, d7, 0);
     var rt = nd(c, 'rate', 660, 900); G.gCfg(c, rt, 'win', 5);
     G.gLink(c, smo, 0, rt, 0);
     var d6 = nd(c, 'display', 880, 1320); G.gCfg(c, d6, 'label', '철판 변화/s');

@@ -2819,6 +2819,14 @@ var NODE_DEFS = {
   // 게이트의 오라클이 된다. τ 는 63% 에 도달하는 시간이다.
   'smooth':  { label: '평활 필터', cat: 'op', ins: ['값'], outs: ['평활값'],
                cfg: [{ k: 'tau', t: 'num', label: '시상수 s', def: 5 }], tech: 'logic-ctrl' },
+  // 지속 조건 — **조건이 N초 이상 계속돼야 참.** 딸깍임을 거르는 두 번째 방법이고,
+  // 평활 필터와 다른 자리를 맡는다: 평활은 값을 눅여서 **모든 반응을 늦추는** 대신
+  // 진짜 변화도 늦게 알리고, 지속은 값을 안 건드리는 대신 **짧은 튐만** 버린다.
+  //   "전기가 모자라다" 가 한 틱 스쳤다 → 지속 3초면 무시된다
+  //   진짜로 3초 넘게 모자라면 → 그 순간 즉시 참이 된다(지연이 아니라 확인이다)
+  // 조건이 끊기면 시계는 0 으로 돌아간다 — '누적'이 아니라 '연속'이라야 한다.
+  'sustain': { label: '지속 조건', cat: 'op', ins: ['조건'], outs: ['참'],
+               cfg: [{ k: 'sec', t: 'num', label: '지속 s', def: 3 }], tech: 'logic-mem' },
   // 변화율 — **얼마나 남았나가 아니라 얼마나 빨리 줄고 있나.**
   // 완충(저장 탱크)이 커질수록 수위 자체는 느리게 움직여 신호로 약해진다. 그때
   // 쓸 수 있는 것이 기울기다: 증기가 초당 12씩 줄고 있고 3000 남았다면 250초 뒤에
@@ -3171,6 +3179,15 @@ function evalNode(g, n, dt, ctrl) {
     case 'hold': {
       if (truthy(readIn(g, n, 1))) n.state.v = readIn(g, n, 0);
       n.out[0] = n.state.v || 0;
+      break;
+    }
+    case 'sustain': {
+      // 상태 이름을 t 가 아니라 held 로 둔다 — 타이머도 n.state.t 를 쓰는데, 같은
+      // 이름이면 사람도 시험도 둘을 헷갈린다(돌연변이 앵커가 실제로 겹쳤다).
+      if (!inputFed(g, n, 0)) { n.state.held = 0; n.out[0] = 0; break; }
+      if (!truthy(readIn(g, n, 0))) { n.state.held = 0; n.out[0] = 0; break; }
+      n.state.held = (n.state.held || 0) + dt;
+      n.out[0] = (n.state.held >= (+n.cfg.sec || 0)) ? 1 : 0;
       break;
     }
     case 'rate': {
@@ -3741,7 +3758,9 @@ var RULE_MEMOS = {
                nodes: ['latch'], tech: 'logic-mem' },
   'edge':    { label: '참이 되는 그 순간에만',  nodes: ['edge'], tech: 'logic-mem' },
   'count':   { label: '몇 번 일어났는지 세어서', nodes: ['counter', 'cmp'], tech: 'logic-mem' },
-  'hold':    { label: '그때의 값을 기억해서',    nodes: ['hold'], tech: 'logic-mem' }
+  'hold':    { label: '그때의 값을 기억해서',    nodes: ['hold'], tech: 'logic-mem' },
+  // 평활(계산 한 단)과 자리가 다르다 — 값을 눅이는 게 아니라 **짧은 튐만 버린다.**
+  'sustain': { label: '초 이상 계속되면',        nodes: ['sustain'], tech: 'logic-mem' }
 };
 
 // --- 규칙 하나의 모양 -------------------------------------------------------
@@ -3760,7 +3779,7 @@ function newRule(id) {
   return { id: id, name: '', enabled: true,
            when: { src: 'chest', ent: null, item: 'iron-plate', radius: 30, ch: 'A',
                    math: null, cmp: '<', value: 50, and: [], andMode: 'AND', refName: null },
-           memo: { kind: 'none', resetCmp: '>', resetValue: 200, everySec: 0, times: 3 },
+           memo: { kind: 'none', resetCmp: '>', resetValue: 200, everySec: 0, times: 3, sec: 3 },
            then: { act: 'run', ent: null, item2: null, label: '', ch: 'A', onWhenTrue: true } };
 }
 
@@ -3914,6 +3933,12 @@ function compileOneRule(g, r, y0, named) {
     graphLink(g, condNid, condPort, ed.nid, 0);
     condNid = ed.nid; condPort = 0; x += RULE_COL;
 
+  } else if (m.kind === 'sustain') {
+    var su = graphAddNode(g, 'sustain', x, y0);
+    su.cfg.sec = +m.sec || 0;
+    graphLink(g, condNid, condPort, su.nid, 0);
+    condNid = su.nid; condPort = 0; x += RULE_COL;
+
   } else if (m.kind === 'latch') {
     // "한 번 참이면 유지하고, 따로 정한 조건에서 되돌린다" = SR 래치.
     // 되돌리는 쪽은 같은 값을 반대 문턱으로 다시 비교한다 — 이게 히스테리시스다.
@@ -4024,7 +4049,8 @@ function ruleSentence(r) {
     parts.push('다시 ' + m.resetValue + (s ? (s.unit || '') : '') + ' ' +
                (rct ? rct.label : m.resetCmp) + ' 되돌린다' +
                (m.everySec > 0 ? ' (되돌리는 건 ' + m.everySec + '초에 한 번만)' : ''));
-  } else if (m.kind === 'edge') parts.push('— 그 순간에만');
+  } else if (m.kind === 'sustain') parts.push('— ' + (m.sec || 0) + '초 이상 계속될 때만');
+  else if (m.kind === 'edge') parts.push('— 그 순간에만');
   else if (m.kind === 'count') parts.push('— ' + m.times + '번 넘게 일어났을 때');
   else if (m.kind === 'hold') parts.push('— 그때 값을 기억해서');
   return parts.join(' ');
@@ -6397,6 +6423,11 @@ function fillHelp() {
     '<b>63%까지 따라가는 데 걸리는 시간</b>이다 — 5로 두면 5초에 63%, 15초에 95% 따라간다.',
     '전력 만족도나 상자 재고처럼 매 틱 튀는 값을 임계값 비교에 바로 물리면 그 경계에서 딸깍거리는데,',
     '필터를 한 단 끼우면 잦아든다. <b>대신 반응이 느려진다</b> — 그 맞바꿈이 이 노드의 전부다.</p>',
+    '<p><b>지속 조건</b>(논리 II)은 <b>조건이 N초 이상 계속돼야</b> 참이 된다.',
+    '평활 필터와 자리가 다르다 — 평활은 값을 눅여 <b>모든 반응을 늦추는</b> 대신 진짜 변화도 늦게',
+    '알리고, 지속은 값을 안 건드린 채 <b>짧은 튐만</b> 버린다. 3초를 넘기는 순간 바로 참이 되므로',
+    '<b>늦추는 것이 아니라 확인하는 것</b>이다. 조건이 한 번 끊기면 시계는 0으로 돌아간다.',
+    '문장에서도 기억 자리에서 <code>초 이상 계속되면</code> 으로 고를 수 있다.</p>',
     '<p><b>변화율</b>(논리 III)은 <b>얼마나 남았나가 아니라 얼마나 빨리 줄고 있나</b>를 잰다.',
     '완충(저장 탱크)이 커질수록 수위 자체는 느리게 움직여 신호로 약해진다 — 그때 쓰는 것이 기울기다.',
     '증기가 초당 12씩 줄고 3,000 남았다면 <b>250초 뒤에 마른다</b>. 그 나눗셈은 [계산] 노드가 하고,',
@@ -8038,6 +8069,8 @@ function ruleCardHtml(r, i) {
     h.push('<span class="kw">· 되돌리기는</span>');
     h.push(numHtml('memo.everySec', r.id, r.memo.everySec));
     h.push('<span class="kw">초에 한 번만 (0 = 즉시)</span>');
+  } else if (r.memo.kind === 'sustain') {
+    h.push(numHtml('memo.sec', r.id, r.memo.sec) + '<span class="kw">초 이상 계속될 때만</span>');
   } else if (r.memo.kind === 'count') {
     h.push(numHtml('memo.times', r.id, r.memo.times) + '<span class="kw">번 넘게</span>');
   }

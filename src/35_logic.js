@@ -128,6 +128,14 @@ var NODE_DEFS = {
   // 게이트의 오라클이 된다. τ 는 63% 에 도달하는 시간이다.
   'smooth':  { label: '평활 필터', cat: 'op', ins: ['값'], outs: ['평활값'],
                cfg: [{ k: 'tau', t: 'num', label: '시상수 s', def: 5 }], tech: 'logic-ctrl' },
+  // 지속 조건 — **조건이 N초 이상 계속돼야 참.** 딸깍임을 거르는 두 번째 방법이고,
+  // 평활 필터와 다른 자리를 맡는다: 평활은 값을 눅여서 **모든 반응을 늦추는** 대신
+  // 진짜 변화도 늦게 알리고, 지속은 값을 안 건드리는 대신 **짧은 튐만** 버린다.
+  //   "전기가 모자라다" 가 한 틱 스쳤다 → 지속 3초면 무시된다
+  //   진짜로 3초 넘게 모자라면 → 그 순간 즉시 참이 된다(지연이 아니라 확인이다)
+  // 조건이 끊기면 시계는 0 으로 돌아간다 — '누적'이 아니라 '연속'이라야 한다.
+  'sustain': { label: '지속 조건', cat: 'op', ins: ['조건'], outs: ['참'],
+               cfg: [{ k: 'sec', t: 'num', label: '지속 s', def: 3 }], tech: 'logic-mem' },
   // 변화율 — **얼마나 남았나가 아니라 얼마나 빨리 줄고 있나.**
   // 완충(저장 탱크)이 커질수록 수위 자체는 느리게 움직여 신호로 약해진다. 그때
   // 쓸 수 있는 것이 기울기다: 증기가 초당 12씩 줄고 있고 3000 남았다면 250초 뒤에
@@ -480,6 +488,15 @@ function evalNode(g, n, dt, ctrl) {
     case 'hold': {
       if (truthy(readIn(g, n, 1))) n.state.v = readIn(g, n, 0);
       n.out[0] = n.state.v || 0;
+      break;
+    }
+    case 'sustain': {
+      // 상태 이름을 t 가 아니라 held 로 둔다 — 타이머도 n.state.t 를 쓰는데, 같은
+      // 이름이면 사람도 시험도 둘을 헷갈린다(돌연변이 앵커가 실제로 겹쳤다).
+      if (!inputFed(g, n, 0)) { n.state.held = 0; n.out[0] = 0; break; }
+      if (!truthy(readIn(g, n, 0))) { n.state.held = 0; n.out[0] = 0; break; }
+      n.state.held = (n.state.held || 0) + dt;
+      n.out[0] = (n.state.held >= (+n.cfg.sec || 0)) ? 1 : 0;
       break;
     }
     case 'rate': {

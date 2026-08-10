@@ -111,7 +111,9 @@ var RULE_MEMOS = {
                nodes: ['latch'], tech: 'logic-mem' },
   'edge':    { label: '참이 되는 그 순간에만',  nodes: ['edge'], tech: 'logic-mem' },
   'count':   { label: '몇 번 일어났는지 세어서', nodes: ['counter', 'cmp'], tech: 'logic-mem' },
-  'hold':    { label: '그때의 값을 기억해서',    nodes: ['hold'], tech: 'logic-mem' }
+  'hold':    { label: '그때의 값을 기억해서',    nodes: ['hold'], tech: 'logic-mem' },
+  // 평활(계산 한 단)과 자리가 다르다 — 값을 눅이는 게 아니라 **짧은 튐만 버린다.**
+  'sustain': { label: '초 이상 계속되면',        nodes: ['sustain'], tech: 'logic-mem' }
 };
 
 // --- 규칙 하나의 모양 -------------------------------------------------------
@@ -130,7 +132,7 @@ function newRule(id) {
   return { id: id, name: '', enabled: true,
            when: { src: 'chest', ent: null, item: 'iron-plate', radius: 30, ch: 'A',
                    math: null, cmp: '<', value: 50, and: [], andMode: 'AND', refName: null },
-           memo: { kind: 'none', resetCmp: '>', resetValue: 200, everySec: 0, times: 3 },
+           memo: { kind: 'none', resetCmp: '>', resetValue: 200, everySec: 0, times: 3, sec: 3 },
            then: { act: 'run', ent: null, item2: null, label: '', ch: 'A', onWhenTrue: true } };
 }
 
@@ -284,6 +286,12 @@ function compileOneRule(g, r, y0, named) {
     graphLink(g, condNid, condPort, ed.nid, 0);
     condNid = ed.nid; condPort = 0; x += RULE_COL;
 
+  } else if (m.kind === 'sustain') {
+    var su = graphAddNode(g, 'sustain', x, y0);
+    su.cfg.sec = +m.sec || 0;
+    graphLink(g, condNid, condPort, su.nid, 0);
+    condNid = su.nid; condPort = 0; x += RULE_COL;
+
   } else if (m.kind === 'latch') {
     // "한 번 참이면 유지하고, 따로 정한 조건에서 되돌린다" = SR 래치.
     // 되돌리는 쪽은 같은 값을 반대 문턱으로 다시 비교한다 — 이게 히스테리시스다.
@@ -394,7 +402,8 @@ function ruleSentence(r) {
     parts.push('다시 ' + m.resetValue + (s ? (s.unit || '') : '') + ' ' +
                (rct ? rct.label : m.resetCmp) + ' 되돌린다' +
                (m.everySec > 0 ? ' (되돌리는 건 ' + m.everySec + '초에 한 번만)' : ''));
-  } else if (m.kind === 'edge') parts.push('— 그 순간에만');
+  } else if (m.kind === 'sustain') parts.push('— ' + (m.sec || 0) + '초 이상 계속될 때만');
+  else if (m.kind === 'edge') parts.push('— 그 순간에만');
   else if (m.kind === 'count') parts.push('— ' + m.times + '번 넘게 일어났을 때');
   else if (m.kind === 'hold') parts.push('— 그때 값을 기억해서');
   return parts.join(' ');
