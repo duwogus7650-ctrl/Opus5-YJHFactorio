@@ -561,8 +561,20 @@
     // **안쪽 4기가 먼저다.** 반경 12 에서는 사거리 18이 공장 전체(반경 22)를 덮어
     // 4기로 한 바퀴를 대신한다. 바깥 고리(26)를 먼저 채웠더니 성긴 3기가 아무것도
     // 못 막아 t=609~792 사이에 건물 13채를 잃었다.
-    var inner = [[92, 79], [79, 92], [67, 79], [79, 67]];
-    for (i = 0; i < inner.length; i++) ring.push({ x: inner[i][0], y: inner[i][1], nd: 0, r: 5 });
+    // **안쪽 4자리도 위협 순으로 세운다.** 바깥 고리는 둥지 거리로 정렬하면서
+    // 안쪽은 동·남·서·북 고정 순서로 두고 있었다. 그래서 터렛이 3기일 때 북쪽
+    // (79,67) 이 비어 있었고, 첫 습격에 잃은 것이 정확히 그 방향의 발전기(74,61)와
+    // 전주(77,65)다 — 그 자리에 터렛이 있었으면 사거리 18 안이라 닿았다.
+    var inner = [[92, 79], [79, 92], [67, 79], [79, 67]].map(function (p) {
+      var nd2 = 1e9;
+      for (var q = 0; q < nl.length; q++) {
+        var dq = Math.hypot(nl[q].x - p[0], nl[q].y - p[1]);
+        if (dq < nd2) nd2 = dq;
+      }
+      return { x: p[0], y: p[1], nd: nd2, r: 5 };
+    });
+    inner.sort(function (p, q) { return p.nd - q.nd; });
+    for (i = 0; i < inner.length; i++) ring.push(inner[i]);
     for (i = 0; i < outer.length; i++) ring.push(outer[i]);
   }
   // **방어는 계획이 아니라 되먹임이어야 한다.** 고정 목록으로 두면 두 가지가 다
@@ -1024,7 +1036,19 @@
       if (haveMag < wantMag && n('iron-plate') >= 6 && (dry || !queueWaiting)) make('ammo', 2);
     }
     // 군수 전에는 적팩이 최우선이다 — 터렛이 첫 파도(t≈550)보다 늦으면 전멸한다
-    if (cuLine && !mil && n('sci-red') < 26 && freeGear >= 2 && freeCu >= 3) make('sci-red', 3);
+    // **군수는 시작 재고만으로도 낼 수 있다.** 적팩 20개 = 구리 20 + 톱니 20 인데
+    // 시작 재고가 구리 30 · 톱니 30 이다. 그런데 이 줄이 '구리 용광로가 한 장이라도
+    // 구웠는가(cuLine)' 를 기다리고 있어서 군수 연구가 t≈400 까지 밀렸고, 첫 습격
+    // (t≈450)에 터렛이 1~2기뿐이라 발전기를 잃었다(t=507). 그 구멍은 게임 설계가
+    // 아니라 **드라이버의 출발 순서** 문제다.
+    //
+    // 구리를 다 쓰면 구리선 → 전주가 막히므로(그게 cuLine 가드의 원래 이유다)
+    // 전주 몫 12 를 남기고 그 위로만 적팩에 쓴다.
+    var CU_KEEP_FOR_WIRE = 12;
+    if ((cuLine || freeCu >= CU_KEEP_FOR_WIRE + 3) && !mil && n('sci-red') < 26 &&
+        freeGear >= 2 && (cuLine ? freeCu >= 3 : freeCu >= CU_KEEP_FOR_WIRE + 3)) {
+      make('sci-red', 3);
+    }
     if (cuLine && n('sci-red') < 45 && freeGear >= 8 && freeCu >= 10) make('sci-red', 3);
     // 녹색 연구팩 — 완성품을 재료로 먹는다. 심화 1단계이자 후반 연구 4종의 관문.
     if (logi && n('sci-green') < 40 && n('belt-item') >= 4 && n('inserter-item') >= 4) make('sci-green', 2);
