@@ -349,6 +349,16 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- 저장 실패 처리 ----
+    # try/catch 를 걷어내면 저장칸이 거부할 때 예외가 그대로 새어나온다 — 플레이어는
+    # 저장된 줄 알고 창을 닫는다. 코드에 이미 있던 처리라 게이트가 없으면 조용히 사라진다.
+    ('저장 실패를 안 잡는다 (예외가 새어나온다)', '60_game.js',
+     # 이 줄에는 한글 토스트 문구가 있어 통째로는 못 겨냥한다 — ASCII 접두까지만
+     # 잡고 뒤는 죽은 함수 안으로 밀어 넣는다(문법은 그대로 성립한다).
+     b"  } catch (e) { logError('save', e); toast(",
+     b"  } catch (e) { throw e; } function _deadSaveToast(e) { toast(",
+     ['save.survivesQuotaFailure']),
+
     # ---- 망 사이 이송 펌프 ----
     # 회원으로 넣으면 유니온-파인드가 앞뒤를 한 망으로 합쳐, 이 건물의 이유가 사라진다.
     ('이송 펌프가 유체망의 회원이 된다 (두 망이 합쳐진다)', '32_fluid.js',

@@ -160,7 +160,7 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 ```bash
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
-python tests/harness.py              # 모델 게이트 234건 (헤드리스 Edge)
+python tests/harness.py              # 모델 게이트 236건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
 python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 40건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
@@ -187,18 +187,18 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
-harness.py             GREEN — 실검사 234건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 236건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py fullplay.js GREEN — 노드 35종·건물 22종 전수 40건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 151건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 152건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
-harness.py clear.js    RED  — 13건 중 12건 통과 (아래 "완주 주행은 아직 RED다")
+harness.py clear.js    RED  — 14건 중 13건 통과 (아래 "완주 주행은 아직 RED다")
 ```
 
-| 엔진 | 모델 234 | 클릭 79 | 전수 40 | 부하차단 10 |
+| 엔진 | 모델 236 | 클릭 79 | 전수 40 | 부하차단 10 |
 |---|---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | GREEN | GREEN |
 | Chromium (Playwright) | GREEN | GREEN | GREEN | GREEN |
@@ -211,7 +211,7 @@ harness.py clear.js    RED  — 13건 중 12건 통과 (아래 "완주 주행은
 
 #### 완주 주행은 아직 RED다
 
-`clear.js`(40분 자력 완주)는 게이트 13건 중 **1건이 실패한다** — **연구 7/8종**, 마지막
+`clear.js`(40분 자력 완주)는 게이트 14건 중 **1건이 실패한다** — **연구 7/8종**, 마지막
 `automation-2` 까지 못 간다. 나머지 12건은 통과한다(건물 21/21 · 노드 33/33 · 손실 0 ·
 최저 전력 96.7% · 증기 1200 · 열차 81타일). 두 주행이 게이트 13건 전부 동일하다.
 
@@ -869,7 +869,12 @@ src/60_game.js      루프, 저장/불러오기, __GAME 테스트 API
   건설 범위 제한도 없다.
 - **제어기는 전기를 쓰지 않는다.** 전력을 요구하면 부하 차단 배선이 자기 전원을 끊고
   자멸한다(Factorio의 회로망도 같은 이유로 무전력이다).
-- 저장은 `localStorage` 한 칸(약 140 KB). 여러 슬롯은 없다. `F2`/`F3` 또는 창고 패널 버튼.
+- 저장은 `localStorage` 한 칸. 여러 슬롯은 없다. `F2`/`F3` 또는 창고 패널 버튼.
+  **40분 판이 175 KB** 이고(대부분 지형 배열 — 엔티티 12개짜리 빈 판도 141 KB 다) 브라우저가
+  주는 칸은 대략 5 MB 다. 게이트가 1 MB 를 상한으로 지킨다(`clear.saveFitsBudget`).
+  저장칸이 거부하면(할당량 초과·사생활 모드) 코드가 잡아서 알리고 판은 그대로 둔다 —
+  그 처리 자체를 검정하는 게이트를 이번에 세웠다(`save.survivesQuotaFailure`). 예전에는
+  처리는 있는데 게이트가 없어서, 다음 수정에서 조용히 사라져도 아무도 몰랐을 자리였다.
 - 검증은 헤드리스 4엔진(Edge·Chromium·Firefox·WebKit) 기준이다. **실기 Safari 와 실기 모바일,
   그리고 "재미"는 미검증** — 페이싱 표는 규칙이 맞는지만 보여주고 재미는 못 잰다.
 - 터치는 있다(폰·태블릿 레이아웃, 노드 편집기 터치 배선, 모바일 조작 바). 다만 자동 검증은

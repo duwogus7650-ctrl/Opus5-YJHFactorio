@@ -2529,6 +2529,28 @@
         '저장 ' + (raw ? raw.length : 0) + 'B · 저장전 엔티티 ' + beforeSave.entityCount +
         ' → 리셋 ' + afterReset.entityCount + ' → 복원 ' + afterLoad.entityCount +
         ' · 시각 ' + r2(beforeSave.t) + ' → ' + r2(afterLoad.t));
+      // **저장이 실패할 수 있다는 것을 아무도 검정하지 않았다.** 브라우저 저장칸은
+      // 유한하고(할당량 초과 · 사생활 모드 · 디스크 가득), 그때 조용히 넘어가면
+      // 플레이어는 저장된 줄 알고 창을 닫는다. 코드는 이미 try/catch 로 막고 있었지만
+      // 게이트가 없으면 그 처리는 다음 수정에서 사라져도 아무도 모른다.
+      var realSet = localStorage.setItem;
+      localStorage.setItem = function () { throw new Error('QuotaExceededError(시험)'); };
+      var quotaThrew = false, quotaRet = null;
+      try { quotaRet = G.saveRaw(); } catch (e) { quotaThrew = true; }
+      localStorage.setItem = realSet;
+      // 저장이 실패해도 세계는 멀쩡해야 한다 — 저장 한 번이 판을 망가뜨리면 최악이다
+      G.run(1);
+      var quotaAlive = G.state().entityCount === beforeSave.entityCount;
+      chk('save.survivesQuotaFailure',
+        !quotaThrew && quotaAlive,
+        '저장칸이 거부할 때 예외가 새어나오는가 ' + quotaThrew + ' (false여야) · ' +
+        '실패 뒤에도 세계가 그대로인가 ' + quotaAlive + ' (true여야 · 조건 발생 확인)');
+
+      // 음성 대조군 — 정상 저장은 성공해야 한다. 없으면 위 검사는 "언제나 실패한다"도 통과시킨다
+      chk('save.normalSaveStillWorks',
+        !!G.saveRaw() && G.saveRaw().length > 100,
+        '정상 저장 ' + (G.saveRaw() || '').length + 'B (100B 넘어야)');
+
       chk('save.keepsGraph', gi && gi.nodes === 2 && gi.links === 1,
         '복원된 제어기 그래프: 노드 ' + (gi ? gi.nodes : '?') + '개 · 배선 ' + (gi ? gi.links : '?') + '개 (2/1 이어야)');
 

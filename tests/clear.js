@@ -2048,6 +2048,17 @@
     var ll = (st.waves.lostList || []).slice(-5).map(function (e) {
       return e.type + '@' + e.x + ',' + e.y + '(t=' + e.t + ')';
     });
+    // **저장이 브라우저 저장칸에 들어가는가.** 40분 판은 엔티티 170여 개 · 벨트 위
+    // 아이템 · 제어기 그래프 · 청사진 · 열차까지 담는다. 저장은 localStorage 한 칸이고
+    // 브라우저가 주는 칸은 대략 5 MB 다 — 넘으면 저장이 통째로 실패한다(코드는 그때
+    // 토스트로 알리지만, 알린다고 판이 안 사라지는 것은 아니다).
+    // 1 MB 를 상한으로 잡는다: 지금 바닥이 약 141 KB(대부분 지형 배열)이므로 일곱 배
+    // 여유가 있고, 그 사이에 무엇이 크게 늘면 여기서 먼저 걸린다.
+    var saveBytes = (G.saveRaw() || '').length;
+    out.measured.saveBytes = saveBytes;
+    chk('clear.saveFitsBudget', saveBytes > 0 && saveBytes < 1000000,
+      '40분 판 저장 ' + Math.round(saveBytes / 1024) + ' KB (상한 1,000 KB · 브라우저 칸은 약 5 MB)');
+
     chk('clear.defenseHeld', st.waves.lost === 0 && st.waves.waves >= 1,
       '습격 ' + st.waves.waves + '회 · 격추 ' + st.waves.killed + ' · 손실 ' + st.waves.lost +
       (ll.length ? ' · 뚫린 자리: ' + ll.join(' ') : ''));
