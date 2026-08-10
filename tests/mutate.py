@@ -279,6 +279,15 @@ MUTATIONS = [
      b'function curSteps() { return TUTORIAL_STEPS; }',
      ['adv.terminates']),
 
+    # ---- 결정론 (determinism.js 로 판정) ----
+    # 이 한 줄이 없어서 40분 완주 주행이 주행마다 다른 결과를 냈다. 리셋이 되돌리지
+    # 않는 상태가 하나만 있어도, 페이지가 열리고 리셋되기까지 실시간으로 돈 시간이
+    # 그대로 출발점의 차이가 된다. 되돌리기를 지우면 그 결함이 그대로 돌아온다.
+    ('리셋이 오염 확산 타이머를 안 되돌린다', '10_world.js',
+     b'  pollTimer = 0;',
+     b'  pollTimer = pollTimer;',
+     ['det.resetClearsPriorRun'], 'determinism.js'),
+
     # ---- 부하 차단 (shedding.js 로 판정) ----
     # 순진한 배선이 실제로 떨리는지는 boolean 이 아니라 **횟수**로만 볼 수 있다.
     # 주의: powerStats.sat(=G.state().power.sat)은 nt.sat 이 아니라 전세계 합계에서

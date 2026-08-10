@@ -166,6 +166,15 @@ def main():
         print(raw[:2000])
         return 2
 
+    # 판정 밖의 측정값(궤적 지문·스냅샷 등)을 파일로 빼는 통로. 게이트 출력은
+    # 사람이 읽는 요약이라 배열을 통째로 싣기엔 부적합한데, 재현성 조사처럼 두 주행을
+    # 기계로 대조해야 할 때가 있다. LF_DUMP=<경로> 로 켠다.
+    dump = os.environ.get('LF_DUMP')
+    if dump:
+        with io.open(dump, 'w', encoding='utf-8') as fh:
+            fh.write(json.dumps(res, ensure_ascii=False))
+        print(' (측정값 전체를 %s 에 기록했다)' % dump)
+
     line = '=' * 92
     print(line)
     print(' LOGIC FOUNDRY 헤드리스 검증   버전 %s' % res.get('version'))

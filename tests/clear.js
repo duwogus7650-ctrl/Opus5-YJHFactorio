@@ -1465,7 +1465,22 @@
   var peakEnemies = 0, worstSat = 1;
   // 증기 발전소와 노선이 **실제로 돌았는가** — 배치 사실과 따로 잰다
   var steamPeak = 0, trainTravel = 0, trainLastX = null, trainMoved = false;
-  var FP_T = [60, 300, 900, 960, 1020, 1080, 1140, 1200, 1260, 1320, 1380, 1440, 1500],
+  // **궤적 지문 — 사이클마다 찍는다.** 처음엔 배치(pump)가 끝날 때 찍었는데,
+  // 그러면 배치 크기가 찍는 시각을 바꾼다(12면 t=72, 4면 t=64에 t=60 자리를 채운다).
+  // 그 상태로 배치 12 와 4 를 비교했더니 t=60 부터 갈리는 것처럼 보였다 — 시뮬이
+  // 아니라 **내 계측이 갈린 것**이었다. 지문은 재는 대상의 시각에 붙어야 한다.
+  function fpTick() {
+    var t = G.state().t;
+    for (var fp = 0; fp < FP_T.length; fp++) {
+      if (fpMark[fp] || t < FP_T[fp]) continue;
+      fpMark[fp] = FP_T[fp] + '@' + t.toFixed(1) + ':' + G.stateHash();
+    }
+  }
+
+  // 상태 지문 — 두 주행의 첫 불일치를 좁히는 데 쓴다. 간격을 20초로 뒀더니 주행이
+  // 1200초 상한을 넘겨 판정 불성립이 됐다(stateHash 는 엔티티마다 벨트 위 아이템까지
+  // 훑는다). 60초면 창은 넓어도 주행은 끝난다 — **못 끝나는 정밀도는 정밀도가 아니다.**
+  var FP_T = (function () { var a = []; for (var v = 60; v <= 2400; v += 60) a.push(v); return a; })(),
       fpMark = [];
 
   // 한 사이클이 담당하는 **게임 시간**. 이 값이 곧 "공장이 얼마나 자주 손을
@@ -1478,17 +1493,6 @@
   function afterCycles(st, t) {
       if (st.enemies > peakEnemies) peakEnemies = st.enemies;
       if (t >= 60 && st.power.sat < worstSat) worstSat = st.power.sat;
-
-      // **궤적 지문.** 같은 코드로 두 번 돌렸을 때 결과가 갈리면, 갈린 지점이
-      // 초반인지 후반인지부터 알아야 한다. 정해진 시각을 처음 넘을 때 세계를 몇
-      // 숫자로 찍어 둔다 — 두 주행의 지문이 t=300 부터 다르면 원인은 물류가 아니라
-      // 시작 조건이고, 후반에서만 다르면 습격 같은 되먹임이다.
-      for (var fp = 0; fp < FP_T.length; fp++) {
-        if (fpMark[fp] || t < FP_T[fp]) continue;
-        // 게임이 결정론 검정용으로 내놓는 상태 지문을 쓴다 — 엔티티 하나하나의
-        // 재고·진행도까지 들어가므로, 내가 고른 몇 숫자보다 훨씬 잘게 갈린다.
-        fpMark[fp] = FP_T[fp] + ':' + G.stateHash();
-      }
 
       // 철판 재고의 최대치 — "흐름은 넉넉한데 재고가 없다"를 숫자로 남긴다.
       // 한 순간에 얼마를 쥘 수 있었는지가 큰 구매의 가능 여부를 정한다.
@@ -1617,6 +1621,7 @@
         G.run(s2.enemies > 0 ? CYCLE_T_COMBAT : CYCLE_T);
         try { logistics(); } catch (e1) { out.fails.push('logistics: ' + (e1 && e1.message)); }
         nextTech();
+        fpTick();
       }
       st = G.state(); t = st.t;
       lastPoll = t;
@@ -1678,6 +1683,7 @@
     var missingN = allKinds.filter(function (k) { return !seenNodes[k]; });
 
     out.measured = {
+      fingerprints: fpMark,
       seed: SEED, gameMinutes: Math.round(st.t / 60), entities: st.entityCount,
       research: st.research.done, techCount: st.research.done.length,
       buildingsBuilt: Object.keys(built).length, missingBuildings: missingB,
@@ -1695,8 +1701,7 @@
     };
 
     chk('clear.ranFullDuration', st.t >= END_T - 2,
-      '게임 시각 ' + Math.round(st.t) + 's (' + Math.round(st.t / 60) + '분) · 궤적지문 ' +
-      fpMark.filter(Boolean).join(' '));
+      '게임 시각 ' + Math.round(st.t) + 's (' + Math.round(st.t / 60) + '분)');
     chk('clear.noRuntimeErrors', G.errors().length === 0, G.errors().join(' | ') || '없음');
     chk('clear.noPlaceFailures', out.fails.length === 0,
       '배치·단계 실패 ' + out.fails.length + '건' +

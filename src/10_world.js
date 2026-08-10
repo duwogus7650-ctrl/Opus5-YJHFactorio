@@ -82,6 +82,14 @@ function generateWorld(seed) {
   world.terr.fill(0); world.ore.fill(0); world.oreAmt.fill(0);
   world.tree.fill(0); world.occ.fill(0);
   world.poll.fill(0); world.pollNext.fill(0);
+  // **확산 타이머도 판에 딸린 상태다.** 이걸 안 되돌려서 결정성이 깨져 있었다:
+  // 페이지가 열리고 드라이버가 reset 을 부르기까지 게임이 실시간으로 잠깐 돌고,
+  // 그 사이 pollTimer 에 [0, 0.25) 의 잔여 위상이 남는다. 판을 새로 깔아도 그
+  // 위상이 살아남아 확산·감쇠 스텝이 매 주행 다른 게임 시각에 떨어졌다.
+  // 그 0.1% 짜리 오염 차이가 진화도 → 습격 규모로 증폭돼, 40분 주행의 습격 손실과
+  // 최저 전력 만족도가 주행마다 달라졌다(게이트가 PASS/FAIL 을 오갔다).
+  // gameTime·accumulator·신호 버스와 같은 부류이고, 그것들은 이미 되돌리고 있었다.
+  pollTimer = 0;
   world.totalPollution = 0;
   world.absorbedByTrees = 0;
   world.minedTotal = 0;

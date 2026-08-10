@@ -795,9 +795,19 @@ window.__GAME = {
   },
 
   // 결정론 검정용 상태 지문
+  //
+  // **오염 격자가 빠져 있었고, 그래서 결정성이 깨진 것을 이 지문이 못 봤다.**
+  // 예전에는 누적 발생량(totalPollution)만 넣었는데 그건 배출량이라 확산·감쇠와
+  // 무관하다. 확산 타이머가 안 되돌려져 매 주행 위상이 달랐을 때, 격자 총량은
+  // 갈리는데 이 지문은 끝까지 같은 값을 냈다 — 지문이 못 보는 상태는 지문이 없는
+  // 것과 같다. 진화도(evolution)도 같은 이유로 넣는다. 격자는 칸마다 넣으면
+  // 지문이 너무 커지므로 총량을 충분히 잘게 반올림해 넣는다.
   stateHash: function () {
+    var pollSum = 0;
+    for (var pz = 0; pz < world.poll.length; pz++) pollSum += world.poll[pz];
     var s = [Math.round(gameTime * 1000), entOrder.length, world.minedTotal,
-             Math.round(world.totalPollution * 1000), enemies.length];
+             Math.round(world.totalPollution * 1000), Math.round(pollSum * 1000),
+             Math.round(evolution * 1e6), enemies.length];
     for (var i = 0; i < entOrder.length; i++) {
       var e = entities[entOrder[i]];
       s.push(e.id, e.tx, e.ty, e.dir, Math.round(e.hp), e.enabled ? 1 : 0,
