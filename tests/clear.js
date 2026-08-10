@@ -59,6 +59,13 @@
   // 바깥에 삐져나온 발전기 한 대가 매 파도의 첫 표적이 된다.
   var CX = 80, CY = 80;
   var IN_R = 22;
+  // **고리 기하는 건드리지 않는다.** 남은 손실 1건이 바깥에 혼자 선 터렛이라
+  // (turret@101,65) 두 가지를 시도했는데 둘 다 더 나빴다:
+  //   안쪽 대각선 4자리 추가 → 초반 자재를 더 먹어 증기·철도·제어기가 밀리고
+  //                            습격 26 → 47 회, 손실 3, 노드 커버리지 32 → 28
+  //   바깥 반경 26 → 20      → 터렛 자리가 공장 영역과 겹쳐 배치가 서로 밀어내고
+  //                            노드 26/32, 열차는 아예 못 움직였다
+  // 이 판의 좌표들은 서로 맞물려 있어서, 고리를 옮기면 공장 배치가 통째로 흔들린다.
   var RING_R = 26, RING_N = 20;
 
   var WANT = {};                     // 기계 id -> 의도한 레시피
@@ -256,6 +263,37 @@
     if ((st.inventory['coal'] || 0) > (steamParts.boiler ? 60 : 45) || coalMiners >= coalCap) return;
     if (!afford('miner')) return;
     if (mineOn('coal', 71, 76)) { coalMiners++; note('석탄 채광 ' + coalMiners + '대'); }
+  }
+  // 터렛도 계획이 아니라 **되먹임**이어야 한다. 이 파일은 그렇게 적어 놓고(아래
+  // buildRing 위 주석) 실제로는 터렛을 작업 줄에 매달아 두고 있었다. 그래서 5~9번째
+  // 터렛이 줄 차례를 기다리다 **피해가 난 뒤에** 섰다:
+  //   t=1063  터렛 4기 · 잃은 건물 1
+  //   t=1129  터렛 4기 · 잃은 건물 6 · 발전기 5→2대 · 전력 만족도 48%
+  //   t=1197  터렛 8기 (이미 늦었다)
+  // 전력 게이트가 실패한 원인이 석탄도 발전기 수도 아니라 **발전기가 부서진 것**이다.
+  // 위협은 진화도로 읽힌다 — 그에 비례해 미리 세운다. 자재는 발전기와 같은 급으로
+  // 먼저 가져간다(손실 0 은 타협할 수 있는 게이트가 아니다).
+  function wantTurrets(evo) {
+    // 기본 6기 + 진화 6%당 한 기. 4기로 시작했더니 진화 27% 시점(t≈1002)에 5기밖에
+    // 못 서서 건물 하나를 잃었다 — 자재가 모이는 속도가 위협이 자라는 속도를 못 따라간다.
+    // 초반 여유분을 미리 얹어 그 격차를 메운다.
+    return Math.min(ring.length, 6 + Math.floor(evo * 100 / 6));
+  }
+  function autoTurret() {
+    if (!techOk('turret')) return;
+    var st = G.state();
+    if (TURRETS >= wantTurrets(st.evolution)) return;
+    if (!afford('turret')) return;
+    // **제어기 몫은 남긴다.** 터렛은 철판 20 을 먹고 제어기는 철판 5 + 회로 5 를
+    // 먹는데(회로도 철판을 거쳐 온다), 되먹임 터렛을 붙이자마자 제어기 2·4 가 자재를
+    // 못 구해 안 섰다 — 노드 커버리지가 32/32 에서 29/32 로 후퇴했다. 방어를 고치면서
+    // 커버리지를 깨면 고친 게 아니다. 아직 안 세운 제어기가 있으면 여유분을 남긴다.
+    if (!ctrl2 || !ctrl4 || !ctrl5) {
+      var iv2 = invNow();
+      if ((iv2['iron-plate'] || 0) < 20 + 12) return;
+    }
+    if (nextRingTurret()) note('터렛 보강 ' + (TURRETS + 1) + '기 (진화 ' +
+                               Math.round(st.evolution * 100) + '%)');
   }
   // 광맥 자리는 **이미 전주가 덮은 곳을 먼저** 고른다. 안 그러면 채광기가 망 밖에
   // 서서 전기만 못 받은 채 멈춘다(스냅샷의 noNet 이 그것이다).
@@ -729,10 +767,16 @@
   // (용광로가 강철을 구우려면 재고에서 철판을 받아야 한다).
   var ironHold = 0, ironPeak = 0;
   function ironHoldTick() {
-    if (!researched('steel')) { ironHold = 0; return; }
+    // **터렛도 재고가 있어야 산다.** 되먹임 터렛을 붙였는데도 t=655~1263 동안 5기에서
+    // 멈춰 있었다 — 목표는 10기였다. 이유는 앞의 증기 발전소와 똑같다: 흐름은 넉넉한데
+    // craft 와 feed 가 매 사이클 철판을 0 으로 만들어 20 짜리 구매가 성립하지 않는다.
+    // 방어가 목표에 못 미치는 동안에는 터렛 한 기분(20) + 제어기 몫(12)을 남긴다.
+    var st0 = G.state();
+    var needTur = techOk('turret') && TURRETS < wantTurrets(st0.evolution);
+    if (!researched('steel')) { ironHold = needTur ? 32 : 0; return; }
     if (!steamDone) ironHold = 40;
     else if (!railDone) ironHold = 25;
-    else ironHold = 0;
+    else ironHold = needTur ? 32 : 0;
   }
   var steelFurn = null;
   function steelTick() {
@@ -1449,6 +1493,7 @@
     runBuyStages();
     craft();
     autoGen();
+    autoTurret();               // 전력과 같은 급 — 발전기가 부서지면 전력도 없다
     autoCoal();
     autoBrick();
     autoStone();
@@ -1754,8 +1799,15 @@
       '심화 ' + (advIds.length - advFail.length) + '/' + advIds.length + '단계 통과' +
       (advFail.length ? ' · 못 넘은 것: ' + advFail.join(',') : ''));
 
+    // **뚫린 자리를 같이 말한다.** 게임은 파괴 목록(무엇을·언제·어디서)을 이미
+    // 들고 있는데 게이트는 개수만 보고했다. "손실 1" 로는 터렛을 더 세울지, 다른
+    // 면을 막을지, 그 건물이 애초에 고리 밖이었는지를 구별할 수 없다.
+    var ll = (st.waves.lostList || []).slice(-5).map(function (e) {
+      return e.type + '@' + e.x + ',' + e.y + '(t=' + e.t + ')';
+    });
     chk('clear.defenseHeld', st.waves.lost === 0 && st.waves.waves >= 1,
-      '습격 ' + st.waves.waves + '회 · 격추 ' + st.waves.killed + ' · 손실 ' + st.waves.lost);
+      '습격 ' + st.waves.waves + '회 · 격추 ' + st.waves.killed + ' · 손실 ' + st.waves.lost +
+      (ll.length ? ' · 뚫린 자리: ' + ll.join(' ') : ''));
     chk('clear.powerHeld', worstSat >= 0.5,
       '최저 전력 만족도 ' + (worstSat * 100).toFixed(1) + '%');
 
