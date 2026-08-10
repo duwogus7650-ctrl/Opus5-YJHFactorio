@@ -292,8 +292,41 @@
       var iv2 = invNow();
       if ((iv2['iron-plate'] || 0) < 20 + 12) return;
     }
-    if (nextRingTurret()) note('터렛 보강 ' + (TURRETS + 1) + '기 (진화 ' +
-                               Math.round(st.evolution * 100) + '%)');
+    // **뒤처졌으면 한 사이클에 여러 기를 세운다.** 한 기씩만 세우면 위협이 자라는
+    // 속도를 못 따라간다 — 제철을 늘려 오염이 커지자 습격이 빨라져 t=507 에 발전기를
+    // 잃었다(그 시점 목표 8기, 실제 3기). 목표와의 격차만큼 따라잡는다.
+    var gap = wantTurrets(st.evolution) - TURRETS;
+    var built = 0;
+    while (built < Math.min(3, gap) && afford('turret') && nextRingTurret()) built++;
+    if (built) note('터렛 보강 +' + built + '기 (진화 ' + Math.round(st.evolution * 100) + '%)');
+  }
+  // 제철도 되먹임으로 늘린다. **한 쌍(채광기+용광로)은 철판 15장을 쓰고 20분에
+  // 370장을 돌려준다** — 채광기 0.5광석/s, 용광로 0.31판/s 이므로 명백히 남는
+  // 장사인데, 작업 줄에 묶여 있으면 앞의 항목이 자재를 기다리는 동안 같이 늦어진다.
+  // 실측으로 40분에 철판 5847장이 나왔고 그중 톱니 2612 · 탄약 1256 이 나갔다.
+  // 녹색 연구팩의 병목은 벨트(128개)였고, 벨트는 톱니를 거쳐 철에서 온다 —
+  // **연구가 안 되는 이유는 결국 철이다.**
+  //
+  // 초반에만 짓는다: 회수에 20분이 걸리므로 후반에 지으면 그 자재만 잃는다.
+  // 재고에 여유가 있을 때만 짓는다 — 이 공장은 철판 재고가 상시 0 이지만 초반
+  // (t<600)에는 97 까지 오른 적이 있다(스냅샷). 그 여유분만 쓴다.
+  var ironPairs = 0;
+  function autoIron() {
+    var st = G.state();
+    // **방어가 설 때까지 기다리지는 않는다.** 제철은 오염을 키워 첫 습격을 세게 만들고
+    // 실제로 그 때문에 발전기 하나를 잃는다(t=507). 그래서 '터렛 4기 뒤에' 로 미뤄
+    // 봤더니 회수 기간(20분)이 모자라 얻은 것을 전부 잃었다 — 연구 7→6종, 탱크 못 삼,
+    // 노드 32→29. **철은 이르게 늘려야 값이 나온다.** 초반 손실 한 건은 그 대가다.
+    if (st.t > 1200 || ironPairs >= 6) return;
+    var iv = st.inventory;
+    if ((iv['iron-plate'] || 0) < 35 || (iv['brick'] || 0) < 8 || (iv['gear'] || 0) < 6) return;
+    if (!afford('miner') || !afford('furnace')) return;
+    var m = mineOn('iron-ore', 89, 74);
+    if (!m) return;
+    var f = placeIn('furnace', EAST_RC, 0, 'iron-plate');
+    if (!f || f === 'mat' || f === 'tech' || f === 'nocover') return;   // 채광기만 서도 광석은 쌓인다
+    ironPairs++;
+    note('제철 보강 ' + ironPairs + '쌍 (채광기+용광로)');
   }
   // 광맥 자리는 **이미 전주가 덮은 곳을 먼저** 고른다. 안 그러면 채광기가 망 밖에
   // 서서 전기만 못 받은 채 멈춘다(스냅샷의 noNet 이 그것이다).
@@ -1537,6 +1570,7 @@
     craft();
     autoGen();
     autoTurret();               // 전력과 같은 급 — 발전기가 부서지면 전력도 없다
+    autoIron();                 // 철이 모든 것의 상류다
     autoCoal();
     autoBrick();
     autoStone();
