@@ -279,6 +279,38 @@ MUTATIONS = [
      b'function curSteps() { return TUTORIAL_STEPS; }',
      ['adv.terminates']),
 
+    # ---- 청사진 회전 ----
+    # 좌표만 돌리고 방향을 안 돌리면 라인 모양은 맞는데 흐름이 옛 방향 그대로다.
+    # 4회전 항등이 그것을 잡는다(방향이 안 돌면 절대 제자리로 안 온다).
+    ('회전이 방향은 그대로 두고 좌표만 돌린다', '34_blueprint.js',
+     b'    n.d = dirCW(it.d | 0);',
+     b'    n.d = it.d | 0;',
+     ['bp.rotateTurnsDirections']),
+
+    # 방향에 따라 발자국이 바뀌는 것(분배기)을 무시하면 좌표가 한 칸씩 어긋난다.
+    ('회전이 정의값 크기를 쓴다 (방향별 발자국 무시)', '34_blueprint.js',
+     b'  if (B.rot && (dir === 1 || dir === 3) && w !== h) { var t = w; w = h; h = t; }',
+     b'  if (false) { var t = w; w = h; h = t; }',
+     ['bp.rotateMapsCoordinates']),
+
+    # 회전 축이 틀리면(H 를 안 빼면) 청사진이 원점 밖으로 나가 서로 겹친다.
+    ('회전이 원점을 안 맞춘다 (H - dy - h 대신 dy)', '34_blueprint.js',
+     b'    n.dx = H - it.dy - s[1];',
+     b'    n.dx = it.dy;',
+     ['bp.rotateMapsCoordinates']),
+
+    # 붙여넣기 중 R 이 청사진 대신 도구를 돌리면, 화면에서는 아무 일도 안 일어난다.
+    ('붙여넣기 중 회전이 도구만 돌린다', '50_ui.js',
+     b"  if (bpMode === 'paste' && blueprint) {",
+     b'  if (false) {',
+     ['ui.blueprintRKeyRotates'], 'uismoke.js'),
+
+    # 회전 버튼이 공용 손잡이를 안 쓰면 키보드 없는 기기에서 청사진 회전이 사라진다.
+    ('회전 버튼이 도구만 돌린다 (폰에서 청사진 회전 불가)', '50_ui.js',
+     b"  on('btnRotate', function () { rotateAction(); renderBuildList(); });",
+     b"  on('btnRotate', function () { toolDir = dirCW(toolDir); renderBuildList(); });",
+     ['mobile.blueprintRotateWithoutKeyboard'], 'mobile.js'),
+
     # ---- 결정론 (determinism.js 로 판정) ----
     # 이 한 줄이 없어서 40분 완주 주행이 주행마다 다른 결과를 냈다. 리셋이 되돌리지
     # 않는 상태가 하나만 있어도, 페이지가 열리고 리셋되기까지 실시간으로 돈 시간이
@@ -511,9 +543,9 @@ MUTATIONS = [
     # 이 게이트는 처음에 "버튼이 보이는가" 만 봐서 MISS 가 났다 — 손잡이를 떼도
     # 버튼은 그대로 보였기 때문이다. 지금은 눌러서 방향이 바뀌는지로 판정한다.
     ('회전 버튼의 손잡이를 뗀다 (버튼은 남고 아무 일도 안 한다)', '50_ui.js',
-     b"  on('btnRotate', function () { toolDir = dirCW(toolDir); renderBuildList(); });",
-     b"  on('__nope', function () { toolDir = dirCW(toolDir); renderBuildList(); });",
-     ['mobile.rotateWithoutKeyboard'], 'mobile.js'),
+     b"  on('btnRotate', function () { rotateAction(); renderBuildList(); });",
+     b"  on('__nope', function () { rotateAction(); renderBuildList(); });",
+     ['mobile.rotateWithoutKeyboard', 'mobile.blueprintRotateWithoutKeyboard'], 'mobile.js'),
 
     # 폰에는 우클릭이 없다 — 철거가 막히면 잘못 놓은 건물을 영영 못 지운다
     ('철거 모드가 아무것도 안 부순다', '50_ui.js',

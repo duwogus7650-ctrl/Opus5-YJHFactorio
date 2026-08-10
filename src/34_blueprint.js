@@ -75,6 +75,41 @@ function captureBlueprint(x0, y0, x1, y1) {
   return { count: items.length, w: blueprint.w, h: blueprint.h };
 }
 
+// --- 회전 -------------------------------------------------------------------
+// **좌표를 돌리는 것과 방향을 돌리는 것은 따로다.** 항목의 상대 좌표를 90도 돌리고,
+// 그 항목 자신의 dir 도 한 칸 돌린다. 둘 중 하나만 하면 벨트가 제자리에서 엉뚱한
+// 곳을 가리키거나(방향만), 라인 모양은 돌았는데 흐름은 옛 방향 그대로가 된다(좌표만).
+//
+// 크기는 **지금 방향 기준의 실제 발자국**을 써야 한다. 분배기는 2x1 인데 dir 1·3
+// 에서는 1x2 로 서므로(canPlace 가 그렇게 정한다), 정의값 w·h 를 그대로 쓰면 회전
+// 뒤 자리가 한 칸씩 어긋난다. 그 규칙을 여기서 다시 쓰지 않고 같은 식을 부른다.
+function bpEffSize(type, dir) {
+  var B = BUILDINGS[type];
+  if (!B) return [1, 1];
+  var w = B.w, h = B.h;
+  if (B.rot && (dir === 1 || dir === 3) && w !== h) { var t = w; w = h; h = t; }
+  return [w, h];
+}
+
+// 시계 방향 90도. (x, y) → (H-1-y, x) 이고, 직사각형은 좌상단이 바뀐다:
+//   새 좌상단 = (H - dy - h, dx),  새 크기 = (h, w)
+// **네 번 돌리면 원래대로**여야 한다 — 그 성질이 게이트의 오라클이다. 좌표만 맞고
+// dir 이 안 돌면 4회전이 제자리로 안 온다.
+function rotateBlueprint() {
+  if (!blueprint) return null;
+  var H = blueprint.h;
+  var ents = blueprint.ents.map(function (it) {
+    var s = bpEffSize(it.t, it.d);
+    var n = JSON.parse(JSON.stringify(it));
+    n.dx = H - it.dy - s[1];
+    n.dy = it.dx;
+    n.d = dirCW(it.d | 0);
+    return n;
+  });
+  blueprint = { w: blueprint.h, h: blueprint.w, ents: ents };
+  return { w: blueprint.w, h: blueprint.h, count: ents.length };
+}
+
 // 이 청사진을 다 지으려면 무엇이 얼마나 드는가 (UI 가 보여 준다)
 function blueprintCost(bp) {
   bp = bp || blueprint;

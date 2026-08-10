@@ -248,6 +248,25 @@
         '회전 버튼 표시=' + onScreen(rotBtn) + ' · 탭 → 방향 ' + dir0 + ' → ' + dir1 +
         ' (R 키는 폰에 없다)');
 
+      // **청사진 회전도 같은 버튼으로 닿아야 한다.** R 키에만 갈림길을 넣으면
+      // 키보드가 없는 기기에서 청사진 회전은 존재하지 않는 기능이 된다.
+      var mbChest = G.place('chest', 60, 60, 0);
+      var mbPole = G.place('pole', 62, 60, 0);
+      var mbCap = G.bpCapture(59, 59, 63, 61);       // 5 x 3 — 정사각형이면 못 잰다
+      G.ui.setBpMode('paste');
+      var mbBefore = G.bpInfo();
+      if (rotBtn) tap(rotBtn, 10, 10);
+      var mbAfter = G.bpInfo();
+      chk('mobile.blueprintRotateWithoutKeyboard',
+        !!mbChest && !!mbPole && mbCap.count === 2 && !!mbBefore && !!mbAfter &&
+        mbBefore.w !== mbBefore.h &&
+        mbAfter.w === mbBefore.h && mbAfter.h === mbBefore.w,
+        '붙여넣기 모드에서 회전 버튼 탭 → 청사진 ' +
+        (mbBefore ? mbBefore.w + 'x' + mbBefore.h : '?') + ' → ' +
+        (mbAfter ? mbAfter.w + 'x' + mbAfter.h : '?') + ' (가로세로가 바뀌어야)');
+      G.ui.setBpMode(null);
+      G.bpClear();
+
       if (techBtn) tap(techBtn, 10, 10);
       var techOn = onScreen(document.getElementById('tech'));
       chk('mobile.techWithoutKeyboard', onScreen(techBtn) && techOn,

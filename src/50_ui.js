@@ -126,6 +126,19 @@ var pickMode = null;      // 제어기 노드가 지도에서 대상을 고르�
 // 두 모드뿐이다: 'sel' 은 영역을 끌어 담는 중, 'paste' 는 담은 것을 놓는 중.
 // B 로 돌린다 — 담은 게 없으면 담기, 있으면 놓기/다시 담기.
 var bpMode = null;
+// **R 키와 회전 버튼이 같은 손잡이를 쓴다.** 원래 키는 도구 방향만 돌렸고, 회전을
+// 청사진에도 붙이면서 키 쪽에만 갈림길을 넣었다 — 그러면 키보드가 없는 기기에서는
+// 청사진 회전이 아예 닿지 않는다. 진입점이 없으면 기능은 있어도 없는 것과 같다.
+// 붙여넣기 중이면 손에 든 것은 도구가 아니라 청사진이므로 그쪽을 돌린다.
+function rotateAction() {
+  if (bpMode === 'paste' && blueprint) {
+    var rr = rotateBlueprint();
+    toast('청사진 회전 — ' + rr.w + 'x' + rr.h);
+    return 'bp';
+  }
+  toolDir = dirCW(toolDir);
+  return 'tool';
+}
 function toggleBlueprint() {
   if (bpMode) { bpMode = null; bpSelStart = null; toast('청사진 모드 해제'); }
   else if (blueprint) { bpMode = 'paste'; selectTool(null); toast('청사진 붙여넣기 — 좌클릭으로 배치, B 로 다시 담기'); }
@@ -357,7 +370,7 @@ function bindInput(canvas) {
     // 키는 피한다. 진입점이 없으면 저장 기능은 있어도 없는 것과 같다.
     if (k === 'F2') { ev.preventDefault(); saveGame(); return; }
     if (k === 'F3') { ev.preventDefault(); loadGame(); return; }
-    if (k === 'r' || k === 'R') { toolDir = dirCW(toolDir); return; }
+    if (k === 'r' || k === 'R') { rotateAction(); return; }
     if (k === 't' || k === 'T') { toggleTech(); return; }
     if (k === 'h' || k === 'H' || k === '?') { toggleHelp(); return; }
     if (k === 'p' || k === 'P') { showPollution = !showPollution; return; }
@@ -1076,13 +1089,16 @@ function fillHelp() {
     '담으면 곧바로 붙여넣기 모드가 되고, <b>좌클릭</b> 한 번으로 그 자리에 지어진다.',
     '놓일 자리는 미리 파랗게 보이고, <b>못 놓는 칸은 빨갛게</b> 보인다 — 붙이기 전에 몇 개가',
     '건너뛸지 알 수 있다. 다시 <code>B</code> 를 누르면 해제된다.</p>',
+    '<p>붙이기 전에 <code>R</code>(폰은 [회전] 버튼)로 <b>90도씩 돌릴 수 있다</b>.',
+    '모양만 도는 것이 아니라 <b>벨트·인서터의 방향도 같이 돈다</b> — 돌린 라인은 돌린 쪽으로',
+    '흐른다. 네 번 누르면 원래대로다.</p>',
     '<p><b>제어기의 규칙과 배선까지 따라온다.</b> 그게 이 기능의 값이다 — 두 번째 라인을 만들 때',
     '회로를 손으로 다시 그리지 않아도 된다. 영역 <b>안</b>의 기계를 가리키던 참조는 사본의 기계로',
     '갈아 끼워지고, 영역 <b>밖</b>을 가리키던 참조는 <b>끊긴다</b>(대상 고르기 상태가 된다) —',
     '안 끊으면 붙여넣은 사본이 원본의 기계를 지배해서, 왜 멈췄는지 짚을 수 없게 된다.</p>',
     '<p>세 가지는 알아 두는 편이 낫다. <b>재료는 실제로 나간다</b>(공짜로 지으면 치트다).',
     '<b>내용물은 안 따라온다</b> — 상자 재고·벨트 위 아이템·연료는 계획이 아니라 화물이고,',
-    '따라오면 청사진이 복제기가 된다. 그리고 <b>회전은 아직 없다</b> — 담은 방향 그대로만 붙는다.</p>',
+    '따라오면 청사진이 복제기가 된다. <b>원가는 회전해도 그대로다</b> — 회전은 모양만 바꾼다.</p>',
     '<h4>증기 발전 — 버퍼가 생기면 제어가 달라진다</h4>',
     '<p>강철 제련을 연구하면 <b>파이프·지하수 펌프·보일러·증기기관</b>이 열린다.',
     '<code>펌프 → 파이프 → 보일러 → 파이프 → 증기기관</code> 으로 <b>맞대어</b> 놓으면 한 유체망이 된다 —',
@@ -1219,7 +1235,7 @@ function bindMobileBar() {
   function on(id, fn) { var b = document.getElementById(id); if (b) b.onclick = fn; }
   on('btnSheetBuild', function () { toggleSheet('build'); });
   on('btnSheetRight', function () { toggleSheet('right'); });
-  on('btnRotate', function () { toolDir = dirCW(toolDir); renderBuildList(); });
+  on('btnRotate', function () { rotateAction(); renderBuildList(); });
   on('btnDemolish', function () { setDemolish(!demolishMode); });
   // 폰에는 B 키가 없다. 단축키만 두면 청사진은 폰에서 존재하지 않는 기능이 된다.
   on('btnBlueprint', function () { toggleBlueprint(); });

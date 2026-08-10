@@ -454,6 +454,15 @@ window.__GAME = {
              types: blueprint.ents.map(function (i) { return i.t; }),
              cost: blueprintCost() };
   },
+  bpRotate: function () { return rotateBlueprint(); },
+  // 청사진 항목의 상대 좌표·방향을 그대로 돌려준다. 회전 게이트가 "어디로 갔는지"를
+  // 좌표 단위로 대조해야 하는데, bpInfo 는 종류와 원가만 알려 준다.
+  bpEnts: function () {
+    if (!blueprint) return [];
+    return blueprint.ents.map(function (i) {
+      return { t: i.t, dx: i.dx, dy: i.dy, d: i.d };
+    });
+  },
   bpClear: function () { blueprint = null; return true; },
   // 열차 — 시험도 플레이어와 같은 경로(레일 위 배치)로만 만든다
   trainAdd: function (tx, ty) { var t = addTrain(tx, ty); return t ? t.id : null; },
@@ -1060,6 +1069,10 @@ window.__GAME = {
     panGraph: function (dx, dy) { gpan.x += dx; gpan.y += dy; applyPan(); return { x: gpan.x, y: gpan.y }; },
     graphPan: function () { return { x: gpan.x, y: gpan.y, z: gpan.z }; },
     curDir: function () { return toolDir; },
+    // 청사진 모드는 UI 상태다. 시험이 "붙여넣기 중" 상황을 만들려면 여기로 들어온다
+    // (드래그로 담으면 자동으로 paste 가 되지만, 터치 리그는 그 드래그를 안 거친다).
+    setBpMode: function (m) { bpMode = m; return bpMode; },
+    bpMode: function () { return bpMode; },
     logicOpen: function () { return logicOpen; },
     selectedId: function () { return selected; },
     panelText: function (sel) { var el = document.querySelector(sel); return el ? el.textContent.trim() : null; },

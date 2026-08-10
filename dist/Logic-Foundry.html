@@ -2545,6 +2545,41 @@ function captureBlueprint(x0, y0, x1, y1) {
   return { count: items.length, w: blueprint.w, h: blueprint.h };
 }
 
+// --- 회전 -------------------------------------------------------------------
+// **좌표를 돌리는 것과 방향을 돌리는 것은 따로다.** 항목의 상대 좌표를 90도 돌리고,
+// 그 항목 자신의 dir 도 한 칸 돌린다. 둘 중 하나만 하면 벨트가 제자리에서 엉뚱한
+// 곳을 가리키거나(방향만), 라인 모양은 돌았는데 흐름은 옛 방향 그대로가 된다(좌표만).
+//
+// 크기는 **지금 방향 기준의 실제 발자국**을 써야 한다. 분배기는 2x1 인데 dir 1·3
+// 에서는 1x2 로 서므로(canPlace 가 그렇게 정한다), 정의값 w·h 를 그대로 쓰면 회전
+// 뒤 자리가 한 칸씩 어긋난다. 그 규칙을 여기서 다시 쓰지 않고 같은 식을 부른다.
+function bpEffSize(type, dir) {
+  var B = BUILDINGS[type];
+  if (!B) return [1, 1];
+  var w = B.w, h = B.h;
+  if (B.rot && (dir === 1 || dir === 3) && w !== h) { var t = w; w = h; h = t; }
+  return [w, h];
+}
+
+// 시계 방향 90도. (x, y) → (H-1-y, x) 이고, 직사각형은 좌상단이 바뀐다:
+//   새 좌상단 = (H - dy - h, dx),  새 크기 = (h, w)
+// **네 번 돌리면 원래대로**여야 한다 — 그 성질이 게이트의 오라클이다. 좌표만 맞고
+// dir 이 안 돌면 4회전이 제자리로 안 온다.
+function rotateBlueprint() {
+  if (!blueprint) return null;
+  var H = blueprint.h;
+  var ents = blueprint.ents.map(function (it) {
+    var s = bpEffSize(it.t, it.d);
+    var n = JSON.parse(JSON.stringify(it));
+    n.dx = H - it.dy - s[1];
+    n.dy = it.dx;
+    n.d = dirCW(it.d | 0);
+    return n;
+  });
+  blueprint = { w: blueprint.h, h: blueprint.w, ents: ents };
+  return { w: blueprint.w, h: blueprint.h, count: ents.length };
+}
+
 // 이 청사진을 다 지으려면 무엇이 얼마나 드는가 (UI 가 보여 준다)
 function blueprintCost(bp) {
   bp = bp || blueprint;
@@ -5303,6 +5338,19 @@ var pickMode = null;      // 제어기 노드가 지도에서 대상을 고르�
 // 두 모드뿐이다: 'sel' 은 영역을 끌어 담는 중, 'paste' 는 담은 것을 놓는 중.
 // B 로 돌린다 — 담은 게 없으면 담기, 있으면 놓기/다시 담기.
 var bpMode = null;
+// **R 키와 회전 버튼이 같은 손잡이를 쓴다.** 원래 키는 도구 방향만 돌렸고, 회전을
+// 청사진에도 붙이면서 키 쪽에만 갈림길을 넣었다 — 그러면 키보드가 없는 기기에서는
+// 청사진 회전이 아예 닿지 않는다. 진입점이 없으면 기능은 있어도 없는 것과 같다.
+// 붙여넣기 중이면 손에 든 것은 도구가 아니라 청사진이므로 그쪽을 돌린다.
+function rotateAction() {
+  if (bpMode === 'paste' && blueprint) {
+    var rr = rotateBlueprint();
+    toast('청사진 회전 — ' + rr.w + 'x' + rr.h);
+    return 'bp';
+  }
+  toolDir = dirCW(toolDir);
+  return 'tool';
+}
 function toggleBlueprint() {
   if (bpMode) { bpMode = null; bpSelStart = null; toast('청사진 모드 해제'); }
   else if (blueprint) { bpMode = 'paste'; selectTool(null); toast('청사진 붙여넣기 — 좌클릭으로 배치, B 로 다시 담기'); }
@@ -5534,7 +5582,7 @@ function bindInput(canvas) {
     // 키는 피한다. 진입점이 없으면 저장 기능은 있어도 없는 것과 같다.
     if (k === 'F2') { ev.preventDefault(); saveGame(); return; }
     if (k === 'F3') { ev.preventDefault(); loadGame(); return; }
-    if (k === 'r' || k === 'R') { toolDir = dirCW(toolDir); return; }
+    if (k === 'r' || k === 'R') { rotateAction(); return; }
     if (k === 't' || k === 'T') { toggleTech(); return; }
     if (k === 'h' || k === 'H' || k === '?') { toggleHelp(); return; }
     if (k === 'p' || k === 'P') { showPollution = !showPollution; return; }
@@ -6253,13 +6301,16 @@ function fillHelp() {
     '담으면 곧바로 붙여넣기 모드가 되고, <b>좌클릭</b> 한 번으로 그 자리에 지어진다.',
     '놓일 자리는 미리 파랗게 보이고, <b>못 놓는 칸은 빨갛게</b> 보인다 — 붙이기 전에 몇 개가',
     '건너뛸지 알 수 있다. 다시 <code>B</code> 를 누르면 해제된다.</p>',
+    '<p>붙이기 전에 <code>R</code>(폰은 [회전] 버튼)로 <b>90도씩 돌릴 수 있다</b>.',
+    '모양만 도는 것이 아니라 <b>벨트·인서터의 방향도 같이 돈다</b> — 돌린 라인은 돌린 쪽으로',
+    '흐른다. 네 번 누르면 원래대로다.</p>',
     '<p><b>제어기의 규칙과 배선까지 따라온다.</b> 그게 이 기능의 값이다 — 두 번째 라인을 만들 때',
     '회로를 손으로 다시 그리지 않아도 된다. 영역 <b>안</b>의 기계를 가리키던 참조는 사본의 기계로',
     '갈아 끼워지고, 영역 <b>밖</b>을 가리키던 참조는 <b>끊긴다</b>(대상 고르기 상태가 된다) —',
     '안 끊으면 붙여넣은 사본이 원본의 기계를 지배해서, 왜 멈췄는지 짚을 수 없게 된다.</p>',
     '<p>세 가지는 알아 두는 편이 낫다. <b>재료는 실제로 나간다</b>(공짜로 지으면 치트다).',
     '<b>내용물은 안 따라온다</b> — 상자 재고·벨트 위 아이템·연료는 계획이 아니라 화물이고,',
-    '따라오면 청사진이 복제기가 된다. 그리고 <b>회전은 아직 없다</b> — 담은 방향 그대로만 붙는다.</p>',
+    '따라오면 청사진이 복제기가 된다. <b>원가는 회전해도 그대로다</b> — 회전은 모양만 바꾼다.</p>',
     '<h4>증기 발전 — 버퍼가 생기면 제어가 달라진다</h4>',
     '<p>강철 제련을 연구하면 <b>파이프·지하수 펌프·보일러·증기기관</b>이 열린다.',
     '<code>펌프 → 파이프 → 보일러 → 파이프 → 증기기관</code> 으로 <b>맞대어</b> 놓으면 한 유체망이 된다 —',
@@ -6396,7 +6447,7 @@ function bindMobileBar() {
   function on(id, fn) { var b = document.getElementById(id); if (b) b.onclick = fn; }
   on('btnSheetBuild', function () { toggleSheet('build'); });
   on('btnSheetRight', function () { toggleSheet('right'); });
-  on('btnRotate', function () { toolDir = dirCW(toolDir); renderBuildList(); });
+  on('btnRotate', function () { rotateAction(); renderBuildList(); });
   on('btnDemolish', function () { setDemolish(!demolishMode); });
   // 폰에는 B 키가 없다. 단축키만 두면 청사진은 폰에서 존재하지 않는 기능이 된다.
   on('btnBlueprint', function () { toggleBlueprint(); });
@@ -8547,6 +8598,15 @@ window.__GAME = {
              types: blueprint.ents.map(function (i) { return i.t; }),
              cost: blueprintCost() };
   },
+  bpRotate: function () { return rotateBlueprint(); },
+  // 청사진 항목의 상대 좌표·방향을 그대로 돌려준다. 회전 게이트가 "어디로 갔는지"를
+  // 좌표 단위로 대조해야 하는데, bpInfo 는 종류와 원가만 알려 준다.
+  bpEnts: function () {
+    if (!blueprint) return [];
+    return blueprint.ents.map(function (i) {
+      return { t: i.t, dx: i.dx, dy: i.dy, d: i.d };
+    });
+  },
   bpClear: function () { blueprint = null; return true; },
   // 열차 — 시험도 플레이어와 같은 경로(레일 위 배치)로만 만든다
   trainAdd: function (tx, ty) { var t = addTrain(tx, ty); return t ? t.id : null; },
@@ -9153,6 +9213,10 @@ window.__GAME = {
     panGraph: function (dx, dy) { gpan.x += dx; gpan.y += dy; applyPan(); return { x: gpan.x, y: gpan.y }; },
     graphPan: function () { return { x: gpan.x, y: gpan.y, z: gpan.z }; },
     curDir: function () { return toolDir; },
+    // 청사진 모드는 UI 상태다. 시험이 "붙여넣기 중" 상황을 만들려면 여기로 들어온다
+    // (드래그로 담으면 자동으로 paste 가 되지만, 터치 리그는 그 드래그를 안 거친다).
+    setBpMode: function (m) { bpMode = m; return bpMode; },
+    bpMode: function () { return bpMode; },
     logicOpen: function () { return logicOpen; },
     selectedId: function () { return selected; },
     panelText: function (sel) { var el = document.querySelector(sel); return el ? el.textContent.trim() : null; },

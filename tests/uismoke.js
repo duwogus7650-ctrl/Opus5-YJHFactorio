@@ -879,6 +879,22 @@
         'B 키 → 영역 드래그 → 청사진 ' + (bpAfterDrag ? bpAfterDrag.count + '개 · ' +
         bpAfterDrag.w + 'x' + bpAfterDrag.h : '없음') + ' (상자·전주 2개여야)');
 
+      // **R 키가 붙여넣기 중에는 청사진을 돌려야 한다.** 모델 게이트는 G.bpRotate 를
+      // 직접 부르므로 "손에 청사진을 든 상태에서 R 을 누르면 무엇이 돌아가는가"를
+      // 전혀 보증하지 않는다. 원래 R 은 도구 방향을 돌리는 키라, 갈림길을 안 만들면
+      // 청사진은 그대로 두고 도구만 돌아간다 — 화면에서는 아무 일도 안 일어난다.
+      var bpBeforeRot = G.bpInfo();
+      key('r');
+      var bpAfterRot = G.bpInfo();
+      chk('ui.blueprintRKeyRotates',
+        !!bpBeforeRot && !!bpAfterRot &&
+        bpAfterRot.w === bpBeforeRot.h && bpAfterRot.h === bpBeforeRot.w &&
+        bpBeforeRot.w !== bpBeforeRot.h,
+        'R 키 → 청사진 ' + (bpBeforeRot ? bpBeforeRot.w + 'x' + bpBeforeRot.h : '?') + ' → ' +
+        (bpAfterRot ? bpAfterRot.w + 'x' + bpAfterRot.h : '?') +
+        ' (가로세로가 바뀌어야 · 정사각형이면 이 검사는 아무것도 안 본다)');
+      key('r'); key('r'); key('r');                // 네 번째 — 원래대로 되돌려 놓고 이어 간다
+
       // 담고 나면 곧바로 붙여넣기 모드다 — 좌클릭 한 번으로 지어져야 한다
       var entsBefore = G.state().entityCount;
       click(90, 90, 0);

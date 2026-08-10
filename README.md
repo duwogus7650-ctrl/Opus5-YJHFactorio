@@ -121,7 +121,7 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 | `우클릭` | 철거 (자원 전액 환급) |
 | `R` | 회전 · `Q` 커서 아래 건물 복제 |
 | `1`~`0` | 건설 단축키 · `T` 연구 · `P` 오염 표시 · `H` 도움말 |
-| `B` | 청사진 — 영역을 끌어 담고, 좌클릭으로 붙여넣기 |
+| `B` | 청사진 — 영역을 끌어 담고, `R` 로 돌리고, 좌클릭으로 붙여넣기 |
 | `F2` / `F3` | 저장 / 불러오기 (창고 패널 버튼과 같다, 저장 칸 1개) |
 | 제어기 **좌클릭** | 노드 편집기 |
 
@@ -160,8 +160,8 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 ```bash
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
-python tests/harness.py              # 모델 게이트 209건 (헤드리스 Edge)
-python tests/harness.py uismoke.js   # 클릭 경로 게이트 78건 (합성 마우스/키 이벤트)
+python tests/harness.py              # 모델 게이트 215건 (헤드리스 Edge)
+python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
 python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 37건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
 python tests/harness.py determinism.js  # 재현성 게이트 7건 (같은 씨앗 = 같은 결과)
@@ -187,26 +187,26 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
-harness.py             GREEN — 실검사 209건 전부 통과 (고의 실패 1건 정상 검출)
-harness.py uismoke.js  GREEN — 실검사 78건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 215건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py fullplay.js GREEN — 노드 32종·건물 20종 전수 37건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 131건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 136건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 13건 중 11건 통과 (아래 "완주 주행은 아직 RED다")
 ```
 
-| 엔진 | 모델 209 | 클릭 78 | 전수 37 | 부하차단 10 |
+| 엔진 | 모델 215 | 클릭 79 | 전수 37 | 부하차단 10 |
 |---|---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | GREEN | GREEN |
 | Chromium (Playwright) | GREEN | GREEN | GREEN | GREEN |
 | **Firefox** (Playwright) | GREEN | GREEN | GREEN | GREEN |
 | **WebKit** = Safari 엔진 (Playwright) | GREEN | GREEN | GREEN | GREEN |
 
-터치는 **진짜 `TouchEvent`** 가 만들어지는 조합만 센다: chromium mobile 25건 · chromium tablet
-25건 GREEN. webkit·firefox 는 Playwright 가 합성 터치를 못 만들어 **미검증으로 보고**하고
+터치는 **진짜 `TouchEvent`** 가 만들어지는 조합만 센다: chromium mobile 26건 · chromium tablet
+26건 GREEN. webkit·firefox 는 Playwright 가 합성 터치를 못 만들어 **미검증으로 보고**하고
 통과로 세지 않는다 — 못 잰 것을 GREEN 칸에 넣는 순간 그 표는 거짓말이 된다.
 
 #### 완주 주행은 아직 RED다
@@ -546,8 +546,21 @@ peek 과 take 가 서로 다른 아이템을 고르던 그 실패가 원형이�
 - **전부-아니면-전무가 아니다.** 막힌 칸·모자란 재료는 그 항목만 건너뛰고 나머지를 짓되,
   몇 개를 왜 건너뛰었는지 돌려준다. 큰 청사진이 한 칸 때문에 영영 안 붙는 것이 더 나쁘다.
 
-**회전은 아직 없다.** 분배기의 2칸 셀과 벨트 방향을 같이 돌려야 하는데, 이번에 얻으려던
-값(배선까지 복사)과 별개의 위험 구간이라 뺐다. 담은 방향 그대로만 붙는다.
+**회전은 `R`(폰은 [회전] 버튼)로 90도씩.** 좌표와 **방향을 함께** 돌린다 — 하나만 돌리면
+라인 모양은 맞는데 흐름이 옛 방향이거나(좌표만), 제자리에서 엉뚱한 곳을 가리킨다(방향만).
+크기는 정의값이 아니라 **지금 방향 기준의 실제 발자국**을 쓴다. 분배기는 2x1 인데 방향
+1·3 에서는 1x2 로 서기 때문에(`canPlace` 가 그렇게 정한다), 정의값을 그대로 쓰면 회전 뒤
+자리가 한 칸 어긋난다.
+
+게이트를 세울 때 두 번 헛디뎠고 둘 다 돌연변이가 짚었다. **담는 영역을 4x4 로 잡았더니**
+`rotateSwapsFootprint` 가 "4x4 → 4x4" 로 통과했다 — 정사각형에서는 가로세로가 바뀌어도
+같은 수다. 그리고 리그에 **방향 1 짜리 분배기가 없어서** 발자국 규칙을 지우는 돌연변이가
+그대로 살아남았다(MISS) — 규칙이 적용되는 입력이 없으면 그 규칙은 검정되지 않는다.
+
+`R` 은 원래 도구 방향을 돌리는 키다. 붙여넣기 중에는 손에 든 것이 도구가 아니라
+청사진이므로 그쪽을 돌린다. **키와 [회전] 버튼이 같은 손잡이(`rotateAction`)를 쓴다** —
+키 쪽에만 갈림길을 넣었더니 키보드가 없는 기기에서 청사진 회전이 통째로 닿지 않았고,
+그건 터치 게이트가 잡았다.
 
 ## 증기 발전 — 버퍼가 생기면 제어가 달라진다
 

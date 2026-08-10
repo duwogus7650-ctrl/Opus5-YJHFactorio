@@ -2754,6 +2754,101 @@
         '저장→복원 후 청사진 ' + (bpAfter ? bpAfter.count + '개 · ' + bpAfter.w + 'x' + bpAfter.h : '없음') +
         ' (3개 7x7 이어야)');
 
+      // --- 회전 ---------------------------------------------------------
+      // **좌표와 방향이 함께 돌아야 한다.** 하나만 돌면 라인 모양은 맞는데 흐름이
+      // 옛 방향이거나(좌표만), 제자리에서 엉뚱한 곳을 가리킨다(방향만). 그래서
+      // 오라클을 둘로 나눈다: (1) 알려진 배치의 좌표가 정확히 어디로 가는가,
+      // (2) 네 번 돌리면 원래대로 — 이건 dir 이 같이 안 돌면 절대 성립하지 않는다.
+      G.reset(8301); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(true); G.research('logistics'); G.research('steel');
+      // 3x1 벨트 줄(→ 방향) + 분배기 하나. 분배기는 2x1 이라 **방향에 따라 발자국이
+      // 바뀌는** 유일한 종류이고, 회전에서 가장 먼저 틀어지는 자리다.
+      //
+      // **영역을 일부러 정사각형이 아니게 잡는다.** 처음에 4x4 로 담았더니
+      // rotateSwapsFootprint 가 '4x4 → 4x4' 로 통과했다 — 정사각형에서는 가로세로가
+      // 바뀌어도 같은 수라 그 게이트가 아무것도 검사하지 않는다. 4x2 로 담아야
+      // 2x4 가 되는 것을 볼 수 있다.
+      // **dir 1 인 분배기를 반드시 하나 넣는다.** 처음에는 dir 0 짜리만 넣었는데,
+      // 그러면 '방향에 따라 발자국이 바뀐다'는 규칙이 이 리그에서 한 번도 안 쓰인다 —
+      // 그 규칙을 지우는 돌연변이가 그대로 살아남았다(MISS). 규칙이 적용되는 입력이
+      // 없으면 그 규칙을 검정할 수 없다.
+      G.place('belt', 30, 30, 1); G.place('belt', 31, 30, 1); G.place('belt', 32, 30, 1);
+      G.place('splitter', 30, 31, 0);        // dir 0 → 2x1 로 (30,31)-(31,31)
+      G.place('splitter', 33, 31, 1);        // dir 1 → 1x2 로 (33,31)-(33,32)
+      var rotCap = G.bpCapture(30, 30, 33, 32);          // 4 x 3
+      var rotBefore = JSON.parse(JSON.stringify(G.bpEnts()));
+      var costBeforeRot = JSON.stringify(G.bpInfo().cost);
+      var rot1 = G.bpRotate();
+      chk('bp.rotateSwapsFootprint',
+        rot1.w === rotCap.h && rot1.h === rotCap.w && rot1.w !== rot1.h,
+        '회전 전 ' + rotCap.w + 'x' + rotCap.h + ' → 회전 후 ' + rot1.w + 'x' + rot1.h +
+        ' (가로세로가 바뀌어야 · 정사각형이면 이 검사는 아무것도 안 본다)');
+
+      // 알려진 좌표를 짚는다. 담긴 영역이 4x3 이므로 시계방향 90도에서
+      //   새 좌상단 = (H - dy - h, dx),  H = 3
+      // 벨트   (0,0) 1x1 → (3-0-1, 0) = (2,0)
+      // 분배기A (0,1) 2x1 → (3-1-1, 0) = (1,0)  발자국은 1x2 가 된다
+      // 분배기B (3,1) **1x2** → (3-1-2, 3) = (0,3)  발자국은 2x1 이 된다
+      // B 가 이 게이트의 핵심이다 — 방향별 발자국을 무시하면 크기를 (2,1) 로 잘못 읽어
+      // dx 가 1 로 어긋난다.
+      var rotAfter = G.bpEnts();
+      function bpFind(list, t, dx, dy) {
+        for (var q = 0; q < list.length; q++) {
+          if (list[q].t === t && list[q].dx === dx && list[q].dy === dy) return list[q];
+        }
+        return null;
+      }
+      var spA = bpFind(rotAfter, 'splitter', 1, 0);
+      var spB = bpFind(rotAfter, 'splitter', 0, 3);
+      var beltsX = rotAfter.filter(function (x) { return x.t === 'belt'; })
+                           .map(function (x) { return x.dx; });
+      chk('bp.rotateMapsCoordinates',
+        !!spA && !!spB && beltsX.length === 3 &&
+        beltsX.every(function (v) { return v === 2; }),
+        '벨트 dx=' + beltsX.join(',') + ' (전부 2) · 분배기A(2x1) → ' + (spA ? '(1,0)' : '없음') +
+        ' · 분배기B(1x2) → ' + (spB ? '(0,3)' : '없음') +
+        ' (B 는 방향별 발자국을 봐야 맞는 자리다)');
+
+      // 방향도 돌았는가 — 오른쪽(1) 벨트가 아래(2) 가 된다
+      var dirsAfter = rotAfter.filter(function (x) { return x.t === 'belt'; })
+                              .map(function (x) { return x.d; });
+      chk('bp.rotateTurnsDirections',
+        dirsAfter.length === 3 && dirsAfter.every(function (d) { return d === 2; }),
+        '벨트 방향 회전 전 1(오른쪽) → 후 ' + dirsAfter.join(',') + ' (전부 2(아래) 여야)');
+
+      // **네 번 돌리면 제자리.** 좌표 계산의 축·부호가 틀리면 여기서 걸린다.
+      // (방향 회전을 통째로 빼도 이 검사는 통과한다 — 네 번 다 안 돌면 원본과 같기
+      //  때문이다. 방향 쪽은 rotateTurnsDirections 가 따로 본다. 처음엔 이 검사가
+      //  둘 다 잡는다고 적었는데, 돌연변이 시험이 그 주장을 반증했다.)
+      G.bpRotate(); G.bpRotate(); var rot4 = G.bpRotate();
+      var back = G.bpEnts();
+      function bpKey(list) {
+        return list.map(function (x) { return x.t + ':' + x.dx + ',' + x.dy + ':' + x.d; })
+                   .sort().join('|');
+      }
+      chk('bp.rotateFourTimesIsIdentity',
+        rot4.w === rotCap.w && rot4.h === rotCap.h && bpKey(back) === bpKey(rotBefore),
+        '4회전 후 ' + rot4.w + 'x' + rot4.h + ' · 항목 일치 ' + (bpKey(back) === bpKey(rotBefore)) +
+        ' (원본과 같아야)');
+
+      // 회전은 **모양만** 바꾼다 — 원가가 달라지면 회전이 자재를 만들거나 없앤 것이다.
+      // 회전 **전에** 찍어 둔 값과 댄다. 처음엔 bpInfo().cost 를 자기 자신과 비교해
+      // 놓고 통과를 확인했는데, 그건 항상 참이라 아무것도 검사하지 않았다.
+      chk('bp.rotateKeepsCost',
+        JSON.stringify(G.bpInfo().cost) === costBeforeRot &&
+        G.bpInfo().count === rotCap.count,
+        '회전 후 항목 ' + G.bpInfo().count + '개 (원본 ' + rotCap.count + '개) · 원가 ' +
+        JSON.stringify(G.bpInfo().cost) + ' (회전 전 ' + costBeforeRot + ')');
+
+      // 돌린 청사진이 **실제로 서는가.** 좌표 계산이 틀리면 항목끼리 겹쳐 배치가
+      // 실패한다 — 표만 맞고 못 짓는 회전은 회전이 아니다.
+      G.bpRotate();                                    // 한 번 돌린 상태로 붙인다
+      var rotPaste = G.bpPaste(50, 50);
+      chk('bp.rotatedPasteBuilds',
+        rotPaste.placed === 5 && rotPaste.skipped === 0,
+        '돌린 청사진 붙여넣기 → ' + rotPaste.placed + '개 배치 · 건너뜀 ' + rotPaste.skipped +
+        ' (5개 전부 서야 · 좌표가 틀리면 서로 겹쳐 실패한다)');
+
       // ================= 11.8 기차 =======================================
       // 오라클: 속도 8타일/s(설계값, SPEC.trainSpeed) · 화물 상한 2000 ·
       // 정차 후 자동 출발 5초. 그리고 **화물은 옮겨지는 것이지 생기는 것이 아니다.**
