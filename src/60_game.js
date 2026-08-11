@@ -635,7 +635,8 @@ window.__GAME = {
   // 연구 설명문도 상수와 대조 대상이다 — "모든 벨트가 30개/s" 는 효과표에서 나온다
   techInfo: function (tid) {
     var T = TECHS[tid]; if (!T) return null;
-    return { name: T.name, desc: T.desc || '', effect: TECH_EFFECTS[tid] || null };
+    return { name: T.name, desc: T.desc || '', effect: TECH_EFFECTS[tid] || null,
+             unlock: (T.unlock || []).slice(), cost: T.cost, needs: (T.needs || []).slice() };
   },
   buildingTypes: function () { return Object.keys(BUILDINGS); },
   buildingInfo: function (t) {
@@ -934,6 +935,12 @@ window.__GAME = {
   },
   buildIds: function () { return BUILD_IDS.slice(); },
   itemIds: function () { return ITEM_IDS.slice(); },
+  itemName: function (iid) { return ITEMS[iid] ? ITEMS[iid].name : null; },
+  // 노드의 표시 이름과 연구 조건 — 연구 화면의 해금 목록이 실제와 맞는지 대조한다
+  nodeInfo: function (kind) {
+    var d = NODE_DEFS[kind]; if (!d) return null;
+    return { label: d.label, cat: d.cat, tech: d.tech || null };
+  },
   // 벨트/분배기의 셀 좌표 — 점유 사각형과 일치하는지 검사할 때 쓴다
   cellCoords: function (id) {
     var e = entities[id];

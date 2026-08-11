@@ -349,6 +349,24 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- 해금 목록 ----
+    # 목록이 실제 잠금과 갈라지는 두 방향. 실제로 강철 제련이 유체·열차 계통 전체를
+    # 잠그는데 목록엔 두 줄만 있었다(이 게이트가 그것을 찾아냈다).
+    ("강철 연구가 여는 것을 목록에서 하나 뺀다 (열차)", "05_data.js",
+     "'저장 탱크', '이송 펌프'".encode("utf-8"),
+     "'이송 펌프'".encode("utf-8"),
+     ["tech.unlockListCoversWhatItGates"]),
+
+    ("이미 열려 있는 물건을 해금 목록에 적어 둔다", "05_data.js",
+     "unlock: ['녹색 연구팩 레시피'],".encode("utf-8"),
+     "unlock: ['녹색 연구팩 레시피', '채광기'],".encode("utf-8"),
+     ["tech.unlockListHasNoPhantoms"]),
+
+    ("다른 연구가 잠그는 것을 자기 목록에 적어 둔다", "05_data.js",
+     "unlock: ['적 근접', '터렛 사격허가'],".encode("utf-8"),
+     "unlock: ['적 근접', '터렛 사격허가', '분배기'],".encode("utf-8"),
+     ["tech.unlockListHasNoPhantoms"]),
+
     # ---- 연구 효과 ----
     # 숫자를 바꾸는 연구 둘. 효과가 조용히 약해지거나 저장에서 새어 나가면
     # 플레이어는 원인을 짐작할 수 없다.

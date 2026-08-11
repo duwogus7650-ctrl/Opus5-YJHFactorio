@@ -3653,6 +3653,114 @@
         '고속 벨트 효과 ' + (t2 && t2.effect ? t2.effect.belt : '?') + '배 → 문장에 나와야 할 값 ' +
         beltAfterTech + '개/s · 실제 설명문 "' + (t2 ? t2.desc : '없음') + '"');
 
+      // ================= 11.12 해금 목록 ==================================
+      // 연구 화면의 "해금" 목록은 **플레이어가 무엇을 위해 연구팩을 붓는지 정하는
+      // 근거**다. 그런데 그 목록은 손으로 적은 문자열이고, 실제 잠금은 건물·레시피·
+      // 노드에 붙은 tech 표시가 한다. 둘이 갈라지면 목록에 없는 것이 조용히 잠기거나,
+      // 목록에 적힌 것이 사실은 처음부터 열려 있다.
+      //
+      // 여기서는 **"가리는 것은 전부 목록에 있다"** 를 본다. 잠긴 것을 목록에서 빼면
+      // 플레이어는 연구를 끝내고 나서야 그게 있었다는 걸 안다. 반대 방향(목록에만
+      // 있고 실체가 없음)은 '벨트 속도 x2' 같은 효과 문구가 섞여 있어 기계적으로
+      // 판정할 수 없으므로 여기서 다루지 않는다 — 그것은 앞 절 tech.descMatchesEffect
+      // 가 효과 쪽에서 본다.
+      //
+      // 이름은 띄어쓰기만 지우고 비교한다. 목록은 '샘플홀드' 인데 노드 이름은
+      // '샘플 홀드' 라 글자만 놓고 보면 어긋난다 — 사람이 읽는 목록에서 그 정도
+      // 차이까지 틀렸다고 할 수는 없다.
+      function squash(s2) { return String(s2).replace(/\s+/g, ''); }
+      var techIdsAll = G.techIds();
+      var gatedBy = {};
+      for (var ti = 0; ti < techIdsAll.length; ti++) gatedBy[techIdsAll[ti]] = [];
+      var btypes = G.buildingTypes();
+      for (var bi2 = 0; bi2 < btypes.length; bi2++) {
+        var bin = G.buildingInfo(btypes[bi2]);
+        if (bin && bin.tech && gatedBy[bin.tech]) gatedBy[bin.tech].push(bin.name);
+      }
+      var rids = G.recipeIds();
+      for (var ri = 0; ri < rids.length; ri++) {
+        var rin = G.recipeInfo(rids[ri]);
+        if (!rin || !rin.tech || !gatedBy[rin.tech]) continue;
+        var outId = Object.keys(rin.out)[0];
+        gatedBy[rin.tech].push((G.itemName(outId) || outId) + ' 레시피');
+      }
+      var kinds = G.nodeKinds();
+      for (var ki = 0; ki < kinds.length; ki++) {
+        var nin = G.nodeInfo(kinds[ki]);
+        if (nin && nin.tech && gatedBy[nin.tech]) gatedBy[nin.tech].push(nin.label);
+      }
+      var unlockBad = [], gatedTotal = 0;
+      for (var ui = 0; ui < techIdsAll.length; ui++) {
+        var tid2 = techIdsAll[ui];
+        var info2 = G.techInfo(tid2);
+        var listed = (info2 && info2.unlock ? info2.unlock : []).map(squash);
+        for (var gi = 0; gi < gatedBy[tid2].length; gi++) {
+          gatedTotal++;
+          var want = squash(gatedBy[tid2][gi]);
+          var hit = false;
+          for (var li = 0; li < listed.length; li++) {
+            if (listed[li].indexOf(want) >= 0) { hit = true; break; }
+          }
+          if (!hit) unlockBad.push(tid2 + ' 이 "' + gatedBy[tid2][gi] + '" 을 잠그는데 해금 목록에 없다');
+        }
+      }
+      chk('tech.unlockListCoversWhatItGates',
+        gatedTotal > 20 && unlockBad.length === 0,
+        '연구가 잠그는 것 ' + gatedTotal + '개를 해금 목록과 대조 — ' +
+        (unlockBad.length === 0 ? '전부 목록에 있다' : '빠짐 ' + unlockBad.length + '건: ' +
+         unlockBad.join(' · ')));
+
+      // 반대 방향 — 목록에 적힌 것이 **정말 그 연구 뒤에 있는가.**
+      // 이미 열려 있는 물건을 목록에 적어 두면 플레이어는 없어도 될 연구에 팩을 붓는다.
+      // '벨트 속도 x2' 같은 효과 문구는 실체가 없으므로 이름표에 없는 항목은 건너뛴다 —
+      // 대신 **몇 개를 실제로 대조했는지 세어** 전부 건너뛰는 무의미한 통과를 막는다.
+      var nameTech = {};
+      for (var bj = 0; bj < btypes.length; bj++) {
+        var bq = G.buildingInfo(btypes[bj]);
+        if (bq) nameTech[squash(bq.name)] = bq.tech || null;
+      }
+      for (var rj = 0; rj < rids.length; rj++) {
+        var rq = G.recipeInfo(rids[rj]);
+        if (!rq) continue;
+        var oid = Object.keys(rq.out)[0];
+        nameTech[squash((G.itemName(oid) || oid) + ' 레시피')] = rq.tech || null;
+      }
+      for (var kj = 0; kj < kinds.length; kj++) {
+        var kq = G.nodeInfo(kinds[kj]);
+        if (kq) nameTech[squash(kq.label)] = kq.tech || null;
+      }
+      var phantom = [], resolved = 0;
+      for (var pj2 = 0; pj2 < techIdsAll.length; pj2++) {
+        var tid3 = techIdsAll[pj2];
+        var inf3 = G.techInfo(tid3);
+        var lst3 = inf3 && inf3.unlock ? inf3.unlock : [];
+        for (var lj = 0; lj < lst3.length; lj++) {
+          var key3 = squash(lst3[lj]);
+          if (!(key3 in nameTech)) continue;      // 효과 문구 — 실체가 없다
+          resolved++;
+          if (nameTech[key3] !== tid3) {
+            phantom.push(tid3 + ' 목록의 "' + lst3[lj] + '" 는 실제로 ' +
+              (nameTech[key3] === null ? '처음부터 열려 있다' : nameTech[key3] + ' 뒤에 있다'));
+          }
+        }
+      }
+      chk('tech.unlockListHasNoPhantoms', resolved >= 30 && phantom.length === 0,
+        '목록 항목 중 실체가 있는 ' + resolved + '개를 실제 잠금과 대조 — ' +
+        (phantom.length === 0 ? '전부 제자리' : '어긋남 ' + phantom.length + '건: ' + phantom.join(' · ')));
+
+      // 음성 대조군 — 목록에 없는 이름을 같은 방법으로 찾아 본다.
+      // 여기서 "있다" 가 나오면 위 대조는 무엇이든 통과시키는 장치다.
+      var mil = G.techInfo('military');
+      var milListed = (mil ? mil.unlock : []).map(squash);
+      var foundReal = false, foundFake = false;
+      for (var mi = 0; mi < milListed.length; mi++) {
+        if (milListed[mi].indexOf(squash('기관총 터렛')) >= 0) foundReal = true;
+        if (milListed[mi].indexOf(squash('원자로')) >= 0) foundFake = true;
+      }
+      chk('tech.unlockCheckDetectsMissing', foundReal && !foundFake,
+        '군수 해금 목록에서 실제 항목(기관총 터렛) 찾음=' + foundReal +
+        ' · 없는 항목(원자로) 찾음=' + foundFake + ' (뒤가 true 면 대조가 죽은 것)');
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

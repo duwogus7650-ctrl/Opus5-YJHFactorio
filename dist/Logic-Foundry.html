@@ -884,20 +884,20 @@ var TECHS = {
                   unlock: ['기관총 터렛', '벽', '탄창 레시피'],
                   desc: '방어 시설. 적의 습격은 오염을 따라온다.' },
   'logic-mem':  { name: '논리 II — 기억소자', cost: { 'sci-red': 40 }, needs: ['logistics'],
-                  unlock: ['SR 래치', '카운터', '샘플홀드', '엣지검출', '상태기계'],
+                  unlock: ['SR 래치', '카운터', '엣지 검출', '샘플 홀드', '최고·최저 기록', '지속 조건', '상태기계 (4단계)'],
                   desc: '제어기에 상태를 가진 노드가 추가된다. 여기서부터 진짜 프로그래밍.' },
   // 강철은 **쓸 데가 있어야 한다.** 예전엔 레시피만 있고 소비처가 한 곳도 없어서,
   // 적팩 50개를 들여 "철판 5개를 못 쓰는 물건 1개로 바꾸는 기능"을 여는 연구였다.
   // 분배기를 여기로 옮겨 붙였다 — belt-2·automation-2 의 선행이라 어차피 모두
   // 연구하는 길목이고, 분배기는 없어도 죽지 않는 편의 장비라 늦춰도 초반이 안 무너진다.
   'steel':      { name: '강철 제련', cost: { 'sci-red': 50 }, needs: ['logistics'],
-                  unlock: ['강철 레시피', '분배기'],
-                  desc: '철판 5개를 강철 1개로. 분배기가 강철을 먹는다.' },
+                  unlock: ['분배기', '파이프', '지하수 펌프', '보일러', '레일', '역', '열차', '저장 탱크', '이송 펌프', '증기기관', '강철 레시피', '파이프 레시피', '유체 잔량', '역 상태', '열차 출발'],
+                  desc: '철판 5개를 강철 1개로. **유체 계통(파이프·펌프·보일러·증기기관·탱크)과 열차 계통(레일·역·열차)이 전부 여기서 열린다** — 게임의 절반이 이 연구 뒤에 있다. 분배기도.' },
   'logic-ctrl': { name: '논리 III — 공정 제어', cost: { 'sci-red': 50, 'sci-green': 50 }, needs: ['logic-mem'],
-                  unlock: ['인서터 필터 출력', '벨트 게이트', 'PID 노드', '평활 필터', '신호 버스', '부하 차단'],
+                  unlock: ['신호 받기', '평활 필터', '변화율', 'PID 제어', '벨트 게이트', '인서터 필터', '신호 보내기'],
                   desc: '제어기가 라인을 실시간으로 갈아탈 수 있게 된다.' },
   'defense-ai': { name: '방어 자동화', cost: { 'sci-red': 50, 'sci-green': 50 }, needs: ['military', 'logic-mem'],
-                  unlock: ['적 근접 센서', '터렛 사격허가 출력', '경보'],
+                  unlock: ['적 근접', '터렛 사격허가'],
                   desc: '적의 접근을 신호로 읽어 방어를 자동화한다.' },
   'belt-2':     { name: '고속 벨트', cost: { 'sci-red': 80, 'sci-green': 80 }, needs: ['logistics', 'steel'],
                   unlock: ['벨트 속도 x2'],
@@ -9011,7 +9011,8 @@ window.__GAME = {
   // 연구 설명문도 상수와 대조 대상이다 — "모든 벨트가 30개/s" 는 효과표에서 나온다
   techInfo: function (tid) {
     var T = TECHS[tid]; if (!T) return null;
-    return { name: T.name, desc: T.desc || '', effect: TECH_EFFECTS[tid] || null };
+    return { name: T.name, desc: T.desc || '', effect: TECH_EFFECTS[tid] || null,
+             unlock: (T.unlock || []).slice(), cost: T.cost, needs: (T.needs || []).slice() };
   },
   buildingTypes: function () { return Object.keys(BUILDINGS); },
   buildingInfo: function (t) {
@@ -9310,6 +9311,12 @@ window.__GAME = {
   },
   buildIds: function () { return BUILD_IDS.slice(); },
   itemIds: function () { return ITEM_IDS.slice(); },
+  itemName: function (iid) { return ITEMS[iid] ? ITEMS[iid].name : null; },
+  // 노드의 표시 이름과 연구 조건 — 연구 화면의 해금 목록이 실제와 맞는지 대조한다
+  nodeInfo: function (kind) {
+    var d = NODE_DEFS[kind]; if (!d) return null;
+    return { label: d.label, cat: d.cat, tech: d.tech || null };
+  },
   // 벨트/분배기의 셀 좌표 — 점유 사각형과 일치하는지 검사할 때 쓴다
   cellCoords: function (id) {
     var e = entities[id];
