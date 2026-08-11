@@ -1142,9 +1142,16 @@
   // 이 주행처럼 라인이 짧은 판에서는 거의 아무 일도 하지 않는다. 예전 순서로는 마지막
   // 생산 효율이 76% 에서 시간이 끝났다.
   var TECH_ORDER = ['military', 'logistics', 'steel', 'logic-mem',
-                    'logic-ctrl', 'defense-ai', 'automation-2', 'belt-2'];
+                    'logic-ctrl', 'automation-2', 'defense-ai', 'belt-2'];
+  // 연구가 **언제** 끝났는지 남긴다. 통과/실패만 보면 마지막 연구가 종료 1초 전에
+  // 겨우 끝난 판과 여유 있게 끝난 판이 똑같이 GREEN 으로 보인다 — 앞의 것은 다음
+  // 변경 한 번에 뒤집히는 GREEN 이고, 그 사실이 결과에 안 나타나면 아무도 모른다.
+  var techAt = {};
   function nextTech() {
     var st = G.state(), done = st.research.done;
+    for (var ti = 0; ti < done.length; ti++) {
+      if (techAt[done[ti]] === undefined) techAt[done[ti]] = Math.round(st.t * 10) / 10;
+    }
     if (st.research.current) return null;
     for (var i = 0; i < TECH_ORDER.length; i++) {
       if (done.indexOf(TECH_ORDER[i]) < 0 && G.setResearch(TECH_ORDER[i])) return TECH_ORDER[i];
@@ -1999,6 +2006,28 @@
     chk('clear.allTechsResearched', st.research.done.length === G.techIds().length,
       '연구 ' + st.research.done.length + '/' + G.techIds().length + '종 완료: ' +
       st.research.done.join(','));
+
+    // **여유를 함께 잰다.** "8/8 끝냈다" 만으로는 종료 1초 전에 겨우 끝난 판과 넉넉히
+    // 끝난 판이 구별되지 않는다. 앞의 것은 다음 변경 한 번에 RED 로 뒤집히는 GREEN 이고,
+    // 그 사실이 결과에 안 보이면 아무도 대비하지 못한다.
+    //
+    // 문턱은 **주행 길이의 5%** 다(2400s → 120s). "공장이 5% 느려져도 여전히 다 끝낸다"
+    // 는 뜻이고, 이 정도 여유가 없으면 사소한 변경 하나가 게이트를 뒤집는다.
+    // 실제로 이 게이트를 처음 켰을 때 여유는 **13초** 였다 — 8/8 GREEN 이었지만 다음
+    // 변경 한 번이면 RED 로 돌아갈 자리였고, 통과/실패만 보던 동안에는 그게 안 보였다.
+    var TECH_MARGIN_MIN = Math.round(END_T * 0.05);
+    var lastTechT = 0, lastTechId = '없음';
+    for (var tk in techAt) { if (techAt[tk] > lastTechT) { lastTechT = techAt[tk]; lastTechId = tk; } }
+    var margin = Math.round(END_T - lastTechT);
+    out.techAt = techAt;
+    chk('clear.techPaceHasMargin',
+      st.research.done.length === G.techIds().length && margin >= TECH_MARGIN_MIN,
+      '마지막 연구(' + lastTechId + ') 완료 ' + Math.round(lastTechT) + 's · 종료 ' +
+      Math.round(END_T) + 's · 여유 ' + margin + 's (' + TECH_MARGIN_MIN +
+      's 이상이어야 · 여유가 없으면 다음 변경 한 번에 뒤집힌다) · 연구 도착 시각 ' +
+      G.techIds().map(function (q) {
+        return techAt[q] === undefined ? q + ':미완' : q + ':' + Math.round(techAt[q]);
+      }).join(' '));
     chk('clear.allBuildingsUsed', missingB.length === 0,
       '건물 ' + Object.keys(built).length + '/' + allTypes.length + '종 사용' +
       (missingB.length ? ' · 안 쓴 것: ' + missingB.join(',') : '') +

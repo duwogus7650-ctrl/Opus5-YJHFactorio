@@ -167,7 +167,7 @@ python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마
 python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 40건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
 python tests/harness.py determinism.js  # 재현성 게이트 7건 (같은 씨앗 = 같은 결과)
-python tests/harness.py clear.js     # 40분 자력 완주 주행 (게이트 14건)
+python tests/harness.py clear.js     # 40분 자력 완주 주행 (게이트 15건)
 python tests/mutate.py               # 게이트가 실패를 잡는지 역검정 (소스를 고의로 깬다, 단독 실행)
 python tests/crossbrowser.py         # 엔진 4개 × 드라이버 4개 + 터치 기기
 python tests/balance.py              # 30분 시뮬 3시나리오 페이싱 측정 (게이트 아님)
@@ -198,7 +198,7 @@ harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗
 mutate.py              GREEN — 돌연변이 175건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
-harness.py clear.js    GREEN — 실검사 14건 전부 통과 (연구 8/8 · 손실 0)
+harness.py clear.js    RED  — 15건 중 14건 통과 (연구 8/8 · 손실 0 · 아래 "여유가 46초뿐이다")
 ```
 
 | 엔진 | 모델 261 | 클릭 79 | 전수 40 | 부하차단 10 |
@@ -228,6 +228,32 @@ harness.py clear.js    GREEN — 실검사 14건 전부 통과 (연구 8/8 · �
 
 **교훈**: 총량이 요구치를 넘겼는데도 못 끝내면, 남은 것은 "얼마나" 가 아니라 "언제" 다.
 그리고 "언제" 를 바꾸는 가장 싼 손잡이는 **자기 자신을 앞당기는 항목을 먼저 드는 것** 이다.
+
+##### 그런데 여유가 46초뿐이다 — 통과만 보면 안 보이던 것
+
+8/8 을 확인한 뒤 **언제 끝났는지**를 함께 재는 게이트(`clear.techPaceHasMargin`)를 달았다.
+처음 값은 **여유 13초**였다. 2400초를 달려 마지막 연구가 종료 13초 전에 끝난 것이다 —
+GREEN 이지만 다음 변경 한 번이면 RED 로 돌아갈 자리였고, 통과/실패만 보던 동안에는
+그게 보이지 않았다.
+
+`automation-2` 를 `defense-ai` 앞으로 한 칸 더 당겨 **46초**가 됐다(방어는 손실 0 유지).
+문턱은 주행 길이의 5%(120초)로 잡았다 — "공장이 5% 느려져도 다 끝낸다" 는 뜻이다.
+**지금은 못 넘는다. 이 한 건이 유일한 RED 다.**
+
+게이트가 함께 찍는 도착 시각 표가 다음 사람의 지도다:
+
+```
+logistics:779  military:354  steel:945   logic-mem:1089
+logic-ctrl:1715  automation-2:1980  defense-ai:2073  belt-2:2355
+```
+
+첫 **779초 동안 값싼 연구 둘(각 적팩 20)** 밖에 못 끝낸다 — 병목은 후반 처리량이 아니라
+**초반 램프**다. 녹색팩이 열리는 `logistics` 가 늦게 오고, 그 뒤 `logic-ctrl` 하나에
+626초가 걸린다.
+
+그래서 `logistics` 를 첫 자리로 당겨 봤다 → **붕괴**. 군수가 354s → 516s 로 밀리자 첫
+습격(t≈570)에 전주·인서터가 뚫리고 전력망이 끊겨 회복하지 못했다(연구 2/8 · 손실 11).
+**이 계획에서 `military` 첫 자리는 장식이 아니라 하중을 받는다.**
 
 ##### 그때까지 실패한 여섯 가지 — 자재 쪽 손잡이는 전부 헛다리였다
 
