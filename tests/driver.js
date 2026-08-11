@@ -316,6 +316,58 @@
         '인서터 ' + insN + '대(13kW×' + insN + '=' + (insN * 13) + 'kW) → 발전기 부하 ' + r2(loadP) +
         ' · ' + pdur + '초 배출 ' + r2(dPoll) + ' (오라클 20×부하×0.02×' + pdur + ' = ' + r2(expPoll) + ')');
 
+      // --- 전주의 두 반경 (이 절의 **끝**에 둔다) ---------------------------
+      // 처음엔 이 블록을 절 중간에 넣었다가 주행이 통째로 중단됐다. 여기서 G.reset 을
+      // 부르면 뒤에 오는 검사들이 쓰던 세계가 사라진다 — 이 레포가 교훈 14 로 적어 둔
+      // 그 함정이고, 적어 두고도 또 밟았다. **리셋하는 블록은 절 끝에.**
+      // --- 전주의 두 반경 -------------------------------------------------
+      // **플레이어가 배치를 계획하는 근거인데 게이트가 없었다.** 건물 설명에도
+      // "5x5 공급, 7.5타일 연결" 이라고 적혀 있다 — 그 두 수가 조용히 바뀌면 지금까지의
+      // 모든 배치 감각이 틀리게 되고, 화면에는 "왜 전기가 안 들어오지" 만 남는다.
+      // 오라클은 설계값 그 자체이고 **시험 파일에 숫자로 박는다**(교훈 16).
+      var POLE_SUPPLY_ORACLE = 2;                  // 중심에서 ±2 → 5x5
+      var POLE_REACH_ORACLE = 7.5;                 // 전주끼리 잇는 거리(타일)
+      G.reset(7401); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(false);
+      G.place('pole', 50, 50, 0);
+      // 1x1 소비 건물(인서터)로 잰다 — 발자국이 크면 '어느 타일이 덮였나' 가 섞인다
+      var plIn = G.place('inserter', 50 + POLE_SUPPLY_ORACLE, 50, 1);
+      var plOut = G.place('inserter', 50 + POLE_SUPPLY_ORACLE + 1, 50, 1);
+      G.run(0.1);
+      var plInNet = plIn ? G.ent(plIn).net : -99;
+      var plOutNet = plOut ? G.ent(plOut).net : -99;
+      chk('pole.supplyIsFiveByFive',
+        plInNet >= 0 && plOutNet < 0,
+        '전주에서 ' + POLE_SUPPLY_ORACLE + '칸 → 망 ' + plInNet + ' (붙어야) · ' +
+        (POLE_SUPPLY_ORACLE + 1) + '칸 → 망 ' + plOutNet +
+        ' (떨어져야 · 조건 발생 확인). 설계값 ±' + POLE_SUPPLY_ORACLE + ' = 5x5');
+
+      // 연결 거리 — 7 칸은 이어지고 8 칸은 안 이어진다(7.5 가 경계다)
+      G.reset(7402); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(false);
+      G.place('pole', 50, 50, 0); G.place('pole', 57, 50, 0);     // 7 칸
+      G.run(0.1);
+      var plNear = G.state().power.nets;
+      G.reset(7403); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.powerCheat(false);
+      G.place('pole', 50, 50, 0); G.place('pole', 58, 50, 0);     // 8 칸
+      G.run(0.1);
+      var plFar = G.state().power.nets;
+      chk('pole.linkReachIsSevenAndHalf',
+        plNear === 1 && plFar === 2,
+        '전주 사이 7칸 → 망 ' + plNear + '개 (1이어야) · 8칸 → 망 ' + plFar +
+        '개 (2여야 · 조건 발생 확인). 설계값 ' + POLE_REACH_ORACLE + ' 타일');
+
+      // 벽 체력도 같은 부류다 — 표에 350 이라 적혀 있는데 아무도 안 재고 있었다
+      G.reset(7404); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      G.research('military');
+      var wlId = G.place('wall', 50, 50, 0);
+      chk('wall.hpMatchesSpec',
+        !!wlId && G.ent(wlId).maxHp === 350,
+        '벽 체력 ' + (wlId ? G.ent(wlId).maxHp : '?') + ' (설계값 350 · 건물은 타일당 150 인데 ' +
+        '벽만 따로 정한다)');
+
+
       // ================= 7. 제어기 (핵심 차별점) ==========================
       labSetup();
       G.research('logic-mem'); G.research('logic-ctrl'); G.research('defense-ai');

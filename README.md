@@ -162,7 +162,7 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
 python tests/offline_check.py        # 외부 참조 0건인가 (단일 HTML·의존성 0 검정)
-python tests/harness.py              # 모델 게이트 236건 (헤드리스 Edge)
+python tests/harness.py              # 모델 게이트 239건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
 python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 40건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
@@ -190,18 +190,18 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
 offline_check.py       GREEN — 외부 참조 0건 (규칙 9개 · 자기 시험 포함)
-harness.py             GREEN — 실검사 236건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 239건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py fullplay.js GREEN — 노드 35종·건물 22종 전수 40건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 152건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 155건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 14건 중 13건 통과 (아래 "완주 주행은 아직 RED다")
 ```
 
-| 엔진 | 모델 236 | 클릭 79 | 전수 40 | 부하차단 10 |
+| 엔진 | 모델 239 | 클릭 79 | 전수 40 | 부하차단 10 |
 |---|---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | GREEN | GREEN |
 | Chromium (Playwright) | GREEN | GREEN | GREEN | GREEN |

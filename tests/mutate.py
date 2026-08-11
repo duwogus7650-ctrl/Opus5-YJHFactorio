@@ -349,6 +349,23 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- 전주의 두 반경 · 벽 체력 ----
+    # 플레이어가 배치를 계획하는 근거다. 조용히 바뀌면 지금까지의 배치 감각이 전부 틀린다.
+    ('전주 공급 반경이 한 칸 넓다 (5x5 가 7x7 이 된다)', '05_data.js',
+     b'  poleSupply: 2,',
+     b'  poleSupply: 3,',
+     ['pole.supplyIsFiveByFive']),
+
+    ('전주 연결 거리가 한 칸 길다', '05_data.js',
+     b'  poleReach: 7.5,',
+     b'  poleReach: 8.5,',
+     ['pole.linkReachIsSevenAndHalf']),
+
+    ('벽 체력이 규격의 절반이다', '05_data.js',
+     b'  wallHp: 350,',
+     b'  wallHp: 175,',
+     ['wall.hpMatchesSpec']),
+
     # ---- 저장 실패 처리 ----
     # try/catch 를 걷어내면 저장칸이 거부할 때 예외가 그대로 새어나온다 — 플레이어는
     # 저장된 줄 알고 창을 닫는다. 코드에 이미 있던 처리라 게이트가 없으면 조용히 사라진다.

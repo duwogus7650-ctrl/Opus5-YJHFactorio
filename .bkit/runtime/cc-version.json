@@ -1,0 +1,7 @@
+{
+  "version": null,
+  "isOldVersion": false,
+  "detectedAt": "2026-08-11T01:28:10.265Z",
+  "ttlSeconds": 3600,
+  "detectError": "Command failed: claude --version\n'claude'��(��) ���� �Ǵ� �ܺ� ����, ������ �� �ִ� ���α׷�, �Ǵ�\r\n��ġ ������ �ƴմϴ�.\r\n"
+}
