@@ -349,6 +349,21 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- 튜토리얼 재료 문구 ----
+    # 문구를 보고 재료를 준비하는 사람이 있다. 비용만 바꾸면 그 줄이 거짓말이 된다.
+    # 비용 쪽을 건드리면 초반 리그가 통째로 깨져 드라이버가 중단되고 INVALID 가 된다
+    # (실제로 한 번 그랬다). 그래서 **문구 쪽**을 틀어 본다 — 어차피 현실에서도
+    # 문구가 뒤처지는 쪽이 흔하다.
+    ("튜토리얼 문구가 용광로 값을 실제보다 비싸게 적는다", "52_tutorial.js",
+     "need: '용광로 = 벽돌 5 + 철판 5".encode("utf-8"),
+     "need: '용광로 = 벽돌 8 + 철판 5".encode("utf-8"),
+     ["tut.needTextMatchesCosts"]),
+
+    ("기억소자 연구비를 올리면서 문구를 안 고친다", "05_data.js",
+     "'logic-mem':  { name: '논리 II — 기억소자', cost: { 'sci-red': 40 }".encode("utf-8"),
+     "'logic-mem':  { name: '논리 II — 기억소자', cost: { 'sci-red': 60 }".encode("utf-8"),
+     ["tut.needTextMatchesCosts"]),
+
     # ---- SPEC 밖의 공개 숫자 ----
     # 전력·시간·적 체력은 SPEC 이 아니라 BUILDINGS·RECIPES·ENEMY_TIERS 에 흩어져 있어
     # 앞 절의 대조를 그냥 지나갔다.

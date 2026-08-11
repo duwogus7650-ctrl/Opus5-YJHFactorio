@@ -3816,6 +3816,80 @@
         '군수 해금 목록에서 실제 항목(기관총 터렛) 찾음=' + foundReal +
         ' · 없는 항목(원자로) 찾음=' + foundFake + ' (뒤가 true 면 대조가 죽은 것)');
 
+      // ================= 11.13 튜토리얼 재료 문구 ==========================
+      // 각 단계의 "필요" 줄은 **플레이어가 그것을 보고 재료를 준비하는 문장**이다.
+      // "용광로 = 벽돌 5 + 철판 5" 를 읽고 벽돌을 다섯 개 만든다. 비용이 바뀌면
+      // 그 줄은 거짓말이 되고, 따라 한 사람은 배치 버튼을 눌렀을 때 막힌다.
+      // 문구와 비용 데이터를 잇는 검사가 없었다.
+      //
+      // 대조 방법: 비용표의 각 항목마다 "이름 + 숫자" 를 문구에서 찾아 숫자를 비교한다.
+      // 연구팩은 문구가 '적색 50' 처럼 줄여 쓰므로 별칭을 함께 준다.
+      var NEED_MAP = [
+        ['miner', 'building', 'miner'],
+        ['smelt', 'building', 'furnace'],
+        ['assemble', 'building', 'assembler'],
+        ['research', 'building', 'lab'],
+        ['wall-turret', 'building', 'turret'],
+        ['wall-turret', 'building', 'wall'],
+        ['green-sci', 'recipe', 'belt-item'],
+        ['green-sci', 'recipe', 'inserter-item'],
+        ['ammo-line', 'recipe', 'ammo'],
+        ['mem-tech', 'tech', 'logic-mem'],
+        ['defense-auto', 'tech', 'defense-ai']
+      ];
+      var ALIAS = { 'sci-red': ['적색 연구팩', '적색'], 'sci-green': ['녹색 연구팩', '녹색'] };
+      var stepsAll = G.tutorialSteps();
+      var stepById = {};
+      for (var si2 = 0; si2 < stepsAll.length; si2++) stepById[stepsAll[si2].id] = stepsAll[si2];
+
+      // 문구에서 "이름 N" 을 찾아 N 을 돌려준다. 못 찾으면 null.
+      // 이름 뒤에 = 나 + 가 끼는 형태('벽 = 벽돌 2')도 있으므로 이름 바로 뒤의 숫자만 본다.
+      function qtyInText(text, name) {
+        var idx = text.indexOf(name);
+        while (idx >= 0) {
+          var rest = text.slice(idx + name.length);
+          var m2 = /^[\s=+·]*?(\d+)/.exec(rest);
+          if (m2) return +m2[1];
+          idx = text.indexOf(name, idx + 1);
+        }
+        return null;
+      }
+      var needBad = [], needChecked = 0;
+      for (var ni2 = 0; ni2 < NEED_MAP.length; ni2++) {
+        var sid = NEED_MAP[ni2][0], kind2 = NEED_MAP[ni2][1], oid2 = NEED_MAP[ni2][2];
+        var stp = stepById[sid];
+        if (!stp) { needBad.push('단계 ' + sid + ' 가 없다'); continue; }
+        var cost = null, label = oid2;
+        if (kind2 === 'building') { var bq2 = G.buildingInfo(oid2); cost = bq2 ? bq2.cost : null; label = bq2 ? bq2.name : oid2; }
+        else if (kind2 === 'recipe') { var rq2 = G.recipeInfo(oid2); cost = rq2 ? rq2.inp : null; }
+        else { var tq2 = G.techInfo(oid2); cost = tq2 ? tq2.cost : null; label = tq2 ? tq2.name : oid2; }
+        if (!cost) { needBad.push(sid + ' 의 ' + oid2 + ' 비용을 못 읽음'); continue; }
+        for (var ck in cost) {
+          needChecked++;
+          var names = ALIAS[ck] ? ALIAS[ck].slice() : [];
+          names.unshift(G.itemName(ck) || ck);
+          var got3 = null;
+          for (var nj = 0; nj < names.length && got3 === null; nj++) got3 = qtyInText(stp.need, names[nj]);
+          if (got3 !== cost[ck]) {
+            needBad.push(sid + ' 의 "' + label + '" 재료 ' + (G.itemName(ck) || ck) + ': 문구엔 ' +
+              (got3 === null ? '없음' : got3) + ' · 실제 비용 ' + cost[ck]);
+          }
+        }
+      }
+      chk('tut.needTextMatchesCosts', needChecked >= 20 && needBad.length === 0,
+        '튜토리얼 "필요" 문구와 실제 비용 ' + needChecked + '항목을 대조 — ' +
+        (needBad.length === 0 ? '전부 일치' : '어긋남 ' + needBad.length + '건: ' + needBad.join(' · ')));
+
+      // 음성 대조군 — 같은 읽개에 틀린 문장을 주면 걸러야 한다.
+      chk('tut.needCheckDetectsWrongNumber',
+        qtyInText('용광로 = 벽돌 5 + 철판 5', '벽돌') === 5 &&
+        qtyInText('용광로 = 벽돌 9 + 철판 5', '벽돌') === 9 &&
+        qtyInText('용광로 = 철판 5', '벽돌') === null,
+        '읽개 시험 — 맞는 문장에서 5, 틀린 문장에서 9, 없는 재료는 null 이 나와야 · 실제 ' +
+        qtyInText('용광로 = 벽돌 5 + 철판 5', '벽돌') + '/' +
+        qtyInText('용광로 = 벽돌 9 + 철판 5', '벽돌') + '/' +
+        qtyInText('용광로 = 철판 5', '벽돌'));
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

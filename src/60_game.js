@@ -1006,6 +1006,19 @@ window.__GAME = {
   // null 이 나왔다 — 호출자에게 null 은 '해당 없음'과 '실패'가 구별되지 않아, 세계
   // 상태가 어떻든 0/9 로 읽히는 게이트가 만들어졌다. 판정은 순수한 세계 상태 술어이고
   // id 는 두 트랙에 걸쳐 유일하므로(검증함), 트랙과 무관하게 답할 수 있다.
+  // 단계의 제목·필요 재료 문구 — 문구가 실제 비용과 맞는지 시험이 대조한다.
+  // 여기 적힌 재료를 보고 플레이어가 준비하므로, 틀리면 따라 하다 막힌다.
+  tutorialSteps: function () {
+    var lists = [TUTORIAL_STEPS, ADVANCED_STEPS], out2 = [];
+    for (var L = 0; L < lists.length; L++) {
+      for (var i = 0; i < lists[L].length; i++) {
+        var st2 = lists[L][i];
+        out2.push({ id: st2.id, track: L ? 'adv' : 'basic',
+                    title: st2.title || '', need: st2.need || '' });
+      }
+    }
+    return out2;
+  },
   tutorialCheckById: function (id) {
     var lists = [TUTORIAL_STEPS, ADVANCED_STEPS];
     for (var L = 0; L < lists.length; L++) {
