@@ -1885,6 +1885,17 @@
                                     var gs = G.gateState(tutBelt);
                                     return gs === false ? '막힘' : '열림';
                                   })(),
+                                  // 누적 생산량 — 재고는 랩이 즉시 먹어 상시 0 이라
+                                  // "얼마나 만들었나" 를 재고로는 못 본다. 램프 곡선을
+                                  // 그리려면 누적이 필요하다.
+                                  // 누적 생산량은 state() 가 아니라 tutorial() 이 들고 있다
+                                  // (처음에 st.prod 로 읽어 전 구간 0 을 얻었다).
+                                  redMade: (function () {
+                                    var pr = G.tutorial().prod; return (pr && pr.byRecipe['sci-red']) || 0;
+                                  })(),
+                                  grnMade: (function () {
+                                    var pr = G.tutorial().prod; return (pr && pr.byRecipe['sci-green']) || 0;
+                                  })(),
                                   red: (st.inventory['sci-red'] || 0),
                                   grn: (st.inventory['sci-green'] || 0),
                                   ammo: (st.inventory['ammo'] || 0),
