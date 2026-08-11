@@ -349,6 +349,18 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- 설명문 대조 ----
+    # 설명문만 조용히 틀어지는 경우다. 상수는 그대로라 앞 절 게이트는 아무 말도 안 한다.
+    ("채광기 설명문이 실제보다 빠르다고 말한다", "05_data.js",
+     "아래 광맥을 0.5개/s 로 캔다".encode("utf-8"),
+     "아래 광맥을 0.7개/s 로 캔다".encode("utf-8"),
+     ["desc.matchesConstants"]),
+
+    ("상자 설명문이 실제보다 많이 담는다고 말한다", "05_data.js",
+     "600개 보관".encode("utf-8"),
+     "900개 보관".encode("utf-8"),
+     ["desc.matchesConstants"]),
+
     # ---- 공개 숫자 대조 ----
     # 이 셋이 CAUGHT 여야 하는 이유: 처리량 게이트는 기대값을 SPEC 에서 받아 쓰므로
     # SPEC 이 바뀌면 오라클도 같이 움직여 아무것도 안 걸린다(실측으로 확인했다).

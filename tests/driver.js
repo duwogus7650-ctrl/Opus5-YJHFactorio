@@ -3502,6 +3502,66 @@
         ' kJ · 기관 ' + raw.engineOutput + ' kW ÷ ' + raw.engineSteam + ' 증기/s = ' + kjOut +
         ' kJ (둘 다 30 이어야)');
 
+      // ================= 11.10 설명문 대조 ================================
+      // 건물 설명문은 **플레이어에게 하는 약속**이다. "0.5개/s 로 캔다", "900 kW",
+      // "600개 보관" — 사람은 이 문장을 읽고 공장을 설계한다. 그런데 이 문장은
+      // 상수와 따로 떨어진 문자열이라, 상수만 바꾸면 조용히 거짓말이 된다.
+      // 아무 게이트도 이 둘을 이어 보고 있지 않았다.
+      //
+      // 여기서는 상수에서 **문장에 나와야 할 조각을 만들어** 실제 설명문이 그것을
+      // 담고 있는지 본다. 둘이 어긋나면 어느 쪽이 틀렸든 플레이어가 속는다.
+      // (상수 자체가 문헌값인지는 앞 절 spec.matchesPublishedValues 가 따로 본다 —
+      //  문헌값 → 상수 → 설명문 세 단계가 이렇게 이어진다.)
+      var rw = G.specRaw();
+      var beltTot = rw.beltTilesPerSec / rw.beltSlotGap * 2;      // 15
+      var DESC = [
+        ['belt', String(beltTot) + '개/s'],
+        ['belt', '레인당 ' + (beltTot / 2)],
+        ['inserter', String(Math.floor(100 / rw.inserterSwing) / 100) + '개/s'],   // 0.83
+        ['miner', String(rw.minerRate) + '개/s'],
+        ['furnace', String(G.recipeInfo('iron-plate').time) + '초에 1개'],
+        ['assembler', '제작속도 ' + rw.assemblerSpeed],
+        ['generator', String(rw.genOutput) + ' kW'],
+        ['generator', String(rw.genOutput / rw.coalEnergy) + ' 석탄/s'],           // 0.225
+        ['pole', (rw.poleSupply * 2 + 1) + 'x' + (rw.poleSupply * 2 + 1) + ' 공급'],
+        ['pole', rw.poleReach + '타일 연결'],
+        ['chest', rw.chestCap + '개 보관'],
+        ['turret', '사거리 ' + rw.turretRange + '타일'],
+        ['wall', '체력 ' + rw.wallHp],
+        ['pipe', '한 칸에 ' + rw.fluidPerTile],
+        ['pump', rw.pumpRate + '/s'],
+        ['boiler', '물 ' + rw.boilerFluid + '/s 를 증기 ' + rw.boilerFluid + '/s'],
+        ['boiler', (rw.boilerPower / 1000) + ' MW'],
+        ['engine', '증기 ' + rw.engineSteam + '/s 로 ' + rw.engineOutput + ' kW'],
+        ['train', rw.trainCargoCap + '개까지'],
+        ['tank', String(rw.tankCap).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' 까지'],  // 25,000
+        ['tank', '파이프 ' + (rw.tankCap / rw.fluidPerTile) + '칸어치'],
+        ['xpump', rw.xpumpRate + '/s 옮긴다']
+      ];
+      var descBad = [], descSeen = 0;
+      for (var di = 0; di < DESC.length; di++) {
+        var dt = DESC[di][0], frag = DESC[di][1];
+        var info = G.buildingInfo(dt);
+        if (!info || typeof info.desc !== 'string') { descBad.push(dt + ': 설명문을 못 읽음'); continue; }
+        descSeen++;
+        if (info.desc.indexOf(frag) < 0) {
+          descBad.push(dt + ' 설명문에 "' + frag + '" 이 없다 → "' + info.desc.slice(0, 70) + '"');
+        }
+      }
+      chk('desc.matchesConstants', descSeen === DESC.length && descBad.length === 0,
+        DESC.length + '개 문구를 상수에서 만들어 설명문과 대조 — ' +
+        (descBad.length === 0 ? '전부 일치' : '어긋남 ' + descBad.length + '건: ' + descBad.join(' · ')));
+
+      // 음성 대조군 — 이 대조가 정말 "없음" 을 잡는가.
+      // 있을 리 없는 조각을 같은 방법으로 찾아 본다. 여기서 통과가 나오면 위 게이트는
+      // 무엇을 넣어도 통과하는 장치다.
+      var baitDesc = G.buildingInfo('miner');
+      chk('desc.checkDetectsMissingFragment',
+        !!baitDesc && baitDesc.desc.indexOf('0.5개/s') >= 0 && baitDesc.desc.indexOf('0.7개/s') < 0,
+        '채광기 설명문에서 맞는 조각(0.5개/s) 찾음=' +
+        (baitDesc ? baitDesc.desc.indexOf('0.5개/s') >= 0 : '?') + ' · 틀린 조각(0.7개/s) 찾음=' +
+        (baitDesc ? baitDesc.desc.indexOf('0.7개/s') >= 0 : '?') + ' (뒤가 true 면 대조가 죽은 것)');
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

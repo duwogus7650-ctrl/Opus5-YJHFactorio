@@ -637,7 +637,10 @@ window.__GAME = {
   buildingInfo: function (t) {
     var B = BUILDINGS[t];
     if (!B) return null;
-    return { cost: B.cost, tech: B.tech || null, w: B.w, h: B.h, power: B.power || 0 };
+    // name·desc 도 내준다 — 게임 안 설명문이 실제 상수와 어긋나는지 시험이 대조한다.
+    // 설명문은 플레이어에게 하는 약속이고, 상수만 바뀌면 조용히 거짓말이 된다.
+    return { cost: B.cost, tech: B.tech || null, w: B.w, h: B.h, power: B.power || 0,
+             name: B.name, desc: B.desc || '' };
   },
   recipeIds: function () { return Object.keys(RECIPES); },
   recipeInfo: function (rid) {
