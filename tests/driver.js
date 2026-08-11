@@ -3484,6 +3484,61 @@
         PUBLISHED.length + '개 상수를 시험 파일에 적어 둔 문헌값과 대조 — ' +
         (pubBad.length === 0 ? '전부 일치' : '어긋남 ' + pubBad.length + '건: ' + pubBad.join(' · ')));
 
+      // --- 전력·시간·적 체력도 같은 방식으로 못 박는다 -----------------------
+      // README 표는 SPEC 밖의 숫자도 문헌값으로 싣는다 — 건물 소비전력(kW),
+      // 제련·조립 시간, 적 체력. 이것들은 SPEC 이 아니라 BUILDINGS·RECIPES·
+      // ENEMY_TIERS 에 흩어져 있어서 앞 절의 대조를 그냥 지나갔다.
+      var PUBLISHED_POWER = [
+        ['inserter', 13, 'Factorio inserter — 13 kW'],
+        ['miner', 90, 'Factorio electric mining drill — 90 kW'],
+        ['furnace', 180, 'Factorio electric furnace 기준 — 180 kW'],
+        ['assembler', 155, 'Factorio assembling machine 2 — 155 kW'],
+        ['pump', 0, '설계값 — 지하수 펌프는 전기를 안 쓴다(정전이 물까지 끊으면 복구 불가)'],
+        ['controller', 0, '설계값 — 제어기는 전기를 안 쓴다']
+      ];
+      var powBad = [];
+      for (var wi = 0; wi < PUBLISHED_POWER.length; wi++) {
+        var wt = PUBLISHED_POWER[wi][0], wv = PUBLISHED_POWER[wi][1];
+        var wq = G.buildingInfo(wt);
+        var got2 = wq ? (wq.power || 0) : undefined;
+        if (got2 !== wv) powBad.push(wt + ' = ' + got2 + ' kW (문헌값 ' + wv + ')');
+      }
+      chk('spec.buildingPowerMatchesPublished', powBad.length === 0,
+        PUBLISHED_POWER.length + '개 건물의 소비전력을 문헌값과 대조 — ' +
+        (powBad.length === 0 ? '전부 일치' : '어긋남: ' + powBad.join(' · ')));
+
+      var PUBLISHED_TIME = [
+        ['iron-plate', 3.2, 'Factorio stone furnace 제련 시간'],
+        ['copper-plate', 3.2, '같은 제련 시간'],
+        ['steel', 16, 'Factorio steel plate — 16초'],
+        ['gear', 0.5, 'Factorio iron gear wheel — 0.5초'],
+        ['sci-red', 5.0, 'Factorio automation science pack — 5초'],
+        ['sci-green', 6.0, 'Factorio logistic science pack — 6초']
+      ];
+      var timeBad = [];
+      for (var mi2 = 0; mi2 < PUBLISHED_TIME.length; mi2++) {
+        var rt = G.recipeInfo(PUBLISHED_TIME[mi2][0]);
+        var tv = rt ? rt.time : undefined;
+        if (tv !== PUBLISHED_TIME[mi2][1]) {
+          timeBad.push(PUBLISHED_TIME[mi2][0] + ' = ' + tv + '초 (문헌값 ' + PUBLISHED_TIME[mi2][1] + ')');
+        }
+      }
+      chk('spec.recipeTimeMatchesPublished', timeBad.length === 0,
+        PUBLISHED_TIME.length + '개 레시피 시간을 문헌값과 대조 — ' +
+        (timeBad.length === 0 ? '전부 일치' : '어긋남: ' + timeBad.join(' · ')));
+
+      var PUBLISHED_ENEMY = [15, 75, 375];      // Factorio biter — 소형·중형·대형
+      var tiers = G.enemyTiers();
+      var tierBad = [];
+      for (var ei = 0; ei < PUBLISHED_ENEMY.length; ei++) {
+        var tv2 = tiers[ei] ? tiers[ei].hp : undefined;
+        if (tv2 !== PUBLISHED_ENEMY[ei]) tierBad.push((ei + 1) + '등급 = ' + tv2 + ' (문헌값 ' + PUBLISHED_ENEMY[ei] + ')');
+      }
+      chk('spec.enemyHpMatchesPublished',
+        tiers.length === PUBLISHED_ENEMY.length && tierBad.length === 0,
+        '적 ' + tiers.length + '등급의 체력을 문헌값 15/75/375 와 대조 — ' +
+        (tierBad.length === 0 ? '전부 일치' : '어긋남: ' + tierBad.join(' · ')));
+
       // 음성 대조군 — 이 대조가 정말 어긋남을 잡는가.
       // 일부러 틀린 값을 넣어 같은 비교를 돌려 본다. 여기서 통과가 나오면 위 게이트는
       // 무엇도 검정하지 않는 것이다(통과 케이스만 있는 게이트는 게이트가 아니다).

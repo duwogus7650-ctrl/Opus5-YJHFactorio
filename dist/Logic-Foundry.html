@@ -9312,6 +9312,12 @@ window.__GAME = {
   buildIds: function () { return BUILD_IDS.slice(); },
   itemIds: function () { return ITEM_IDS.slice(); },
   itemName: function (iid) { return ITEMS[iid] ? ITEMS[iid].name : null; },
+  // 적 등급표 — README 가 체력 15/75/375 를 문헌값(biter)으로 싣는다
+  enemyTiers: function () {
+    return ENEMY_TIERS.map(function (t) {
+      return { name: t.name, hp: t.hp, dmg: t.dmg, speed: t.speed };
+    });
+  },
   // 노드의 표시 이름과 연구 조건 — 연구 화면의 해금 목록이 실제와 맞는지 대조한다
   nodeInfo: function (kind) {
     var d = NODE_DEFS[kind]; if (!d) return null;

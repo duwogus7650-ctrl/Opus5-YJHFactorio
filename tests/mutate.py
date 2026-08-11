@@ -349,6 +349,24 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- SPEC 밖의 공개 숫자 ----
+    # 전력·시간·적 체력은 SPEC 이 아니라 BUILDINGS·RECIPES·ENEMY_TIERS 에 흩어져 있어
+    # 앞 절의 대조를 그냥 지나갔다.
+    ("조립기가 전기를 덜 먹는다고 조용히 바꾼다", "05_data.js",
+     "power: 155,".encode("utf-8"),
+     "power: 120,".encode("utf-8"),
+     ["spec.buildingPowerMatchesPublished"]),
+
+    ("제련 시간을 절반으로 줄인다", "05_data.js",
+     "'iron-plate':   { cat: 'smelt', time: 3.2,".encode("utf-8"),
+     "'iron-plate':   { cat: 'smelt', time: 1.6,".encode("utf-8"),
+     ["spec.recipeTimeMatchesPublished"]),
+
+    ("대형 적이 절반만 맞아도 죽는다", "05_data.js",
+     "{ name: '대형', hp: 375,".encode("utf-8"),
+     "{ name: '대형', hp: 180,".encode("utf-8"),
+     ["spec.enemyHpMatchesPublished"]),
+
     # ---- 해금 목록 ----
     # 목록이 실제 잠금과 갈라지는 두 방향. 실제로 강철 제련이 유체·열차 계통 전체를
     # 잠그는데 목록엔 두 줄만 있었다(이 게이트가 그것을 찾아냈다).

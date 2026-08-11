@@ -595,3 +595,18 @@ README 표와 게임 안 설명이 **숫자로** 약속하는데 검사가 하�
 돌연변이 3건(목록에서 하나 빼기 · 이미 열린 것 적기 · 남의 것 적기) 전부 CAUGHT.
 
 검증: 모델 254 · 클릭 79 · 전수 40 GREEN, 돌연변이 168건 전부 CAUGHT(놓침 0 · 무효 0).
+
+## 이번에 메운 것 (2026-08-11, SPEC 밖의 공개 숫자)
+
+앞 절의 공개 숫자 대조는 `SPEC` 만 봤는데, README 표에는 SPEC 밖의 숫자도 문헌값으로
+실려 있다 — 건물 소비전력, 레시피 시간, 적 체력. 이것들은 `BUILDINGS`·`RECIPES`·
+`ENEMY_TIERS` 에 흩어져 있어 대조를 그냥 지나갔다.
+
+- `spec.buildingPowerMatchesPublished` — 인서터 13 · 채광기 90 · 용광로 180 ·
+  조립기 155 kW, 그리고 **전기를 안 쓰는 두 건물**(지하수 펌프 · 제어기)이 0인지
+- `spec.recipeTimeMatchesPublished` — 제련 3.2 · 강철 16 · 톱니 0.5 · 빨간팩 5 · 녹색팩 6초
+- `spec.enemyHpMatchesPublished` — 소형 15 · 중형 75 · 대형 375 (Factorio biter)
+
+돌연변이 3건(조립기 155→120 kW · 제련 3.2→1.6초 · 대형 적 375→180) 전부 CAUGHT.
+
+검증: 모델 257 GREEN, 돌연변이 171건 전부 CAUGHT(놓침 0 · 무효 0).

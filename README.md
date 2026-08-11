@@ -162,7 +162,7 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
 python tests/offline_check.py        # 외부 참조 0건인가 (단일 HTML·의존성 0 검정)
-python tests/harness.py              # 모델 게이트 254건 (헤드리스 Edge)
+python tests/harness.py              # 모델 게이트 257건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
 python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 40건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
@@ -190,18 +190,18 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
 offline_check.py       GREEN — 외부 참조 0건 (규칙 9개 · 자기 시험 포함)
-harness.py             GREEN — 실검사 254건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 257건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py fullplay.js GREEN — 노드 35종·건물 22종 전수 40건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 168건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 171건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 14건 중 13건 통과 (아래 "완주 주행은 아직 RED다")
 ```
 
-| 엔진 | 모델 254 | 클릭 79 | 전수 40 | 부하차단 10 |
+| 엔진 | 모델 257 | 클릭 79 | 전수 40 | 부하차단 10 |
 |---|---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | GREEN | GREEN |
 | Chromium (Playwright) | GREEN | GREEN | GREEN | GREEN |
@@ -368,7 +368,9 @@ det.differentSeedDiffers     음성 대조군 — 씨앗을 바꾸면 반드시 
   측정값과 오라클이 같이 움직여 아무것도 안 걸린다.** 실제로 채광을 0.5 → 0.25/s 로 절반
   깎고 돌렸더니 239건이 전부 통과했다. 그래서 문헌값 28개(Factorio 공개값 또는 이 게임의
   설계값)를 **시험 파일에 직접 적어** 두고 SPEC 원본과 대조한다. 같은 절에서 "증기 1개 =
-  30 kJ" 항등식이 양쪽에서 성립하는지도 본다.
+  30 kJ" 항등식이 양쪽에서 성립하는지도 본다. 위 표의 숫자 중 SPEC 밖에 있는 것 —
+  건물 소비전력(13·90·180·155 kW), 레시피 시간(3.2·16·0.5·5·6초), 적 체력(15/75/375) —
+  도 같은 방식으로 못 박았다.
 - **설명문** — 건물 설명문("0.5개/s 로 캔다", "600개 보관", "900 kW")은 플레이어에게 하는
   약속인데 상수와 떨어진 문자열이라 상수만 바뀌면 조용히 거짓말이 된다. 상수에서 문장에
   나와야 할 조각 22개를 만들어 실제 설명문이 그것을 담는지 본다. **문헌값 → 상수 → 설명문**
