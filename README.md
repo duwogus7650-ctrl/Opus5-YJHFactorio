@@ -162,7 +162,7 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
 python tests/offline_check.py        # 외부 참조 0건인가 (단일 HTML·의존성 0 검정)
-python tests/harness.py              # 모델 게이트 239건 (헤드리스 Edge)
+python tests/harness.py              # 모델 게이트 243건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
 python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 40건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
@@ -190,18 +190,18 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
 offline_check.py       GREEN — 외부 참조 0건 (규칙 9개 · 자기 시험 포함)
-harness.py             GREEN — 실검사 239건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 243건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py fullplay.js GREEN — 노드 35종·건물 22종 전수 40건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 155건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 158건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 14건 중 13건 통과 (아래 "완주 주행은 아직 RED다")
 ```
 
-| 엔진 | 모델 239 | 클릭 79 | 전수 40 | 부하차단 10 |
+| 엔진 | 모델 243 | 클릭 79 | 전수 40 | 부하차단 10 |
 |---|---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | GREEN | GREEN |
 | Chromium (Playwright) | GREEN | GREEN | GREEN | GREEN |
@@ -364,6 +364,11 @@ det.differentSeedDiffers     음성 대조군 — 씨앗을 바꾸면 반드시 
 - **처리량** — 벨트 15개/s, 인서터 0.833개/s, 채광 0.5개/s, 제련 3.2s/판을 SPEC에서 계산한
   기대값과 대조. 벨트는 "실렸는가"뿐 아니라 "10초에 18.75칸까지 갔고 그 너머는 비었는가"로
   앞뒤를 함께 조인다.
+- **공개 숫자** — 위 처리량 게이트는 기대값을 SPEC에서 받아 쓰므로 **SPEC 자체가 바뀌면
+  측정값과 오라클이 같이 움직여 아무것도 안 걸린다.** 실제로 채광을 0.5 → 0.25/s 로 절반
+  깎고 돌렸더니 239건이 전부 통과했다. 그래서 문헌값 28개(Factorio 공개값 또는 이 게임의
+  설계값)를 **시험 파일에 직접 적어** 두고 SPEC 원본과 대조한다. 같은 절에서 "증기 1개 =
+  30 kJ" 항등식이 양쪽에서 성립하는지도 본다.
 - **물질수지** — 땅에서 뽑은 개수 == 세계에 존재하는 개수 증가분 (벨트 위 재고 포함).
   복제·소멸이 생기면 즉시 어긋난다.
 - **에너지수지** — 태운 연료 kJ == 실제 공급 kW × 시간.

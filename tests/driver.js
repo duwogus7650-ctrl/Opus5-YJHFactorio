@@ -3429,6 +3429,79 @@
         '저장 전 화물 ' + beforeCargo + ' → 복원 후 열차 ' + afterList.length + '대 · 화물 ' +
         (afterList[0] ? afterList[0].cargo : '없음') + ' (같아야)');
 
+      // ================= 11.9 공개 숫자 대조 ==============================
+      // **여기까지의 처리량 게이트는 SPEC 을 검정하지 않는다.** belt.throughput ·
+      // inserter.rate · miner.rate 는 기대값을 G.spec() 에서 받아 쓰는데 그 값이
+      // SPEC 그 자체다. 그래서 minerRate 를 0.5 → 0.25 로 깎아 보면 채굴량과
+      // 오라클이 **같이** 내려가 239건이 전부 GREEN 이었다(실측). 그 게이트들이
+      // 보는 것은 "구현이 SPEC 을 지키는가" 이고, "SPEC 이 README 가 약속한 숫자인가"
+      // 는 아무도 안 보고 있었다.
+      //
+      // 그래서 여기 숫자는 **시험 파일에 직접 적는다.** 출처는 Factorio 공개값이거나
+      // 이 게임의 명시적 설계값이고, 둘 중 무엇인지 줄마다 적어 둔다. 소스를 읽어
+      // 비교하면 아무것도 검정하지 않는다.
+      var PUBLISHED = [
+        // [열쇠, 문헌값, 출처]
+        ['beltTilesPerSec', 1.875, 'Factorio yellow transport belt — 1.875 타일/s (합 15개/s)'],
+        ['beltSlotGap', 0.25, 'Factorio 벨트 밀도 — 레인당 4개/타일'],
+        ['inserterSwing', 1.2, 'Factorio inserter — 왕복 1.2초 → 0.833개/s'],
+        ['minerRate', 0.5, 'Factorio electric mining drill — 0.5 광석/s'],
+        ['assemblerSpeed', 0.75, 'Factorio assembling machine 2 — 속도 0.75'],
+        ['genOutput', 900, 'Factorio steam engine — 900 kW'],
+        ['coalEnergy', 4000, 'Factorio 석탄 — 4 MJ'],
+        ['pumpRate', 1200, 'Factorio offshore pump — 1200 물/s'],
+        ['boilerFluid', 60, 'Factorio boiler — 물 60/s → 증기 60/s'],
+        ['boilerPower', 1800, 'Factorio boiler — 1.8 MW'],
+        ['engineSteam', 30, 'Factorio steam engine — 증기 30/s'],
+        ['engineOutput', 900, 'Factorio steam engine — 900 kW (증기 1개 = 30 kJ 로 위와 묶임)'],
+        ['fluidPerTile', 100, 'Factorio pipe — 한 칸 100'],
+        ['tankCap', 25000, 'Factorio storage tank — 25000'],
+        ['xpumpRate', 200, 'Factorio pump — 200/s'],
+        ['turretRange', 18, 'Factorio gun turret — 사거리 18타일'],
+        ['turretDps', 50, 'Factorio gun turret + firearm magazine — 5 dmg x 10발/s'],
+        ['trainSpeed', 8, '설계값 — 82타일/s 를 그대로 쓰면 160타일 맵을 2초에 횡단한다'],
+        ['trainCargoCap', 2000, '설계값 — 상자 600 의 3.3배여야 옮길 값이 생긴다'],
+        ['trainDwell', 5, '설계값 — 정차 후 자동 출발까지 5초'],
+        ['poleSupply', 2, '설계값 — 중심에서 ±2 → 5x5 (동작 게이트는 pole.supplyIsFiveByFive)'],
+        ['poleReach', 7.5, '설계값 — 전주 연결 7.5타일 (동작 게이트는 pole.linkReachIsSevenAndHalf)'],
+        ['chestCap', 600, '설계값 — 상자 하나 600'],
+        ['machineBufIn', 50, '설계값 — 기계 입력 버퍼(품목당) 50'],
+        ['machineBufOut', 100, '설계값 — 기계 출력 버퍼 100'],
+        ['wallHp', 350, '설계값 — 벽만 따로 (동작 게이트는 wall.hpMatchesSpec)'],
+        ['buildingHpPerTile', 150, '설계값 — 건물은 타일당 150'],
+        ['pollutionPerChunk', 8, '설계값 — 오염 격자 한 칸 = 8x8 타일']
+      ];
+      var raw = G.specRaw ? G.specRaw() : null;
+      chk('spec.rawIsExposed', !!raw && typeof raw.minerRate === 'number',
+        'G.specRaw() 가 설계 상수를 통째로 내주는가 — ' + (raw ? Object.keys(raw).length + '개' : '없음'));
+      var pubBad = [];
+      for (var pi = 0; pi < PUBLISHED.length; pi++) {
+        var pk = PUBLISHED[pi][0], pv = PUBLISHED[pi][1];
+        var got = raw ? raw[pk] : undefined;
+        if (got !== pv) pubBad.push(pk + ' = ' + got + ' (문헌값 ' + pv + ')');
+      }
+      chk('spec.matchesPublishedValues', !!raw && pubBad.length === 0,
+        PUBLISHED.length + '개 상수를 시험 파일에 적어 둔 문헌값과 대조 — ' +
+        (pubBad.length === 0 ? '전부 일치' : '어긋남 ' + pubBad.length + '건: ' + pubBad.join(' · ')));
+
+      // 음성 대조군 — 이 대조가 정말 어긋남을 잡는가.
+      // 일부러 틀린 값을 넣어 같은 비교를 돌려 본다. 여기서 통과가 나오면 위 게이트는
+      // 무엇도 검정하지 않는 것이다(통과 케이스만 있는 게이트는 게이트가 아니다).
+      var baitOk = raw ? (raw['minerRate'] === 0.5) : false;
+      var baitBad = raw ? (raw['minerRate'] === 0.4999) : false;
+      chk('spec.publishedCheckDetectsMismatch', baitOk && !baitBad,
+        '같은 비교기에 맞는 값(0.5)→' + baitOk + ' · 틀린 값(0.4999)→' + baitBad +
+        ' (맞는 값만 통과해야 · 둘 다 통과면 비교가 죽은 것)');
+
+      // 문헌값이 서로 묶여 있다는 것도 확인한다 — 증기 1개는 양쪽에서 똑같이 30 kJ.
+      // 넷 중 하나만 조용히 바뀌면 이 항등식이 깨진다.
+      var kjIn = raw ? raw.boilerPower / raw.boilerFluid : NaN;
+      var kjOut = raw ? raw.engineOutput / raw.engineSteam : NaN;
+      chk('spec.steamEnergyIdentityHolds', kjIn === 30 && kjOut === 30,
+        '보일러 ' + raw.boilerPower + ' kW ÷ ' + raw.boilerFluid + ' 증기/s = ' + kjIn +
+        ' kJ · 기관 ' + raw.engineOutput + ' kW ÷ ' + raw.engineSteam + ' 증기/s = ' + kjOut +
+        ' kJ (둘 다 30 이어야)');
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

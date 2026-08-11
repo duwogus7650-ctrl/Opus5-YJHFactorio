@@ -349,6 +349,24 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- 공개 숫자 대조 ----
+    # 이 셋이 CAUGHT 여야 하는 이유: 처리량 게이트는 기대값을 SPEC 에서 받아 쓰므로
+    # SPEC 이 바뀌면 오라클도 같이 움직여 아무것도 안 걸린다(실측으로 확인했다).
+    ('채광 속도를 절반으로 깎는다 (README 는 0.5 광석/s 라고 약속한다)', '05_data.js',
+     b'  minerRate: 0.5,',
+     b'  minerRate: 0.25,',
+     ['spec.matchesPublishedValues']),
+
+    ('증기기관이 먹는 증기량만 조용히 바꿔 30 kJ 항등식을 깬다', '05_data.js',
+     b'  engineSteam: 30,',
+     b'  engineSteam: 25,',
+     ['spec.steamEnergyIdentityHolds', 'spec.matchesPublishedValues']),
+
+    ('설계 상수 원본을 안 내준다 (대조가 조용히 무력화된다)', '60_game.js',
+     b'  specRaw: function () { var o = {}; for (var k in SPEC) o[k] = SPEC[k]; return o; },',
+     b'  specRaw: function () { return {}; },',
+     ['spec.rawIsExposed', 'spec.matchesPublishedValues']),
+
     # ---- 전주의 두 반경 · 벽 체력 ----
     # 플레이어가 배치를 계획하는 근거다. 조용히 바뀌면 지금까지의 배치 감각이 전부 틀린다.
     ('전주 공급 반경이 한 칸 넓다 (5x5 가 7x7 이 된다)', '05_data.js',
