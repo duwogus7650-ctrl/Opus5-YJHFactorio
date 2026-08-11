@@ -47,8 +47,7 @@ function finishResearch() {
   techDone[tid] = true;
   delete researchProgressBy[tid];
   currentResearch = null; researchProgress = 0;
-  if (tid === 'belt-2') beltSpeedMul = 2;
-  if (tid === 'automation-2') { machineSpeedMul = 1.5; machinePowerMul = 0.8; }
+  applyTechEffects();
   toast('연구 완료: ' + TECHS[tid].name + ' — ' + TECHS[tid].unlock.join(', '), 'good');
   markPowerDirty(); markLogicDirty();
   renderBuildList(); renderTech(); renderCraftList();

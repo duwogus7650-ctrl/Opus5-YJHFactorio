@@ -3562,6 +3562,97 @@
         (baitDesc ? baitDesc.desc.indexOf('0.5개/s') >= 0 : '?') + ' · 틀린 조각(0.7개/s) 찾음=' +
         (baitDesc ? baitDesc.desc.indexOf('0.7개/s') >= 0 : '?') + ' (뒤가 true 면 대조가 죽은 것)');
 
+      // ================= 11.11 연구 효과 ==================================
+      // 두 연구는 **숫자를 바꾸는 연구**다 — 고속 벨트(15 → 30개/s)와 생산 효율
+      // (기계 1.5배 속도 · 전력 0.8배). 그런데 이 둘이 실제로 그렇게 되는지 보는
+      // 게이트가 하나도 없었다. clear.js 가 "연구했다" 는 것만 셌을 뿐이다.
+      //
+      // 게다가 배수가 세 군데(연구 완료 · 저장 복원 · 시험용 API)에 따로 적혀 있어
+      // 하나만 고치면 갈라지는 구조였다. 특히 저장 복원 쪽이 빠지면 "저장했다 열면
+      // 연구 효과가 사라지는" 형태로 나타난다 — 플레이어가 원인을 짐작할 수 없는 종류다.
+      // 지금은 TECH_EFFECTS 표 하나에서 applyTechEffects() 가 다시 계산한다.
+
+      // (1) 고속 벨트 — 같은 리그를 연구 전/후로 두 번 돌려 처리량을 비교한다.
+      //     오라클은 "2배" 이고, 이 숫자는 여기 적어 둔다(README 는 30개/s 라고 약속한다).
+      var BELT2_ORACLE = 2;
+      function beltThru(secs) {
+        var ids = [];
+        for (var bi = 0; bi < 40; bi++) { var q = G.place('belt', 40 + bi, 40, 1); if (q) ids.push(q); }
+        G.resetBeltStats();
+        var got = 0, nn = TICKS(secs);
+        for (var bt = 0; bt < nn; bt++) { if (G.putOnBelt(ids[0], 'iron-plate')) got++; G.tickOnce(); }
+        return got;
+      }
+      labSetup();
+      var thruBefore = beltThru(6);
+      labSetup(); G.research('belt-2');
+      var thruAfter = beltThru(6);
+      chk('tech.beltSpeedDoubles',
+        thruBefore > 0 && near(thruAfter / thruBefore, BELT2_ORACLE, 0.06, 0),
+        '연구 전 6초에 ' + thruBefore + '개 → 후 ' + thruAfter + '개 = ' +
+        r2(thruAfter / thruBefore) + '배 (오라클 ' + BELT2_ORACLE + '배 · 15 → 30개/s)');
+
+      // (2) 생산 효율 — 제련 속도와 전력 소비를 같은 리그에서 잰다.
+      var AUTO2_SPEED_ORACLE = 1.5, AUTO2_POWER_ORACLE = 0.8;
+      function smeltRig() {
+        labSetup();
+        var f = G.place('furnace', 50, 50, 0);
+        G.setRecipe(f, 'iron-plate');
+        G.fillChest(f, 'iron-ore', 400);      // 용광로 입력 버퍼에 직접 채운다
+        return f;
+      }
+      var f1 = smeltRig();
+      G.run(0.2);
+      var dem1 = G.state().power.demand;
+      var p1a = (G.ent(f1).out['iron-plate'] || 0); G.run(20);
+      var made1 = (G.ent(f1).out['iron-plate'] || 0) - p1a;
+      var f2 = smeltRig(); G.research('automation-2');
+      G.run(0.2);
+      var dem2 = G.state().power.demand;
+      var p2a = (G.ent(f2).out['iron-plate'] || 0); G.run(20);
+      var made2 = (G.ent(f2).out['iron-plate'] || 0) - p2a;
+      chk('tech.automationSpeedsMachines',
+        made1 > 0 && near(made2 / made1, AUTO2_SPEED_ORACLE, 0.06, 0),
+        '20초 제련 ' + made1 + '개 → 연구 후 ' + made2 + '개 = ' + r2(made2 / made1) +
+        '배 (오라클 ' + AUTO2_SPEED_ORACLE + '배)');
+      chk('tech.automationCutsPower',
+        dem1 > 0 && near(dem2 / dem1, AUTO2_POWER_ORACLE, 0.02, 0),
+        '용광로 수요 ' + dem1 + ' kW → 연구 후 ' + dem2 + ' kW = ' + r2(dem2 / dem1) +
+        '배 (오라클 ' + AUTO2_POWER_ORACLE + '배)');
+
+      // (3) 저장이 효과를 들고 가는가 — 여기가 세 경로 중 빠지기 쉬운 자리다.
+      labSetup(); G.research('belt-2'); G.research('automation-2');
+      var multBefore = G.state().mult;
+      var rawTech = G.saveRaw(); G.load(rawTech); G.run(0.05);
+      var multAfter = G.state().mult;
+      var thruLoaded = beltThru(6);
+      chk('tech.effectsSurviveSave',
+        multBefore.belt === 2 && multAfter.belt === 2 && multAfter.machine === 1.5 &&
+        multAfter.power === 0.8 && near(thruLoaded / thruBefore, BELT2_ORACLE, 0.06, 0),
+        '저장 전 배수 벨트 ' + multBefore.belt + ' → 복원 후 벨트 ' + multAfter.belt +
+        ' 기계 ' + multAfter.machine + ' 전력 ' + multAfter.power +
+        ' · 복원 후 실제 처리량 ' + thruLoaded + '개 = ' + r2(thruLoaded / thruBefore) + '배');
+
+      // (4) 음성 대조군 — 새 판은 효과가 없어야 한다.
+      //     applyTechEffects 가 배수를 1 로 되돌리지 않으면 앞선 연구가 다음 판까지 새어
+      //     들어간다. 그러면 위 (1)(2) 는 항상 통과하는 게이트가 된다.
+      labSetup();
+      var multFresh = G.state().mult;
+      var thruFresh = beltThru(6);
+      chk('tech.effectsResetOnNewGame',
+        multFresh.belt === 1 && multFresh.machine === 1 && multFresh.power === 1 &&
+        near(thruFresh / thruBefore, 1, 0.06, 0),
+        '새 판 배수 벨트 ' + multFresh.belt + ' 기계 ' + multFresh.machine + ' 전력 ' +
+        multFresh.power + ' · 처리량 ' + thruFresh + '개 (연구 전 ' + thruBefore + '개와 같아야)');
+
+      // (5) 연구 설명문도 효과표와 맞아야 한다 — "모든 벨트가 30개/s"
+      var t2 = G.techInfo('belt-2');
+      var beltAfterTech = (rw.beltTilesPerSec / rw.beltSlotGap * 2) * (t2 && t2.effect ? t2.effect.belt : 0);
+      chk('tech.descMatchesEffect',
+        !!t2 && !!t2.effect && t2.desc.indexOf(beltAfterTech + '개/s') >= 0,
+        '고속 벨트 효과 ' + (t2 && t2.effect ? t2.effect.belt : '?') + '배 → 문장에 나와야 할 값 ' +
+        beltAfterTech + '개/s · 실제 설명문 "' + (t2 ? t2.desc : '없음') + '"');
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

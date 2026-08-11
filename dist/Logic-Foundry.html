@@ -733,6 +733,16 @@ var RECIPES = {
 };
 var RECIPE_IDS = Object.keys(RECIPES);
 
+// --- 연구 효과 배수 -------------------------------------------------------
+// **여기가 유일한 출처다.** 예전엔 같은 숫자가 세 군데(연구 완료 · 저장 복원 ·
+// 시험용 API)에 따로 적혀 있었다. 하나만 고치면 나머지 둘이 조용히 어긋나고,
+// 특히 "저장했다 열면 연구 효과가 사라지는" 형태로 나타난다.
+var TECH_EFFECTS = {
+  'belt-2':       { belt: 2 },                    // 벨트 15 → 30개/s
+  'automation-2': { machine: 1.5, power: 0.8 }    // 기계 1.5배 속도 · 전력 0.8배
+};
+
+
 // --- 건물 스펙 -------------------------------------------------------------
 // cost: 배치 비용(인벤토리에서 차감).  w/h: 타일 크기.
 var BUILDINGS = {
@@ -1856,6 +1866,19 @@ function furnaceRecipeFor(itemId) {
 // --- 기계 한 틱 --------------------------------------------------------------
 var machineSpeedMul = 1;     // 생산 효율 연구
 var machinePowerMul = 1;
+
+// 완료된 연구에서 배수를 **다시 계산한다.** 연구 완료·저장 복원·시험용 API 세 경로가
+// 전부 이 함수 하나만 부른다 — 세 곳에 같은 숫자를 적어 두면 반드시 갈라진다.
+function applyTechEffects() {
+  beltSpeedMul = 1; machineSpeedMul = 1; machinePowerMul = 1;
+  for (var tid in TECH_EFFECTS) {
+    if (!techDone[tid]) continue;
+    var ef = TECH_EFFECTS[tid];
+    if (ef.belt !== undefined) beltSpeedMul = ef.belt;
+    if (ef.machine !== undefined) machineSpeedMul = ef.machine;
+    if (ef.power !== undefined) machinePowerMul = ef.power;
+  }
+}
 
 function machineRecipeReady(e, rec) {
   for (var k in rec.inp) if (invCount(e.inv, k) < rec.inp[k]) return false;
@@ -5445,8 +5468,7 @@ function finishResearch() {
   techDone[tid] = true;
   delete researchProgressBy[tid];
   currentResearch = null; researchProgress = 0;
-  if (tid === 'belt-2') beltSpeedMul = 2;
-  if (tid === 'automation-2') { machineSpeedMul = 1.5; machinePowerMul = 0.8; }
+  applyTechEffects();
   toast('연구 완료: ' + TECHS[tid].name + ' — ' + TECHS[tid].unlock.join(', '), 'good');
   markPowerDirty(); markLogicDirty();
   renderBuildList(); renderTech(); renderCraftList();
@@ -8623,8 +8645,7 @@ function loadGame(raw) {
         if (RECIPES[hrow[0]]) handQueue.push({ rid: hrow[0], left: +hrow[1] || 0 });
       }
     }
-    if (techDone['belt-2']) beltSpeedMul = 2;
-    if (techDone['automation-2']) { machineSpeedMul = 1.5; machinePowerMul = 0.8; }
+    applyTechEffects();
 
     world.oreAmt = new Uint16Array(b64dec(data.ore).buffer);
     world.ore.set(b64dec(data.oreT));
@@ -8987,6 +9008,11 @@ window.__GAME = {
   nodeKinds: function () { return NODE_KINDS.slice(); },
   nodeAvailable: function (kind) { return nodeAvailable(kind); },
   techIds: function () { return TECH_IDS.slice(); },
+  // 연구 설명문도 상수와 대조 대상이다 — "모든 벨트가 30개/s" 는 효과표에서 나온다
+  techInfo: function (tid) {
+    var T = TECHS[tid]; if (!T) return null;
+    return { name: T.name, desc: T.desc || '', effect: TECH_EFFECTS[tid] || null };
+  },
   buildingTypes: function () { return Object.keys(BUILDINGS); },
   buildingInfo: function (t) {
     var B = BUILDINGS[t];
@@ -9089,10 +9115,7 @@ window.__GAME = {
   },
 
   research: function (tid) {
-    if (tid) { techDone[tid] = true;
-      if (tid === 'belt-2') beltSpeedMul = 2;
-      if (tid === 'automation-2') { machineSpeedMul = 1.5; machinePowerMul = 0.8; }
-      return true; }
+    if (tid) { techDone[tid] = true; applyTechEffects(); return true; }
     return false;
   },
   setResearch: function (tid) { return startResearch(tid); },

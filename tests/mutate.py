@@ -349,6 +349,34 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- 연구 효과 ----
+    # 숫자를 바꾸는 연구 둘. 효과가 조용히 약해지거나 저장에서 새어 나가면
+    # 플레이어는 원인을 짐작할 수 없다.
+    ("고속 벨트가 2배가 아니라 1.5배만 빨라진다", "05_data.js",
+     "'belt-2':       { belt: 2 },".encode("utf-8"),
+     "'belt-2':       { belt: 1.5 },".encode("utf-8"),
+     ["tech.beltSpeedDoubles", "tech.descMatchesEffect"]),
+
+    ("생산 효율이 기계 속도를 안 올린다", "05_data.js",
+     "'automation-2': { machine: 1.5, power: 0.8 }".encode("utf-8"),
+     "'automation-2': { machine: 1.0, power: 0.8 }".encode("utf-8"),
+     ["tech.automationSpeedsMachines"]),
+
+    ("생산 효율이 전력을 안 깎는다", "05_data.js",
+     "'automation-2': { machine: 1.5, power: 0.8 }".encode("utf-8"),
+     "'automation-2': { machine: 1.5, power: 1.0 }".encode("utf-8"),
+     ["tech.automationCutsPower"]),
+
+    ("저장을 열 때 연구 효과를 다시 안 건다 (열면 느려지는 공장)", "60_game.js",
+     ("    applyTechEffects();" + chr(10) + chr(10) + "    world.oreAmt").encode("utf-8"),
+     (chr(10) + "    world.oreAmt").encode("utf-8"),
+     ["tech.effectsSurviveSave"]),
+
+    ("새 판을 시작해도 배수가 안 돌아간다 (연구가 다음 판으로 샌다)", "60_game.js",
+     "  beltSpeedMul = 1; machineSpeedMul = 1; machinePowerMul = 1; powerCheatOn = false;".encode("utf-8"),
+     "  powerCheatOn = false;".encode("utf-8"),
+     ["tech.effectsResetOnNewGame"]),
+
     # ---- 설명문 대조 ----
     # 설명문만 조용히 틀어지는 경우다. 상수는 그대로라 앞 절 게이트는 아무 말도 안 한다.
     ("채광기 설명문이 실제보다 빠르다고 말한다", "05_data.js",

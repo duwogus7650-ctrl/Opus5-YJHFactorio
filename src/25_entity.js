@@ -387,6 +387,19 @@ function furnaceRecipeFor(itemId) {
 var machineSpeedMul = 1;     // 생산 효율 연구
 var machinePowerMul = 1;
 
+// 완료된 연구에서 배수를 **다시 계산한다.** 연구 완료·저장 복원·시험용 API 세 경로가
+// 전부 이 함수 하나만 부른다 — 세 곳에 같은 숫자를 적어 두면 반드시 갈라진다.
+function applyTechEffects() {
+  beltSpeedMul = 1; machineSpeedMul = 1; machinePowerMul = 1;
+  for (var tid in TECH_EFFECTS) {
+    if (!techDone[tid]) continue;
+    var ef = TECH_EFFECTS[tid];
+    if (ef.belt !== undefined) beltSpeedMul = ef.belt;
+    if (ef.machine !== undefined) machineSpeedMul = ef.machine;
+    if (ef.power !== undefined) machinePowerMul = ef.power;
+  }
+}
+
 function machineRecipeReady(e, rec) {
   for (var k in rec.inp) if (invCount(e.inv, k) < rec.inp[k]) return false;
   for (var o in rec.out) if (invCount(e.out, o) + rec.out[o] > SPEC.machineBufOut) return false;

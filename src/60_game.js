@@ -269,8 +269,7 @@ function loadGame(raw) {
         if (RECIPES[hrow[0]]) handQueue.push({ rid: hrow[0], left: +hrow[1] || 0 });
       }
     }
-    if (techDone['belt-2']) beltSpeedMul = 2;
-    if (techDone['automation-2']) { machineSpeedMul = 1.5; machinePowerMul = 0.8; }
+    applyTechEffects();
 
     world.oreAmt = new Uint16Array(b64dec(data.ore).buffer);
     world.ore.set(b64dec(data.oreT));
@@ -633,6 +632,11 @@ window.__GAME = {
   nodeKinds: function () { return NODE_KINDS.slice(); },
   nodeAvailable: function (kind) { return nodeAvailable(kind); },
   techIds: function () { return TECH_IDS.slice(); },
+  // 연구 설명문도 상수와 대조 대상이다 — "모든 벨트가 30개/s" 는 효과표에서 나온다
+  techInfo: function (tid) {
+    var T = TECHS[tid]; if (!T) return null;
+    return { name: T.name, desc: T.desc || '', effect: TECH_EFFECTS[tid] || null };
+  },
   buildingTypes: function () { return Object.keys(BUILDINGS); },
   buildingInfo: function (t) {
     var B = BUILDINGS[t];
@@ -735,10 +739,7 @@ window.__GAME = {
   },
 
   research: function (tid) {
-    if (tid) { techDone[tid] = true;
-      if (tid === 'belt-2') beltSpeedMul = 2;
-      if (tid === 'automation-2') { machineSpeedMul = 1.5; machinePowerMul = 0.8; }
-      return true; }
+    if (tid) { techDone[tid] = true; applyTechEffects(); return true; }
     return false;
   },
   setResearch: function (tid) { return startResearch(tid); },
