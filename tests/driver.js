@@ -3890,6 +3890,41 @@
         qtyInText('용광로 = 벽돌 9 + 철판 5', '벽돌') + '/' +
         qtyInText('용광로 = 철판 5', '벽돌'));
 
+      // ================= 11.14 도움말 본문 ================================
+      // 도움말(H)은 이 게임의 **설명서 본체**다. 튜토리얼을 건너뛴 사람은 여기만 읽는다.
+      // 그 안에 "전주 5×5", "8 타일/s", "5초가 지나면 간다", "0.5 이상이 참" 같은
+      // 숫자 약속이 들어 있는데, 건물 설명문과 달리 이쪽은 아무도 안 보고 있었다.
+      // 건물 설명문에 했던 것과 같은 방식으로, **상수에서 문장 조각을 만들어** 대조한다.
+      var helpEl = document.getElementById('helpBody');
+      var helpTxt = helpEl ? (helpEl.textContent || '') : '';
+      var HELP_FRAG = [
+        ['전주 ' + (rw.poleSupply * 2 + 1) + '×' + (rw.poleSupply * 2 + 1), '전주 공급 구역'],
+        [rw.trainSpeed + ' 타일/s', '열차 속도'],
+        ['벨트(' + rw.beltTilesPerSec + ')', '벨트 타일속도 — 열차와 비교하는 자리'],
+        [rw.trainDwell + '초가 지나면', '열차 자동 출발'],
+        [G.trueEps() + ' 이상이 참', '참/거짓 문턱 (동작 게이트는 ctrl.truthThresholdIsHalf)'],
+        ['1틱(약 ' + Math.round(G.tickSeconds() * 1000) + 'ms)', '고정 시뮬 스텝']
+      ];
+      var helpBad = [];
+      for (var hi = 0; hi < HELP_FRAG.length; hi++) {
+        if (helpTxt.indexOf(HELP_FRAG[hi][0]) < 0) {
+          helpBad.push('"' + HELP_FRAG[hi][0] + '" 없음 (' + HELP_FRAG[hi][1] + ')');
+        }
+      }
+      chk('help.matchesConstants',
+        helpTxt.length > 500 && helpBad.length === 0,
+        '도움말 본문 ' + helpTxt.length + '자에서 상수로 만든 조각 ' + HELP_FRAG.length + '개를 찾음 — ' +
+        (helpBad.length === 0 ? '전부 있다' : '빠짐 ' + helpBad.length + '건: ' + helpBad.join(' · ')));
+
+      // 음성 대조군 — 본문에 있을 리 없는 조각으로 읽개를 시험한다.
+      // 본문을 못 읽고 있으면 위 게이트는 "전부 없음" 이 아니라 길이 조건에서 걸리는데,
+      // 그것과 별개로 **찾기 자체가 살아 있는지** 를 여기서 본다.
+      chk('help.fragmentCheckDetectsMissing',
+        helpTxt.indexOf('전주') >= 0 && helpTxt.indexOf('핵융합로') < 0,
+        '본문에서 있는 낱말(전주) 찾음=' + (helpTxt.indexOf('전주') >= 0) +
+        ' · 없는 낱말(핵융합로) 찾음=' + (helpTxt.indexOf('핵융합로') >= 0) +
+        ' (뒤가 true 면 대조가 죽은 것)');
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

@@ -349,6 +349,19 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- 도움말 본문 ----
+    # 튜토리얼을 건너뛴 사람은 도움말만 읽는다. 여기 숫자가 틀리면 배선이 안 되고
+    # 이유를 모른다.
+    ("도움말이 열차 자동 출발을 3초라고 적는다", "50_ui.js",
+     "화물이 다 찼거나 5초가 지나면 간다".encode("utf-8"),
+     "화물이 다 찼거나 3초가 지나면 간다".encode("utf-8"),
+     ["help.matchesConstants"]),
+
+    ("도움말이 참/거짓 문턱을 0 초과라고 적는다", "50_ui.js",
+     "0.5 이상이 참이다".encode("utf-8"),
+     "0 초과가 참이다".encode("utf-8"),
+     ["help.matchesConstants"]),
+
     # ---- 튜토리얼 재료 문구 ----
     # 문구를 보고 재료를 준비하는 사람이 있다. 비용만 바꾸면 그 줄이 거짓말이 된다.
     # 비용 쪽을 건드리면 초반 리그가 통째로 깨져 드라이버가 중단되고 INVALID 가 된다

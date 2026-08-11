@@ -9543,6 +9543,9 @@ window.__GAME = {
   // spec() 은 파생값이라 SPEC 이 바뀌면 같이 움직인다. 그것만으로는 "구현이 SPEC 을
   // 지키는가" 밖에 못 보고, "SPEC 이 README 가 약속한 숫자인가" 는 아무도 안 본다.
   specRaw: function () { var o = {}; for (var k in SPEC) o[k] = SPEC[k]; return o; },
+  // SPEC 밖의 두 상수 — 도움말이 '0.5 이상이 참', '1틱 약 17ms' 라고 약속한다
+  trueEps: function () { return TRUE_EPS; },
+  tickSeconds: function () { return TICK; },
 
   // 오라클 상수 — 하네스가 이 값으로 기대 처리량을 계산한다
   spec: function () {
