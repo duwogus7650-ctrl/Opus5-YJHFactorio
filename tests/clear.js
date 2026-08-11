@@ -1137,8 +1137,12 @@
   // 군수가 첫째 — 터렛·벽·탄창이 전부 여기 걸려 있고 습격 유예는 300초뿐이다.
   // 강철을 셋째로 올린다 — 분배기가 강철 연구로 옮겨 갔기 때문에, 그 전에
   // 분배기를 놓으려 하면 '잠김'으로 배치가 실패한다.
+  // **생산 효율을 고속 벨트보다 먼저 든다.** 둘 다 적100+녹100 인데 효과가 다르다 —
+  // 생산 효율은 기계를 1.5배로 돌려 **그 뒤의 연구팩 생산 자체를 앞당기고**, 고속 벨트는
+  // 이 주행처럼 라인이 짧은 판에서는 거의 아무 일도 하지 않는다. 예전 순서로는 마지막
+  // 생산 효율이 76% 에서 시간이 끝났다.
   var TECH_ORDER = ['military', 'logistics', 'steel', 'logic-mem',
-                    'logic-ctrl', 'defense-ai', 'belt-2', 'automation-2'];
+                    'logic-ctrl', 'defense-ai', 'automation-2', 'belt-2'];
   function nextTech() {
     var st = G.state(), done = st.research.done;
     if (st.research.current) return null;
