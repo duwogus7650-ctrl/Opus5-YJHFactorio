@@ -769,6 +769,34 @@
       chk('mobile.logicWiringByTouch', linksAfter > linksBefore,
         '포트에서 포트로 끌기 → 배선 ' + linksBefore + ' → ' + linksAfter +
         ' (안 되면 이 게임의 본체를 폰에서 못 쓴다)');
+
+      // ---------- 8.5 멀리 놓인 노드에 손가락으로 닿는가 --------------------
+      // 편집기 판은 6000px 인데 폰 화면은 390px 다. 오른쪽에 놓인 노드는 처음에
+      // 화면 밖에 있고, **배경을 끌어 화면을 옮겨야** 닿는다. 그 길이 막히면 회로를
+      // 조금만 키워도 폰에서는 손댈 수 없는 노드가 생긴다 — 이 게임의 본체가 그렇게
+      // 반쪽이 된다. (측정: 노드 판 내용 폭 5630px · 보이는 폭 390px)
+      var farN = G.gAdd(ctrl, 'lamp', 900, 40);
+      G.ui.showGraph();
+      function farBox() {
+        var els = document.querySelectorAll('#graphInner .node');
+        for (var q2 = 0; q2 < els.length; q2++) {
+          if (+els[q2].getAttribute('data-nid') === farN) return els[q2].getBoundingClientRect();
+        }
+        return null;
+      }
+      var fb0 = farBox();
+      var wrapEl = document.getElementById('graphWrap');
+      var wr = wrapEl.getBoundingClientRect();
+      // 배경(빈 자리)을 왼쪽으로 크게 끈다
+      swipe(wrapEl, wr.left + wr.width - 30, wr.top + wr.height - 60,
+                    wr.left + 20, wr.top + wr.height - 60, 12);
+      var fb1 = farBox();
+      chk('mobile.logicGraphPansToFarNodes',
+        !!fb0 && !!fb1 && fb0.left > VW && fb1.left < fb0.left - 200,
+        '멀리 둔 노드 처음 x=' + (fb0 ? Math.round(fb0.left) : '?') + ' (화면 폭 ' + VW +
+        ') → 배경을 끈 뒤 x=' + (fb1 ? Math.round(fb1.left) : '?') +
+        ' (처음엔 화면 밖이고, 끌면 따라와야 한다)');
+
       G.ui.closeLogic();
       void n2;
 

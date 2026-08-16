@@ -775,6 +775,13 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 편집기 판은 6000px 인데 폰 화면은 390px 다. 배경을 끌어 옮기는 길이 막히면
+    # 오른쪽에 놓인 노드는 영영 못 만진다.
+    ("노드 편집기 화면을 손가락으로 못 옮긴다", "55_logicui.js",
+     "      gt.mode = 'pan'; gt.lx = ev.touches[0].clientX; gt.ly = ev.touches[0].clientY;".encode("utf-8"),
+     "      gt.mode = null; gt.lx = ev.touches[0].clientX; gt.ly = ev.touches[0].clientY;".encode("utf-8"),
+     ["mobile.logicGraphPansToFarNodes"], "mobile.js"),
+
     # 녹화 영상이 드러낸 것 — 제어기 계기 줄이 화면 밖으로 잘렸다
     ("계기 줄을 다시 가운데 정렬 무제한으로 (양옆이 잘린다)", "shell.html",
      "  #dispRow{left:0;right:0;transform:none;width:100%;max-width:100%;".encode("utf-8"),
