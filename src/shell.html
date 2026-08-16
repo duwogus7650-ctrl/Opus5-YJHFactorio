@@ -391,12 +391,27 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
      붙은 채 왼쪽으로 145px 밀려 나갔다 — 글자가 줄마다 앞부분이 잘렸고, 게다가 그
      폭 때문에 브라우저가 화면 전체를 축소해 넣어(shrink-to-fit) 다른 글자까지 쪼그라들었다.
      실기 스크린샷으로 처음 드러났다. 게이트는 **재기 전에 도움말을 닫고 있었다.** */
-  #help{
+  /* 연구 판도 같은 처지였다 — 660px 짜리 데스크톱 대화상자가 그대로 떠서 글자가
+     왼쪽으로 잘려 나갔다. 게이트가 판 목록을 **손으로 적어 두는 바람에** 도움말만
+     고치고 이건 지나갔다. 지금은 시험이 화면의 판을 스스로 훑는다. */
+  #help,#tech{
     position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px));top:auto;
     width:auto;max-width:100%;transform:none;
     max-height:62vh;overflow-y:auto;border-radius:0;border-left:none;border-right:none;
     z-index:26}
-  #help .pad{padding:10px 12px}
+  #help .pad,#tech .pad{padding:10px 12px}
+  /* 연구 목록의 오른쪽 [시작] 버튼과 비용이 좁은 폭에서 겹치지 않게 세로로 쌓는다 */
+  #tech .trow{flex-wrap:wrap}
+
+  /* 도구를 고른 채로 지도를 누르면 계속 지어진다. 폰에는 ESC 도 우클릭도 없으므로
+     **그만두는 길**이 화면에 보여야 한다. 조작 바 바로 위에 띄운다. */
+  #toolChip{display:none;position:fixed;left:8px;right:8px;
+    bottom:calc(60px + var(--safe-b) + var(--tutor-h, 0px));z-index:27;
+    min-height:44px;align-items:center;justify-content:center;gap:8px;
+    background:var(--hazard);color:#1c2024;border:1px solid var(--edge);
+    font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 87;
+    font-size:13px;box-shadow:0 3px 10px rgba(0,0,0,.45)}
+  body.tool-on #toolChip{display:flex}
   body.sheet-build #build{display:block}
   body.sheet-right #right{display:flex}
   /* 인스펙터와 튜토리얼은 시트 토글과 무관하게 스스로 뜬다 (선택·진행에 따라) */
@@ -540,6 +555,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
   <div id="rulePane"></div>
 </div>
 
+<div id="toolChip"></div>
 <div id="pickBanner">지도에서 대상을 클릭하세요 &nbsp;·&nbsp; ESC 취소</div>
 <div id="toast"></div>
 

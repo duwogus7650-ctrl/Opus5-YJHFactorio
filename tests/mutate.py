@@ -775,15 +775,32 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 실기 2차 제보 — 연구 판이 데스크톱 대화상자로 남아 있었고, 고른 도구를 푸는 길이
+    # 폰에 없었다.
+    ("연구 판을 좁은 화면 시트에서 뺀다 (데스크톱 660px 대화상자가 되살아난다)", "shell.html",
+     "  #help,#tech{".encode("utf-8"),
+     "  #help,#tech_off{".encode("utf-8"),
+     ["mobile.techPanelFitsOnScreen"], "mobile.js"),
+
+    ("고른 도구를 그만두는 칩을 안 띄운다", "50_ui.js",
+     "  document.body.classList.toggle('tool-on', on);".encode("utf-8"),
+     "  document.body.classList.toggle('tool-on', false);".encode("utf-8"),
+     ["mobile.canCancelSelectedTool"], "mobile.js"),
+
+    ("같은 것을 다시 눌러도 안 풀린다", "50_ui.js",
+     "  if (t && t === tool) t = null;".encode("utf-8"),
+     "  if (false) t = null;".encode("utf-8"),
+     ["mobile.reTapDeselects"], "mobile.js"),
+
     # 실기 스크린샷이 드러낸 것들 — 게이트가 이제 잡는지 확인한다.
     # (문자열에 개행을 넣을 때는 chr(10) 을 쓴다. 백슬래시-n 을 이 파일에 직접 적으면
     #  편집 경로에서 진짜 개행으로 바뀌어 문법 오류가 났다 — 세 번 반복했다.)
     # 좁은 화면용 #help 규칙 자체를 무력화한다 → 데스크톱 규칙(680px 가운데 정렬)이
     # 되살아나고, 그게 실기에서 화면 밖 왼쪽 145px 로 나간 바로 그 상태다.
-    ("좁은 화면용 도움말 규칙을 없앤다 (데스크톱 680px 판이 되살아난다)", "shell.html",
-     ("  #help{" + chr(10) + "    position:fixed;left:0;right:0;bottom:calc(56px").encode("utf-8"),
-     ("  #help_off{" + chr(10) + "    position:fixed;left:0;right:0;bottom:calc(56px").encode("utf-8"),
-     ["mobile.helpFitsOnScreenWhenOpen"], "mobile.js"),
+    ("좁은 화면용 시트 규칙을 통째로 없앤다 (데스크톱 대화상자가 되살아난다)", "shell.html",
+     ("  #help,#tech{" + chr(10) + "    position:fixed;left:0;right:0;bottom:calc(56px").encode("utf-8"),
+     ("  #help_off,#tech_off{" + chr(10) + "    position:fixed;left:0;right:0;bottom:calc(56px").encode("utf-8"),
+     ["mobile.helpFitsOnScreenWhenOpen", "mobile.techPanelFitsOnScreen"], "mobile.js"),
 
     ("손가락 화면 규칙이 좁은 화면 시트 높이까지 덮는다", "shell.html",
      ("  @media (min-width: 721px){" + chr(10) + "    #build,#right{max-height:calc(100vh - 72px)}" + chr(10) + "  }").encode("utf-8"),

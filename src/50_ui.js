@@ -154,12 +154,30 @@ function blueprintClickAt(tx, ty) {
   return true;
 }
 
+// 고른 도구를 **그만두는 길**. 폰에는 ESC 도 우클릭도 없어서, 한 번 고르면 지도를
+// 누를 때마다 계속 지어졌다(실기 제보). 도구가 걸려 있는 동안 조작 바 위에 칩을 띄우고
+// 그것을 누르면 풀린다. 데스크톱에서는 ESC 가 그대로 쓰인다.
+function updateToolChip() {
+  var chip = document.getElementById('toolChip');
+  if (!chip) return;
+  var on = !!tool;
+  document.body.classList.toggle('tool-on', on);
+  if (on) {
+    var B = BUILDINGS[tool];
+    chip.innerHTML = '<span>' + (B ? B.name : tool) + ' 놓는 중</span>' +
+                     '<span style="font-weight:400">— 눌러서 그만두기 ✕</span>';
+  }
+}
+
 function selectTool(t) {
   if (t && BUILDINGS[t].tech && !techDone[BUILDINGS[t].tech]) {
     toast(TECHS[BUILDINGS[t].tech].name + ' 연구가 필요하다', 'bad'); return;
   }
+  // 같은 것을 다시 고르면 해제 — 목록에서 끄는 길이 하나도 없으면 폰에서는 갇힌다
+  if (t && t === tool) t = null;
   tool = t; selected = null; hideInsp();
   renderBuildList();
+  updateToolChip();
   // **폰에서는 고르면 시트를 닫는다.** 안 닫으면 지도가 시트에 가려 방금 고른 것을
   // 놓을 자리가 안 보인다 — 손가락으로 하는 순서는 "고른다 → 지도를 누른다" 이고,
   // 그 사이에 판을 손수 닫게 만들면 단계가 하나 늘 뿐이다.
@@ -366,7 +384,7 @@ function bindInput(canvas) {
       if (logicOpen) { closeLogic(); return; }
       if (document.getElementById('tech').style.display === 'block') { closeTech(); return; }
       if (document.getElementById('help').style.display === 'block') { closeHelp(); return; }
-      tool = null; selected = null; hideInsp(); renderBuildList(); return;
+      tool = null; selected = null; hideInsp(); renderBuildList(); updateToolChip(); return;
     }
     if (logicOpen) return;
     // 저장/불러오기 — 버튼과 같은 동작. F5(새로고침)·Ctrl+S 처럼 브라우저가 가져가는
@@ -449,7 +467,7 @@ function pickEntity() {
 function rightClickAction() {
   // 대상 지정 중의 우클릭은 "취소"다. 철거로 동작하면 지정하려던 건물을 부수게 된다.
   if (pickMode) { cancelPick(); return; }
-  if (tool) { tool = null; renderBuildList(); return; }
+  if (tool) { tool = null; renderBuildList(); updateToolChip(); return; }
   var e = entityAt(hoverT.x, hoverT.y);
   if (e) {
     if (selected === e.id) { selected = null; hideInsp(); }
@@ -1270,6 +1288,7 @@ function toggleSheet(name) {
 }
 function bindMobileBar() {
   function on(id, fn) { var b = document.getElementById(id); if (b) b.onclick = fn; }
+  on('toolChip', function () { selectTool(null); });
   on('btnSheetBuild', function () { toggleSheet('build'); });
   on('btnSheetRight', function () { toggleSheet('right'); });
   on('btnRotate', function () { rotateAction(); renderBuildList(); });

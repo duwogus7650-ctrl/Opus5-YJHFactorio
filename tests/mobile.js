@@ -188,7 +188,20 @@
         if (r.width === 0 || r.height === 0) return null;
         return { id: id, l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height };
       }
-      var PANEL_IDS = ['top', 'build', 'right', 'insp', 'tutor', 'help', 'mobBar'];
+      // **목록을 손으로 적지 않는다.** 처음엔 일곱 개를 적어 뒀는데, 그 사이 연구 판이
+      // 똑같이 660px 데스크톱 대화상자로 남아 있다가 실기에서 화면을 깨뜨렸다 — 목록에
+      // 없어서 아무도 안 봤다. 화면에 있는 판을 시험이 스스로 훑는다. 새 판이 생기면
+      // 자동으로 대상이 된다.
+      var PANEL_IDS = (function () {
+        var ids = [], seen = {};
+        var els = document.querySelectorAll('.panel, #logic, #mobBar, #right');
+        for (var i = 0; i < els.length; i++) {
+          var id = els[i].id;
+          if (id && !seen[id]) { seen[id] = 1; ids.push(id); }
+        }
+        return ids;
+      })();
+      out.measured.panelIds = PANEL_IDS;
       function visiblePanels() {
         var out2 = [];
         for (var i = 0; i < PANEL_IDS.length; i++) {
@@ -263,6 +276,22 @@
         ' · 떠 있는 판 ' + visiblePanels().map(function (q) { return q.id; }).join(','));
 
       G.ui.closeHelp();
+
+      // (d-1) **연구 판을 열어 놓고도** 잰다. 도움말과 판박이 결함이 여기 남아 있었다.
+      var techBtn0 = document.getElementById('btnTech');
+      if (techBtn0) tap(techBtn0, 10, 10);
+      var clipTech = clippedList();
+      var techBox = panelBox('tech');
+      chk('mobile.techPanelFitsOnScreen',
+        !!techBox && clipTech.length === 0,
+        (techBox ? ('연구 판 ' + Math.round(techBox.l) + '..' + Math.round(techBox.r) +
+                    ' (화면 0..' + VW + ')') : '연구 판이 안 열렸다') +
+        ' · 화면 밖으로 나간 판 ' + clipTech.length + '건' +
+        (clipTech.length ? ': ' + clipTech.join(' · ') : ''));
+      var layoutTech = document.documentElement.clientWidth;
+      chk('mobile.noShrinkToFitWithTechOpen', layoutTech <= window.screen.width + 1,
+        '연구 판 열린 채 레이아웃 뷰포트 ' + layoutTech + 'px · 기기 폭 ' + window.screen.width + 'px');
+      if (techBtn0) tap(techBtn0, 10, 10);      // 닫는다
 
       // (d-2) **시트를 열어 놓고도** 잰다. 첫 화면만 보면 시트가 닫혀 있어서, 시트와
       // 튜토리얼이 같은 자리에 겹치는 결함을 영원히 못 본다 — 실제로 돌연변이 두 개가
@@ -384,6 +413,41 @@
                   ' (좁은 화면은 처음엔 닫혀 있고 눌러야 열려야 한다)'
                 : '넓은 레이아웃 — 도크라 처음부터 보여야 한다: ' + onScreen(firstBuild)) +
         (firstBuild ? ' · 위치 ' + JSON.stringify(firstBuild.getBoundingClientRect()) : ' · 항목 없음'));
+
+      // ---------- 2.5 고른 도구를 그만둘 수 있는가 --------------------------
+      // 폰에는 ESC 도 우클릭도 없다. 한 번 고르면 지도를 누를 때마다 계속 지어지고,
+      // 푸는 길이 화면에 없으면 **갇힌다** — 실기 제보가 정확히 그것이었다.
+      if (NARROW) {
+        var openB = document.getElementById('btnSheetBuild');
+        if (openB) tap(openB, 10, 10);
+      }
+      var firstItem = document.querySelector('#buildList .bitem:not(.locked)');
+      if (firstItem) tap(firstItem, 10, 10);
+      var pickedSel = !!document.querySelector('#buildList .bitem.sel');
+      var chipEl = document.getElementById('toolChip');
+      var chipShown = !!chipEl && getComputedStyle(chipEl).display !== 'none';
+      var chipOnScreen = chipShown && onScreen(chipEl);
+      if (chipShown) tap(chipEl, 10, 10);
+      var stillSel = !!document.querySelector('#buildList .bitem.sel');
+      chk('mobile.canCancelSelectedTool',
+        pickedSel && (!NARROW || (chipShown && chipOnScreen)) && !stillSel,
+        '건물 고름=' + pickedSel + ' · 취소 칩 보임=' + chipShown +
+        ' · 화면 안=' + chipOnScreen + ' → 누른 뒤 아직 골라져 있나=' + stillSel +
+        ' (폰에는 ESC 가 없다 — 화면에 그만두는 길이 있어야 한다)');
+
+      // 음성 대조군 — 목록에서 같은 것을 다시 눌러도 풀려야 한다(두 번째 길).
+      var again = document.querySelector('#buildList .bitem:not(.locked)');
+      if (again) { tap(again, 10, 10); }
+      var onAfterFirst = !!document.querySelector('#buildList .bitem.sel');
+      if (again) { tap(again, 10, 10); }
+      var onAfterSecond = !!document.querySelector('#buildList .bitem.sel');
+      chk('mobile.reTapDeselects', onAfterFirst && !onAfterSecond,
+        '한 번 누름 → 골라짐=' + onAfterFirst + ' · 같은 것을 다시 누름 → 골라짐=' +
+        onAfterSecond + ' (다시 누르면 풀려야 한다)');
+      if (NARROW) {
+        var closeB2 = document.getElementById('btnSheetBuild');
+        if (closeB2 && document.body.classList.contains('sheet-build')) tap(closeB2, 10, 10);
+      }
 
       // ---------- 3. 키보드 없이 되는가 ------------------------------------
       // 폰에는 키보드가 없다. R(회전)·T(연구)·H(도움말)이 단축키뿐이면
