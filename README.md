@@ -195,7 +195,7 @@ harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1�
 harness.py fullplay.js GREEN — 노드 35종·건물 22종 전수 40건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 189건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 192건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 15건 중 14건 통과 (연구 8/8 · 손실 0 · 아래 "여유가 46초뿐이다")
@@ -208,8 +208,8 @@ harness.py clear.js    RED  — 15건 중 14건 통과 (연구 8/8 · 손실 0 �
 | **Firefox** (Playwright) | GREEN | GREEN | GREEN | GREEN |
 | **WebKit** = Safari 엔진 (Playwright) | GREEN | GREEN | GREEN | GREEN |
 
-터치는 **진짜 `TouchEvent`** 가 만들어지는 조합만 센다: chromium mobile 44건 · chromium tablet
-44건 GREEN. webkit·firefox 는 Playwright 가 합성 터치를 못 만들어 **미검증으로 보고**하고
+터치는 **진짜 `TouchEvent`** 가 만들어지는 조합만 센다: chromium mobile 46건 · chromium tablet
+46건 GREEN. webkit·firefox 는 Playwright 가 합성 터치를 못 만들어 **미검증으로 보고**하고
 통과로 세지 않는다 — 못 잰 것을 GREEN 칸에 넣는 순간 그 표는 거짓말이 된다.
 
 #### 폰에 설치해서 쓰기

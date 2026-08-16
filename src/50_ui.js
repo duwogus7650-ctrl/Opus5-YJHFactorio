@@ -279,6 +279,9 @@ function bindInput(canvas) {
   //   손가락 1개 + 도구 없음 → 지도 이동 (그 자리에서 떼면 = 선택)
   //   손가락 2개            → 핀치 확대 + 이동
   // 우클릭(철거)에 해당하는 것이 없으므로 **철거는 도구로** 만든다(아래 'demolish').
+  // 끌어서 줄로 까는 도구 — 이것들만 닿는 즉시 깔린다
+  var LINE_TOOLS = { belt: 1, rail: 1, pipe: 1 };
+  function refreshHoverPreviewOnly() { /* 커서만 옮기면 다음 프레임이 미리보기를 그린다 */ }
   var tch = { mode: null, id: null, sx: 0, sy: 0, lx: 0, ly: 0, moved: 0,
               pinchD: 0, pinchCx: 0, pinchCy: 0 };
   function localXY(t) {
@@ -312,7 +315,16 @@ function bindInput(canvas) {
     tch.id = t.identifier; tch.sx = p.x; tch.sy = p.y; tch.lx = p.x; tch.ly = p.y; tch.moved = 0;
     setHoverFrom(p);
     if (pickMode) { tch.mode = 'pick'; return; }
-    if (tool) { tch.mode = 'build'; mouse.down = true; dragLast = null; dragPlace(); }
+    if (tool) {
+      // **손가락이 닿는 순간 짓지 않는다.** 손끝이 그 칸을 가리므로, 눌러서 지어지면
+      // 어디에 놓였는지 보고 나서야 알게 된다 — 그래서 원치 않는 자리에 계속 지어졌다
+      // (실기 제보). 누르고 있는 동안은 **자리만 잡고**, 손을 떼면 그 자리에 놓는다.
+      //
+      // 다만 벨트·레일·파이프는 다르다. 이것들은 **끌어서 줄로 까는 것**이 본래 조작이고
+      // (도움말에도 그렇게 적혀 있다), 한 칸씩 떼었다 눌렀다 하면 쓸 수가 없다.
+      if (LINE_TOOLS[tool]) { tch.mode = 'build'; mouse.down = true; dragLast = null; dragPlace(); }
+      else { tch.mode = 'aim'; }
+    }
     else { tch.mode = 'pan'; }
   }, { passive: false });
 
@@ -341,6 +353,10 @@ function bindInput(canvas) {
       clampCam(); refreshHover();
     } else if (tch.mode === 'build') {
       dragPlace();
+    } else if (tch.mode === 'aim') {
+      // 자리만 옮긴다. setHoverFrom 이 위에서 이미 커서를 옮겼고, 지도는 안 움직인다 —
+      // 조준 중에 지도까지 따라 움직이면 놓을 자리를 정할 수가 없다.
+      refreshHoverPreviewOnly();
     }
   }, { passive: false });
 
@@ -353,6 +369,7 @@ function bindInput(canvas) {
     // 문턱을 둔다 — 0 으로 두면 실기에서 탭이 전부 드래그로 읽힌다.
     var TAP = 12;
     if (tch.mode === 'pick') { doPick(); }
+    else if (tch.mode === 'aim') { dragLast = null; dragPlace(); }   // 떼는 순간 놓는다
     else if (tch.mode === 'pan' && tch.moved <= TAP) { pickEntity(); }
     mouse.down = false; dragLast = null; tch.mode = null;
   }

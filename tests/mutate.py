@@ -775,6 +775,22 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 실기 4차 제보 — 손끝이 칸을 가리는데 닿는 즉시 지어져 원치 않는 자리에 계속 지어졌다
+    ("닿는 즉시 짓는다 (손 떼기 전에 이미 놓인다)", "50_ui.js",
+     "      if (LINE_TOOLS[tool]) { tch.mode = 'build'; mouse.down = true; dragLast = null; dragPlace(); }".encode("utf-8"),
+     "      if (true) { tch.mode = 'build'; mouse.down = true; dragLast = null; dragPlace(); }".encode("utf-8"),
+     ["mobile.holdToAimThenReleasePlaces"], "mobile.js"),
+
+    ("손을 떼도 안 짓는다 (자리만 잡고 끝난다)", "50_ui.js",
+     "    else if (tch.mode === 'aim') { dragLast = null; dragPlace(); }".encode("utf-8"),
+     "    else if (tch.mode === 'aim') { dragLast = null; }".encode("utf-8"),
+     ["mobile.holdToAimThenReleasePlaces"], "mobile.js"),
+
+    ("벨트까지 떼야 깔리게 만든다 (줄로 못 깐다)", "50_ui.js",
+     "  var LINE_TOOLS = { belt: 1, rail: 1, pipe: 1 };".encode("utf-8"),
+     "  var LINE_TOOLS = {};".encode("utf-8"),
+     ["mobile.beltStillLaysOnTouch"], "mobile.js"),
+
     # 실기 3차 제보 — 연구 판이 상단 계기를 덮었고, 튜토리얼을 닫으면 못 돌아왔다.
     ("시트 높이를 다시 62vh 로 (상단 계기를 덮는다)", "shell.html",
      "    max-height:calc(100vh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));".encode("utf-8"),

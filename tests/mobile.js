@@ -489,6 +489,47 @@
         if (closeB2 && document.body.classList.contains('sheet-build')) tap(closeB2, 10, 10);
       }
 
+      // ---------- 2.6 꾹 눌러 자리 잡고, 떼면 놓인다 ------------------------
+      // 손끝이 그 칸을 가리므로, 닿는 즉시 지어지면 어디에 놓였는지 나중에야 안다.
+      // 실기에서 "원치 않는 자리에 계속 지어진다" 로 나타났다. 누르는 동안은 자리만
+      // 잡고 떼는 순간 놓여야 한다 — **누른 채로는 아직 없어야 한다**가 요점이다.
+      G.reset(424242); G.clearEntities(); G.clearEnemies();
+      G.giveAll(9999); G.powerCheat(true);
+      var poleItem = document.querySelector('#buildList .bitem[data-b="pole"]');
+      if (!poleItem) {
+        var openB3 = document.getElementById('btnSheetBuild');
+        if (NARROW && openB3) tap(openB3, 10, 10);
+        poleItem = document.querySelector('#buildList .bitem[data-b="pole"]');
+      }
+      if (poleItem) tap(poleItem, 0, 0);
+      var aimFrom = tileToClient(96, 96), aimTo = tileToClient(99, 96);
+      var beforeAim = !!G.entAtTile(99, 96);
+      fire(cv, 'touchstart', [tp(cv, 1, aimFrom.x, aimFrom.y)]);
+      var atStart = !!G.entAtTile(96, 96);                 // 누른 자리에 벌써 생겼나
+      fire(cv, 'touchmove', [tp(cv, 1, aimTo.x, aimTo.y)]);
+      var whileDrag = !!G.entAtTile(99, 96);
+      fire(cv, 'touchend', [tp(cv, 1, aimTo.x, aimTo.y)]);
+      var afterRelease = !!G.entAtTile(99, 96);
+      chk('mobile.holdToAimThenReleasePlaces',
+        !beforeAim && !atStart && !whileDrag && afterRelease && !G.entAtTile(96, 96),
+        '누른 자리(96,96)에 생김=' + atStart + ' · 끄는 중 목적지(99,96)에 생김=' + whileDrag +
+        ' → 뗀 뒤 목적지에 생김=' + afterRelease + ' · 누른 자리에 남은 것=' +
+        !!G.entAtTile(96, 96) + ' (누른 채로는 안 지어지고, 떼야 그 자리에 지어져야 한다)');
+
+      // 벨트는 예외다 — 끌어서 줄로 까는 것이 본래 조작이라 닿는 즉시 깔려야 한다.
+      // (이 검사가 음성 대조군 구실도 한다: 위 검사는 '무조건 안 지어짐' 을 재는 게 아니다.)
+      var beltItem2 = document.querySelector('#buildList .bitem[data-b="belt"]');
+      if (beltItem2) tap(beltItem2, 0, 0);
+      var bpt = tileToClient(103, 96);
+      fire(cv, 'touchstart', [tp(cv, 1, bpt.x, bpt.y)]);
+      var beltAtTouch = !!G.entAtTile(103, 96);
+      fire(cv, 'touchend', [tp(cv, 1, bpt.x, bpt.y)]);
+      chk('mobile.beltStillLaysOnTouch', beltAtTouch,
+        '벨트는 닿는 즉시 깔려야 한다 — 누른 채 (103,96) 에 생김=' + beltAtTouch);
+      // **고른 것을 풀고 넘긴다.** 안 풀면 뒤 검사가 같은 항목을 다시 눌러 토글로 꺼져
+      // "도구가 안 골라진다" 는 거짓 실패가 난다 (실제로 6건이 그렇게 무너졌다).
+      if (beltItem2) tap(beltItem2, 0, 0);
+
       // ---------- 3. 키보드 없이 되는가 ------------------------------------
       // 폰에는 키보드가 없다. R(회전)·T(연구)·H(도움말)이 단축키뿐이면
       // 그 기능은 폰에서 **존재하지 않는 기능**이다.
