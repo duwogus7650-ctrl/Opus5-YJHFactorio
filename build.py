@@ -61,8 +61,11 @@ def manifest_uri(icon192, icon512):
     man = {
         'name': 'Logic Foundry',
         'short_name': 'Foundry',          # 홈화면 라벨은 짧아야 안 잘린다
-        'start_url': '.',
-        'scope': '.',
+        # **파일 이름을 그대로 쓴다.** '.' 로 두면 홈화면에서 띄울 때 폴더가 열리고,
+        # 그 폴더에 index 가 없으면 404 다 (GitHub Pages 의 dist/ 가 정확히 그렇다).
+        # 파일명으로 두면 file:// 로 직접 연 경우와 웹에 올린 경우 둘 다 맞는다.
+        'start_url': './Logic-Foundry.html',
+        'scope': './',
         'display': 'standalone',          # 주소창 없이 앱처럼
         'orientation': 'any',
         'background_color': '#1c2024',
