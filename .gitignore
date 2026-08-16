@@ -13,3 +13,9 @@ node_modules/
 tests/.mutate-backup/
 dist/video/
 tests/_*.py
+
+# 녹화 원본(webm)과 잘라 낸 클립. 산출물이지 소스가 아니고, 한 번 찍을 때마다
+# 10 MB 씩 붙는다. 만드는 방법은 tests/record.js 에 있으니 언제든 다시 찍는다.
+shots/video/
+shots/video-open/
+shots/clips/

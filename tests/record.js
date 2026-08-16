@@ -1,129 +1,145 @@
 // ===========================================================================
-//  녹화 러너 — 자율 플레이(play.js)를 영상으로 남긴다.
+//  녹화 — 폰 화면 그대로 자력 완주 주행을 영상으로 남긴다.
 //
-//  pwrun.js 와 갈라 놓은 이유: 녹화는 판정 채널이 아니다. 영상은 사람이 보라고
-//  만드는 것이고, **합격/불합격은 여전히 #testout 의 JSON 이 정한다.**
-//  둘을 섞으면 "영상이 그럴듯하니 됐다" 로 흐르게 된다 — 실제로 첫 세 판은
-//  화면상 공장이 그럴듯했지만 30분 뒤 전멸했다.
+//  왜 있나: "폰에서 처음부터 끝까지 깨는 걸 보여 달라" 는 요구는 스크린샷으로는
+//  못 채운다. 게이트는 숫자로 맞다고 말하지만, **사람이 보기에 되는가**는 다른
+//  질문이고 그건 움직이는 화면으로만 답할 수 있다.
 //
-//  사용: node tests/record.js [speed] [mins] [outdir]
+//  clear.js 를 CINEMA 모드(?cine=1)로 돌린다 — 카메라가 지금 벌어지는 일을 따라간다.
+//  뷰포트는 폰(390x844)이고 터치 컨텍스트다. 즉 **데스크톱 화면을 세로로 자른 것이
+//  아니라** 실제 폰 레이아웃(바닥 시트·조작 바·계기 띠)이 그대로 찍힌다.
+//
+//  같이 남기는 것: 0.5초마다 게임 상태를 찍은 **타임라인 JSON**. 나중에 하이라이트를
+//  자를 때 "몇 분쯤" 이 아니라 "연구 3개째가 끝난 순간" 으로 자를 수 있어야 한다.
+//
+//  사용: node tests/record.js [출력폴더] [speed]
 // ===========================================================================
 const fs = require('fs');
-const path = require('path');
 const os = require('os');
-
-const SPEED = process.argv[2] || '12';
-const MINS = process.argv[3] || '30';
-const OUTDIR = process.argv[4] || path.join(__dirname, '..', 'dist', 'video');
+const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const DIST = path.join(ROOT, 'dist', 'Logic-Foundry.html');
-// 어떤 드라이버를 녹화할지 갈아끼운다 — 소크(play.js) 와 완주(clear.js) 를 같은
-// 러너로 남기려고. 판정은 여전히 #testout 이 하고, 여기는 그림만 만든다.
-const DRV = path.join(ROOT, 'tests', process.env.LF_REC_DRIVER || 'play.js');
+const DRV = path.join(__dirname, 'clear.js');
+const OUTDIR = process.argv[2] || path.join(ROOT, 'shots', 'video');
+const SPEED = process.argv[3] || '16';
+const TIMEOUT = parseInt(process.env.LF_TIMEOUT || '1800', 10) * 1000;
 
 (async () => {
-  let pw;
-  try { pw = require('playwright'); }
-  catch (e) {
-    try { pw = require(path.join(process.env.APPDATA || '', 'npm', 'node_modules', 'playwright')); }
-    catch (e2) { console.error('FATAL: playwright 없음: ' + e.message); process.exit(2); }
-  }
-  if (!fs.existsSync(DIST)) { console.error('FATAL: dist 없음 — python build.py 먼저'); process.exit(2); }
-  fs.mkdirSync(OUTDIR, { recursive: true });
+  const { chromium } = require(path.join(ROOT, 'node_modules', 'playwright'));
+  if (!fs.existsSync(DIST)) { console.error('FATAL: dist 가 없다 — python build.py 먼저'); process.exit(2); }
 
   const html = fs.readFileSync(DIST, 'utf8');
   const driver = fs.readFileSync(DRV, 'utf8');
   const i = html.lastIndexOf('</body>');
   const page_html = html.slice(0, i) + '<script>\n' + driver + '\n</' + 'script>\n' + html.slice(i);
-
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lf-rec-'));
   const file = path.join(tmp, 'run.html');
   fs.writeFileSync(file, page_html, 'utf8');
+  fs.mkdirSync(OUTDIR, { recursive: true });
 
-  const W = 1280, H = 720;                       // 720p — 파일이 크지 않고 읽을 수 있다
-  const browser = await pw.chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({
-    viewport: { width: W, height: H },
-    recordVideo: { dir: OUTDIR, size: { width: W, height: H } }
+    viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
+    isMobile: true, hasTouch: true,
+    recordVideo: { dir: OUTDIR, size: { width: 390, height: 844 } },
   });
   const page = await ctx.newPage();
-  const errs = [];
-  page.on('pageerror', (e) => errs.push('pageerror: ' + String(e && e.message)));
-  page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e && e.message)));
 
   const t0 = Date.now();
-  // cine=1 — 전투가 붙으면 1배속으로 떨어뜨려 사람이 볼 수 있게 한다. 측정 주행에는
-  // 절대 켜지 않는다 (전투가 상시가 되면 실시간으로 기어 타임아웃에 죽는다).
-  await page.goto('file:///' + file.replace(/\\/g, '/') + '?speed=' + SPEED + '&mins=' + MINS + '&cine=1',
-                  { waitUntil: 'load', timeout: 60000 });
-  console.error('녹화 시작 — 배속 ' + SPEED + 'x, 게임 ' + MINS + '분');
+  const timeline = [];
+  // 도입부만 따로 느리게 찍을 수 있어야 한다 — 전체 주행에서는 첫 2분이 10초도
+  // 안 되어 '처음 시작하는 단계' 를 보여 줄 수가 없다.
+  const MINS = process.argv[4] || '40';
+  const qs = '?cine=1&drama=0&speed=' + SPEED + '&mins=' + MINS;
+  await page.goto('file:///' + file.replace(/\\/g, '/') + qs, { waitUntil: 'load', timeout: 60000 });
 
-  // 편집기가 열리는 순간을 노려 스크린샷을 남긴다. 영상에 제어기 장면이 실제로
-  // 들어갔는지 '그럴듯하다' 가 아니라 프레임으로 확인하기 위한 것이다.
-  (async () => {
+  // 0.5초마다 상태를 찍는다. 이 표가 나중에 "어디를 자를까" 의 근거가 된다 —
+  // 눈대중으로 고르면 매번 다른 데를 자르게 되고, 그건 재현이 안 된다.
+  const sampler = setInterval(async () => {
     try {
-      await page.waitForFunction(
-        () => document.getElementById('logic') &&
-              getComputedStyle(document.getElementById('logic')).display !== 'none',
-        null, { timeout: 600000, polling: 200 });
-      await page.waitForTimeout(4500);           // 노드가 몇 개 놓인 뒤
-      await page.screenshot({ path: path.join(OUTDIR, 'shot-editor.png') });
-      console.error('편집기 스크린샷 저장');
-    } catch (e) { console.error('편집기 스크린샷 실패: ' + e.message); }
-  })();
+      const s = await page.evaluate(() => {
+        if (!window.__GAME) return null;
+        const st = window.__GAME.state();
+        return { t: Math.round(st.t), res: st.research.done.length, ents: st.entityCount,
+                 waves: st.waves.waves, lost: st.waves.lost, enemies: st.enemies,
+                 sat: Math.round(st.power.sat * 100) };
+      });
+      if (s) timeline.push(Object.assign({ wall: (Date.now() - t0) / 1000 }, s));
+    } catch (e) { /* 페이지가 닫히는 중이면 무시 */ }
+  }, 500);
 
-  // 전투 장면을 실제로 프레임으로 남긴다. 영상에 들어갔는지 '그럴듯하다' 가 아니라
-  // 스크린샷으로 확인하기 위한 것이다 — 지난 녹화는 습격 13회를 겪고도 전투가
-  // 화면에 거의 안 잡혔다(카메라가 공장만 보고 있었다).
-  let combatShots = 0;
-  (async () => {
-    for (let k = 0; k < 4; k++) {
-      try {
-        await page.waitForFunction(
-          () => window.__ENGAGED === true,
-          null, { timeout: 900000, polling: 100 });
-        // **지체 없이 찍는다.** 1.2초를 기다렸더니 그 사이 터렛이 다 죽여서
-        // 빈 들판 사진만 남았다 (3배속이면 게임 시간으로 3.6초다).
-        // **연사로 찍는다.** 한 장으로는 교전이 실제로 화면에 있었는지 알기 어렵다
-        // (지난 판은 즉시 캡처인데도 이미 시체만 남아 있었다). 연속 프레임이면
-        // 영상의 그 구간에 무엇이 담겼는지 그대로 드러난다.
-        for (let b = 0; b < 5; b++) {
-          await page.screenshot({ path: path.join(OUTDIR, 'shot-combat' + (k + 1) + '-' + (b + 1) + '.png') });
-          await page.waitForTimeout(350);
+  // **카메라를 공장에 붙든다.** 주행 드라이버의 카메라는 마지막으로 손댄 자리를
+  // 따라가는데, 후반에는 그게 먼 광맥이라 화면이 빈 풀밭이 된다(실측: 29분 지점
+  // 프레임이 통째로 초원). 하이라이트로 쓸 수 없어서, 녹화 쪽에서 생산 설비의
+  // 무게중심으로 돌려 둔다. 적이 있을 때는 드라이버 카메라를 존중한다 — 그때는
+  // 전투가 볼거리다.
+  const camHold = setInterval(async () => {
+    try {
+      await page.evaluate(() => {
+        const G = window.__GAME; if (!G) return;
+        if (G.state().enemies > 0) return;
+        // **평균이 아니라 중앙값.** 채광기는 먼 광맥까지 흩어져 있어서 평균을 내면
+        // 무리와 무리 **사이의 빈 풀밭**에 카메라가 선다(실측: 29분 프레임이 통째로
+        // 초원이었다). 공장 한복판에만 있는 것(조립기·연구소·제어기)으로 좁히고,
+        // 그중에서도 중앙값을 쓴다.
+        const xs = [], ys = [];
+        for (const row of G.entIds()) {
+          const id = Array.isArray(row) ? row[0] : row;
+          const e = G.ent(id); if (!e) continue;
+          if (e.type === 'assembler' || e.type === 'lab' || e.type === 'controller') {
+            xs.push(e.tx); ys.push(e.ty);
+          }
         }
-        combatShots++;
-        console.error('전투 연사 ' + (k + 1) + ' (5장) 저장');
-        await page.waitForFunction(
-          () => window.__ENGAGED !== true,
-          null, { timeout: 900000, polling: 300 });
-      } catch (e) { break; }
-    }
-  })();
+        if (xs.length < 2) return;
+        xs.sort((a, b) => a - b); ys.sort((a, b) => a - b);
+        const mid = i2 => i2[Math.floor(i2.length / 2)];
+        G.setCamera(mid(xs) + 1, mid(ys) + 1, 0.95);
+      });
+    } catch (e) { /* 닫히는 중 */ }
+  }, 1000);
 
-  await page.waitForFunction(
-    () => {
+  let done = false;
+  try {
+    await page.waitForFunction(() => {
       const el = document.getElementById('testout');
       return !!el && el.textContent.indexOf('@@JSON_END@@') >= 0;
-    }, null, { timeout: 3600000, polling: 1000 });
-  console.error('전투 스크린샷 ' + combatShots + '장 확보');
+    }, null, { timeout: TIMEOUT, polling: 1000 });
+    done = true;
+  } catch (e) {
+    console.error('주행이 시간 안에 안 끝났다 — 지금까지 찍힌 것으로 마감한다: ' + e.message);
+  }
+  clearInterval(sampler);
+  clearInterval(camHold);
 
-  const payload = await page.evaluate(() => document.getElementById('testout').textContent);
-  await page.screenshot({ path: path.join(OUTDIR, 'shot-final.png') });
-  // 마지막 화면을 몇 초 더 담는다 — 끝나자마자 끊기면 결과를 볼 시간이 없다
-  await page.waitForTimeout(3000);
-  process.stdout.write(payload);
-  if (errs.length) process.stderr.write('CONSOLE_ERRORS:' + JSON.stringify(errs.slice(0, 20)) + '\n');
-
+  const payload = done ? await page.evaluate(() => document.getElementById('testout').textContent) : '';
   const video = page.video();
-  await ctx.close();                             // close 해야 영상이 flush 된다
+  await ctx.close();                 // 여기서 영상 파일이 확정된다
   const vpath = video ? await video.path() : null;
   await browser.close();
-  console.error('실시간 ' + Math.round((Date.now() - t0) / 1000) + 's · 영상: ' + vpath);
-  if (vpath) {
-    const finalPath = path.join(OUTDIR, 'logic-foundry-30min.webm');
-    try { fs.renameSync(vpath, finalPath); console.error('저장: ' + finalPath); }
-    catch (e) { console.error('이름 변경 실패(원본 유지): ' + e.message); }
+
+  const wall = (Date.now() - t0) / 1000;
+  const meta = { video: vpath, wallSeconds: Math.round(wall), speed: +SPEED,
+                 finished: done, errors: errors.slice(0, 10), timeline: timeline };
+  const metaPath = path.join(OUTDIR, 'timeline.json');
+  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 1), 'utf8');
+
+  const last = timeline[timeline.length - 1] || {};
+  console.log('영상: ' + vpath);
+  console.log('벽시계 ' + Math.round(wall) + '초 · 게임 시각 ' + (last.t || 0) + 's · 연구 ' +
+              (last.res || 0) + '종 · 엔티티 ' + (last.ents || 0) + ' · 습격 ' + (last.waves || 0) +
+              ' · 손실 ' + (last.lost || 0));
+  console.log('타임라인: ' + metaPath + ' (' + timeline.length + '점)');
+  if (payload) {
+    const m = /@@JSON_START@@([\s\S]*)@@JSON_END@@/.exec(payload);
+    if (m) {
+      const out = JSON.parse(m[1]);
+      const bad = (out.checks || []).filter(c => !c.ok && !c.expectFail);
+      console.log('게이트: ' + (out.checks || []).length + '건 · 실패 ' + bad.length +
+                  (bad.length ? ' — ' + bad.map(c => c.name).join(',') : ''));
+    }
   }
-  process.exit(0);
+  if (errors.length) console.log('런타임 오류: ' + errors.slice(0, 3).join(' | '));
 })();

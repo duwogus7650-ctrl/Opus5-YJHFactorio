@@ -44,6 +44,9 @@
   var SEED = 424242;
   var qs = new URLSearchParams(location.search);
   var SPEED = +(qs.get('speed') || 12);
+  // 전투가 붙으면 1배속으로 늦춰 보여 준다(극적이라). 녹화에서는 그 늦춤이 길이를
+  // 예측 불가로 만들어서 — 습격이 37번이면 몇 분이 통째로 늘어난다 — 끌 수 있게 둔다.
+  var DRAMA = qs.get('drama') !== '0';
   var END_T = +(qs.get('mins') || 40) * 60;
   // **연출과 측정을 갈라 놓는다.** 전투가 붙으면 1배속으로 떨어뜨려 사람이 볼 수
   // 있게 하는 기능인데, 공장이 커지면 전투가 상시라 측정 주행 전체가 실시간으로
@@ -1824,7 +1827,7 @@
         }
         engaged = near < 16;
         if (el.length && engaged) { G.setCamera(cx / el.length, cy / el.length, 1.2); }
-        if (CINEMA && engaged && !inCombat) { inCombat = true; G.setSpeed(1); }
+        if (CINEMA && DRAMA && engaged && !inCombat) { inCombat = true; G.setSpeed(1); }
         if (CINEMA && !engaged && inCombat) { inCombat = false; G.setSpeed(SPEED); }
       } else {
         engaged = false;
