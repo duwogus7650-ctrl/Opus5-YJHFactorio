@@ -144,6 +144,21 @@ function toggleBlueprint() {
   else { bpMode = 'sel'; selectTool(null); toast('청사진 담기 — 영역을 끌어서 선택'); }
   renderBuildList();
 }
+// 영역 선택의 확정. **마우스와 터치가 같은 코드를 쓴다** — 갈라 두면 한쪽만 고쳐지고,
+// 그 한쪽이 폰이면 아무도 안 본다(실제로 청사진은 터치 경로가 통째로 없었다).
+function finishBpSelection() {
+  if (bpMode !== 'sel' || !bpSelStart) return false;
+  var r = captureBlueprint(bpSelStart.x, bpSelStart.y, hoverT.x, hoverT.y);
+  bpSelStart = null;
+  if (!r.count) toast('그 영역에 담을 건물이 없다', 'bad');
+  else {
+    bpMode = 'paste';
+    toast('청사진에 ' + r.count + '개 담았다 (' + r.w + 'x' + r.h + ') — 화면을 눌러 붙여넣기');
+  }
+  renderBuildList();
+  return !!r.count;
+}
+
 function blueprintClickAt(tx, ty) {
   if (bpMode !== 'paste' || !blueprint) return false;
   var r = pasteBlueprint(tx, ty);
@@ -263,13 +278,7 @@ function bindInput(canvas) {
       mouse.rdown = false; return;
     }
     // 영역 선택은 **뗄 때** 확정한다. 누르는 순간 확정하면 한 칸짜리 청사진만 나온다.
-    if (bpMode === 'sel' && bpSelStart) {
-      var r = captureBlueprint(bpSelStart.x, bpSelStart.y, hoverT.x, hoverT.y);
-      bpSelStart = null;
-      if (!r.count) toast('그 영역에 담을 건물이 없다', 'bad');
-      else { bpMode = 'paste'; toast('청사진에 ' + r.count + '개 담았다 (' + r.w + 'x' + r.h + ') — 좌클릭으로 붙여넣기'); }
-      renderBuildList();
-    }
+    if (bpMode === 'sel' && bpSelStart) finishBpSelection();
     mouse.down = false; dragLast = null;
   });
   // --- 터치 ------------------------------------------------------------------
@@ -315,6 +324,11 @@ function bindInput(canvas) {
     tch.id = t.identifier; tch.sx = p.x; tch.sy = p.y; tch.lx = p.x; tch.ly = p.y; tch.moved = 0;
     setHoverFrom(p);
     if (pickMode) { tch.mode = 'pick'; return; }
+    // **청사진이 도구보다 먼저다.** 마우스 경로에는 이 갈림이 있는데 터치에는 없어서,
+    // 폰에서는 청사진 모드에 들어가도 손가락이 그냥 지도를 끌었다 — 담기도 붙여넣기도
+    // 되지 않았다(실측: 담긴 것 0 · 붙인 것 0).
+    if (bpMode === 'sel') { tch.mode = 'bpsel'; bpSelStart = { x: hoverT.x, y: hoverT.y }; return; }
+    if (bpMode === 'paste') { tch.mode = 'bppaste'; return; }   // 뗄 때 붙인다
     if (tool) {
       // **손가락이 닿는 순간 짓지 않는다.** 손끝이 그 칸을 가리므로, 눌러서 지어지면
       // 어디에 놓였는지 보고 나서야 알게 된다 — 그래서 원치 않는 자리에 계속 지어졌다
@@ -369,6 +383,8 @@ function bindInput(canvas) {
     // 문턱을 둔다 — 0 으로 두면 실기에서 탭이 전부 드래그로 읽힌다.
     var TAP = 12;
     if (tch.mode === 'pick') { doPick(); }
+    else if (tch.mode === 'bpsel') { finishBpSelection(); }
+    else if (tch.mode === 'bppaste') { blueprintClickAt(hoverT.x, hoverT.y); }
     else if (tch.mode === 'aim') { dragLast = null; dragPlace(); }   // 떼는 순간 놓는다
     else if (tch.mode === 'pan' && tch.moved <= TAP) { pickEntity(); }
     mouse.down = false; dragLast = null; tch.mode = null;

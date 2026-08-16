@@ -99,7 +99,8 @@ const TIMEOUT = parseInt(process.env.LF_TIMEOUT || '1800', 10) * 1000;
         G.setCamera(mid(xs) + 1, mid(ys) + 1, 0.95);
       });
     } catch (e) { /* 닫히는 중 */ }
-  }, 1000);
+  }, 300);   // 드라이버도 단계마다 시점을 옮긴다(열차역 등 먼 자리). 1초에 한 번으로는
+             // 그 사이가 통째로 빈 풀밭으로 찍힌다 — 실측으로 20초가 그랬다.
 
   let done = false;
   try {

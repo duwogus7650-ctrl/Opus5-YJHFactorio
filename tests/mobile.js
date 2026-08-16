@@ -567,6 +567,34 @@
       // "도구가 안 골라진다" 는 거짓 실패가 난다 (실제로 6건이 그렇게 무너졌다).
       if (beltItem2) tap(beltItem2, 0, 0);
 
+      // ---------- 2.7 청사진: 영역을 끌어 담고, 눌러서 붙인다 ----------------
+      // **마우스 경로에만 있던 기능이다.** 폰에서 [청사진] 을 눌러 모드에 들어가도
+      // 손가락은 그냥 지도를 끌었다 — 담긴 것 0 · 붙인 것 0 (실측). 도움말은 폰에서도
+      // 된다고 적어 두었으니, 그 문장이 거짓말이었다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.powerCheat(true);
+      G.research('steel');
+      for (var bq = 0; bq < 4; bq++) G.place('belt', 78 + bq, 78, 1);
+      G.place('pole', 78, 80, 0);
+      var bpBtn = document.getElementById('btnBlueprint');
+      if (bpBtn) tap(bpBtn, 10, 10);
+      var modeSel = G.ui.bpMode();
+      var pa = tileToClient(77, 77), pz = tileToClient(82, 81);
+      swipe(cv, pa.x, pa.y, pz.x, pz.y, 6);
+      var capt = G.bpEnts() || [];
+      var modePaste = G.ui.bpMode();
+      chk('mobile.blueprintCaptureByDrag',
+        modeSel === 'sel' && capt.length >= 5 && modePaste === 'paste',
+        '[청사진] 탭 → 모드 ' + modeSel + ' · 영역을 끈 뒤 담긴 것 ' + capt.length +
+        '개 · 모드 ' + modePaste + ' (마우스에만 있던 길이라 폰에서는 0개였다)');
+
+      var pastePt = tileToClient(90, 90);
+      var entBefore = G.state().entityCount;
+      tap(cv, pastePt.x, pastePt.y);
+      var pastedN = G.state().entityCount - entBefore;
+      chk('mobile.blueprintPasteByTap', pastedN >= 5,
+        '빈 자리를 눌러 붙여넣기 → 새로 생긴 건물 ' + pastedN + '개 (담은 ' + capt.length + '개)');
+      if (bpBtn) tap(bpBtn, 10, 10);          // 모드 해제하고 넘긴다
+
       // ---------- 3. 키보드 없이 되는가 ------------------------------------
       // 폰에는 키보드가 없다. R(회전)·T(연구)·H(도움말)이 단축키뿐이면
       // 그 기능은 폰에서 **존재하지 않는 기능**이다.

@@ -775,6 +775,17 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 청사진은 마우스 경로에만 있었다 — 폰에서는 담기도 붙여넣기도 안 됐다
+    ("청사진 담기를 손가락으로 못 한다", "50_ui.js",
+     "    if (bpMode === 'sel') { tch.mode = 'bpsel'; bpSelStart = { x: hoverT.x, y: hoverT.y }; return; }".encode("utf-8"),
+     "    if (false) { tch.mode = 'bpsel'; bpSelStart = { x: hoverT.x, y: hoverT.y }; return; }".encode("utf-8"),
+     ["mobile.blueprintCaptureByDrag"], "mobile.js"),
+
+    ("청사진을 손가락으로 못 붙인다", "50_ui.js",
+     "    else if (tch.mode === 'bppaste') { blueprintClickAt(hoverT.x, hoverT.y); }".encode("utf-8"),
+     "    else if (tch.mode === 'bppaste') { /* 아무것도 안 한다 */ }".encode("utf-8"),
+     ["mobile.blueprintPasteByTap"], "mobile.js"),
+
     # 편집기 판은 6000px 인데 폰 화면은 390px 다. 배경을 끌어 옮기는 길이 막히면
     # 오른쪽에 놓인 노드는 영영 못 만진다.
     ("노드 편집기 화면을 손가락으로 못 옮긴다", "55_logicui.js",
