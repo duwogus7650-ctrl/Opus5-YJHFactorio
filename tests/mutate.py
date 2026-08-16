@@ -775,6 +775,12 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 녹화 영상이 드러낸 것 — 제어기 계기 줄이 화면 밖으로 잘렸다
+    ("계기 줄을 다시 가운데 정렬 무제한으로 (양옆이 잘린다)", "shell.html",
+     "  #dispRow{left:0;right:0;transform:none;width:100%;max-width:100%;".encode("utf-8"),
+     "  #dispRow_off{left:0;right:0;transform:none;width:100%;max-width:100%;".encode("utf-8"),
+     ["mobile.displayRowFitsOnScreen"], "mobile.js"),
+
     # 실기 4차 제보 — 손끝이 칸을 가리는데 닿는 즉시 지어져 원치 않는 자리에 계속 지어졌다
     ("닿는 즉시 짓는다 (손 떼기 전에 이미 놓인다)", "50_ui.js",
      "      if (LINE_TOOLS[tool]) { tch.mode = 'build'; mouse.down = true; dragLast = null; dragPlace(); }".encode("utf-8"),

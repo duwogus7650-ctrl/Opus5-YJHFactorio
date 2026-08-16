@@ -414,6 +414,43 @@
                 : '넓은 레이아웃 — 도크라 처음부터 보여야 한다: ' + onScreen(firstBuild)) +
         (firstBuild ? ' · 위치 ' + JSON.stringify(firstBuild.getBoundingClientRect()) : ' · 항목 없음'));
 
+      // ---------- 2.35 제어기 계기 줄이 화면 안에 있는가 --------------------
+      // 제어기가 값을 화면 위에 띄우는 줄이다. 가운데 정렬 + 폭 제한이 없어서 값이
+      // 서너 개만 넘어도 양옆이 잘렸다 — **녹화 영상에서 처음 드러났다.** 게이트는
+      // 그때까지 이 줄을 아예 안 보고 있었다(판 목록에 없었고, 값이 없으면 빈 줄이라
+      // 있어도 안 보인다). 그래서 **값을 실제로 여러 개 띄워 놓고** 잰다.
+      G.reset(5150); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.powerCheat(true);
+      G.research('logic-mem');
+      var dCtl = G.place('controller', 78, 78, 0);
+      var dLabels = ['철판(평활)', '철판변화/s', '습격 3초 + 0', '습격단계', '습격횟수', '여유kW', '화물%'];
+      for (var di = 0; di < dLabels.length; di++) {
+        var kn = G.gAdd(dCtl, 'const', 0, di * 40);
+        G.gCfg(dCtl, kn, 'value', 1234);
+        var dn = G.gAdd(dCtl, 'display', 200, di * 40);
+        G.gCfg(dCtl, dn, 'label', dLabels[di]);
+        G.gLink(dCtl, kn, 0, dn, 0);
+      }
+      G.run(0.5);
+      G.ui.refresh();                 // 계기 줄은 프레임 루프가 그린다 — 여기선 직접 부른다
+      var dRow = document.getElementById('dispRow');
+      var dr = dRow ? dRow.getBoundingClientRect() : null;
+      var dCount = dRow ? dRow.querySelectorAll('.disp').length : 0;
+      // **재는 것은 '줄이 화면 안인가' 가 아니다.** 처음엔 그렇게 쟀다가 돌연변이를
+      // 놓쳤다 — 데스크톱 규칙으로 되돌려도 줄 자체는 353px 로 화면 안에 있었고,
+      // 값들만 그 상자 밖으로 흘러 나가 화면 밖에서 사라졌다.
+      // 진짜 기준: 내용이 줄보다 넓다면 **손가락으로 밀어서 닿을 수 있어야 한다.**
+      var dOver = dRow ? (dRow.scrollWidth > dRow.clientWidth + 1) : false;
+      var dOv = dRow ? getComputedStyle(dRow).overflowX : '';
+      var dScrollable = dOv === 'auto' || dOv === 'scroll';
+      chk('mobile.displayRowFitsOnScreen',
+        !!dr && dCount >= 5 && dr.left >= -1 && dr.right <= VW + 1 &&
+        (!dOver || dScrollable),
+        '계기 ' + dCount + '개 · 줄 ' + Math.round(dr ? dr.left : -999) + '..' +
+        Math.round(dr ? dr.right : -999) + ' (화면 0..' + VW + ') · 내용 폭 ' +
+        (dRow ? dRow.scrollWidth : '?') + ' vs 줄 폭 ' + (dRow ? dRow.clientWidth : '?') +
+        ' · 넘침=' + dOver + ' · overflow-x=' + dOv +
+        ' (넘치면 밀어서 볼 수 있어야 한다 — 안 그러면 값이 화면 밖에서 사라진다)');
+
       // ---------- 2.4 시트가 상단 계기를 덮지 않는가 (연구 판 포함) ---------
       // 시간·전력·오염은 판을 열어 둔 채로도 봐야 하는 값이다. 연구 판은 62vh 로
       // 잡혀 있어 상단 계기 위까지 올라와 있었다(실측: ✕ 가 y=13 — 계기 띠 한복판).
