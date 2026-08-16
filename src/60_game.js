@@ -417,7 +417,11 @@ function boot() {
   bindLogicPane();
   fillHelp();
   newGame(worldSeed);
-  document.getElementById('help').style.display = 'block';
+  // **폰에서는 자동으로 열지 않는다.** 도움말은 화면 대부분을 덮는 시트라, 첫 화면이
+  // 도움말·건설 시트·튜토리얼 셋으로 겹쳐 버린다(실기 스크린샷). 좁은 화면에서는
+  // 튜토리얼이 안내를 맡고, 도움말은 아래 [도움말] 버튼으로 연다.
+  var narrow = window.matchMedia && window.matchMedia('(max-width: 720px)').matches;
+  if (!narrow) document.getElementById('help').style.display = 'block';
   requestAnimationFrame(frame);
   window.__READY = true;
 }

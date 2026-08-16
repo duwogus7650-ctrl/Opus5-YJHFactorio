@@ -370,14 +370,33 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
        border-radius:0;border-left:none;border-right:none;
        padding-top:var(--safe-t);
        overflow-x:auto;-webkit-overflow-scrolling:touch;justify-content:flex-start}
-  #top .stat{min-width:64px;padding:4px 8px 5px}
+  #top .stat{min-width:56px;padding:4px 6px 5px}
   #top .v{font-size:13px}
 
   /* 패널은 전부 바닥 시트로. 기본은 숨김이고 조작 바가 하나씩 연다. */
-  #build,#right,#insp,#tutor{
-    position:fixed;left:0;right:0;bottom:56px;top:auto;width:auto;max-width:100%;
+  /* 시트는 조작 바 위에, 그리고 **튜토리얼 판 위에** 앉는다. --tutor-h 는 튜토리얼이
+     그릴 때마다 스스로 갱신한다(52_tutorial.js). 이게 없으면 둘이 같은 자리에 겹쳐
+     서로를 가린다. */
+  #build,#right,#insp{
+    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px));top:auto;
+    width:auto;max-width:100%;
     max-height:52vh;overflow-y:auto;border-radius:0;border-left:none;border-right:none;
     display:none;z-index:20}
+  /* 튜토리얼은 조작 바 바로 위 — 시트가 그 위로 올라간다 */
+  #tutor{position:fixed;left:0;right:0;bottom:56px;top:auto;width:auto;max-width:100%;
+         max-height:34vh;overflow-y:auto;border-radius:0;border-left:none;border-right:none;
+         z-index:19}
+
+  /* **도움말도 시트다.** 여기 빠져 있어서 폰에서 680px 짜리 판이 화면 가운데 정렬로
+     붙은 채 왼쪽으로 145px 밀려 나갔다 — 글자가 줄마다 앞부분이 잘렸고, 게다가 그
+     폭 때문에 브라우저가 화면 전체를 축소해 넣어(shrink-to-fit) 다른 글자까지 쪼그라들었다.
+     실기 스크린샷으로 처음 드러났다. 게이트는 **재기 전에 도움말을 닫고 있었다.** */
+  #help{
+    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px));top:auto;
+    width:auto;max-width:100%;transform:none;
+    max-height:62vh;overflow-y:auto;border-radius:0;border-left:none;border-right:none;
+    z-index:26}
+  #help .pad{padding:10px 12px}
   body.sheet-build #build{display:block}
   body.sheet-right #right{display:flex}
   /* 인스펙터와 튜토리얼은 시트 토글과 무관하게 스스로 뜬다 (선택·진행에 따라) */
@@ -427,8 +446,13 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
                    align-items:center;justify-content:center}
   .panel button{min-height:44px}
   #pal .pitem{min-height:44px}
-  /* 바닥 바에 가리지 않게 아래를 비운다 */
-  #build,#right{max-height:calc(100vh - 72px)}
+  /* 바닥 바에 가리지 않게 아래를 비운다.
+     **폭 조건을 함께 건다.** 이 블록은 '손가락으로 만지는 화면' 전부에 걸리므로,
+     폭 조건 없이 두면 좁은 화면의 시트 높이(52vh)까지 덮어써 판 하나가 화면을
+     거의 다 가린다 — 실기 스크린샷에서 그렇게 나왔다(772px). */
+  @media (min-width: 721px){
+    #build,#right{max-height:calc(100vh - 72px)}
+  }
 }
 </style>
 </head>
@@ -5603,6 +5627,10 @@ function selectTool(t) {
   }
   tool = t; selected = null; hideInsp();
   renderBuildList();
+  // **폰에서는 고르면 시트를 닫는다.** 안 닫으면 지도가 시트에 가려 방금 고른 것을
+  // 놓을 자리가 안 보인다 — 손가락으로 하는 순서는 "고른다 → 지도를 누른다" 이고,
+  // 그 사이에 판을 손수 닫게 만들면 단계가 하나 늘 뿐이다.
+  if (t && window.matchMedia && window.matchMedia('(max-width: 720px)').matches) closeSheets();
 }
 
 function tryPlace(tx, ty) {
@@ -6462,9 +6490,20 @@ function renderTech() {
 }
 
 // --- 도움말 ------------------------------------------------------------------
+// 좁은 화면에서 큰 판 둘이 겹치면 아무것도 안 읽힌다. 하나를 열면 다른 하나는 닫는다.
+function closeSheets() {
+  document.body.classList.remove('sheet-build', 'sheet-right');
+  var ids = ['btnSheetBuild', 'btnSheetRight'];
+  for (var i = 0; i < ids.length; i++) {
+    var b = document.getElementById(ids[i]); if (b) b.classList.remove('on');
+  }
+}
+
 function toggleHelp() {
   var t = document.getElementById('help');
-  t.style.display = t.style.display === 'block' ? 'none' : 'block';
+  var opening = t.style.display !== 'block';
+  if (opening) closeSheets();
+  t.style.display = opening ? 'block' : 'none';
 }
 function closeHelp() { document.getElementById('help').style.display = 'none'; }
 
@@ -6687,6 +6726,7 @@ function setDemolish(on) {
 }
 function toggleSheet(name) {
   var cls = 'sheet-' + name, on = document.body.classList.contains(cls);
+  closeHelp();                       // 도움말과 시트는 같이 뜨지 않는다
   document.body.classList.remove('sheet-build', 'sheet-right');
   if (!on) document.body.classList.add(cls);
   var ids = { build: 'btnSheetBuild', right: 'btnSheetRight' };
@@ -6705,13 +6745,9 @@ function bindMobileBar() {
   on('btnBlueprint', function () { toggleBlueprint(); });
   on('btnTech', function () { toggleTech(); });
   on('btnHelp', function () { toggleHelp(); });
-  // 좁은 화면에서는 건설 시트를 먼저 열어 둔다 — 빈 화면만 보이면 무엇부터
-  // 해야 할지 알 수 없다.
-  if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) {
-    document.body.classList.add('sheet-build');
-    var bb = document.getElementById('btnSheetBuild');
-    if (bb) bb.classList.add('on');
-  }
+  // **자동으로 열지 않는다.** 예전엔 좁은 화면에서 건설 시트를 미리 열어 뒀는데,
+  // 튜토리얼 판까지 같이 뜨면 둘이 지도를 거의 다 덮어 첫 화면에 지도가 90px 밖에
+  // 안 남았다(실측). 첫 안내는 튜토리얼이 맡고, 건설은 아래 [건설] 버튼으로 연다.
 }
 
 /* ===================== 52_tutorial.js ===================== */
@@ -7280,10 +7316,18 @@ function resetTutorial(on) {
 }
 
 // --- 패널 --------------------------------------------------------------------
+// 튜토리얼 판이 차지한 높이를 CSS 로 넘긴다. 좁은 화면에서 다른 시트가 이 값을
+// 읽어 그만큼 위로 올라간다 — 안 그러면 둘이 같은 자리에 겹쳐 서로를 가린다
+// (실기 스크린샷에서 건설 시트와 튜토리얼이 정확히 그랬다).
+function syncTutorHeight(host) {
+  var h = (host && host.style.display !== 'none') ? Math.round(host.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty('--tutor-h', h + 'px');
+}
+
 function renderTutorial() {
   var host = document.getElementById('tutor');
   if (!host) return;
-  if (!tutorial.on) { host.style.display = 'none'; return; }
+  if (!tutorial.on) { host.style.display = 'none'; syncTutorHeight(host); return; }
   host.style.display = 'block';
 
   var body = document.getElementById('tutorBody');
@@ -7341,6 +7385,7 @@ function renderTutorial() {
   lines.push('</ol>');
   if (s.need) lines.push('<div class="tneed">' + s.need + '</div>');
   body.innerHTML = lines.join('');
+  syncTutorHeight(host);
 }
 
 function bindTutorial() {
@@ -8815,7 +8860,11 @@ function boot() {
   bindLogicPane();
   fillHelp();
   newGame(worldSeed);
-  document.getElementById('help').style.display = 'block';
+  // **폰에서는 자동으로 열지 않는다.** 도움말은 화면 대부분을 덮는 시트라, 첫 화면이
+  // 도움말·건설 시트·튜토리얼 셋으로 겹쳐 버린다(실기 스크린샷). 좁은 화면에서는
+  // 튜토리얼이 안내를 맡고, 도움말은 아래 [도움말] 버튼으로 연다.
+  var narrow = window.matchMedia && window.matchMedia('(max-width: 720px)').matches;
+  if (!narrow) document.getElementById('help').style.display = 'block';
   requestAnimationFrame(frame);
   window.__READY = true;
 }

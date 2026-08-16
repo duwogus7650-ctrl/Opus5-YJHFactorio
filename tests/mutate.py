@@ -775,6 +775,28 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 실기 스크린샷이 드러낸 것들 — 게이트가 이제 잡는지 확인한다.
+    # (문자열에 개행을 넣을 때는 chr(10) 을 쓴다. 백슬래시-n 을 이 파일에 직접 적으면
+    #  편집 경로에서 진짜 개행으로 바뀌어 문법 오류가 났다 — 세 번 반복했다.)
+    # 좁은 화면용 #help 규칙 자체를 무력화한다 → 데스크톱 규칙(680px 가운데 정렬)이
+    # 되살아나고, 그게 실기에서 화면 밖 왼쪽 145px 로 나간 바로 그 상태다.
+    ("좁은 화면용 도움말 규칙을 없앤다 (데스크톱 680px 판이 되살아난다)", "shell.html",
+     ("  #help{" + chr(10) + "    position:fixed;left:0;right:0;bottom:calc(56px").encode("utf-8"),
+     ("  #help_off{" + chr(10) + "    position:fixed;left:0;right:0;bottom:calc(56px").encode("utf-8"),
+     ["mobile.helpFitsOnScreenWhenOpen"], "mobile.js"),
+
+    ("손가락 화면 규칙이 좁은 화면 시트 높이까지 덮는다", "shell.html",
+     ("  @media (min-width: 721px){" + chr(10) + "    #build,#right{max-height:calc(100vh - 72px)}" + chr(10) + "  }").encode("utf-8"),
+     "  #build,#right{max-height:calc(100vh - 72px)}".encode("utf-8"),
+     ["mobile.openSheetKeepsTopBarVisible"], "mobile.js"),
+
+    # 앵커는 **유일해야 한다.** 처음엔 bottom:calc(...) 한 줄만 잡았다가 #build 무리와
+    # #help 두 곳에 걸려 INVALID 가 났다. 선택자까지 포함해 한 곳으로 못 박는다.
+    ("튜토리얼 높이를 건설 시트에 안 알려 준다 (둘이 같은 자리에 겹친다)", "shell.html",
+     ("  #build,#right,#insp{" + chr(10) + "    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px))").encode("utf-8"),
+     ("  #build,#right,#insp{" + chr(10) + "    position:fixed;left:0;right:0;bottom:56px").encode("utf-8"),
+     ["mobile.openSheetDoesNotCoverTutorial"], "mobile.js"),
+
     # 홈화면 설치 — 재료가 하나만 빠져도 "설치했더니 브라우저 껍데기 그대로" 가 된다
     ("매니페스트를 브라우저 탭 모드로 되돌린다", "build.py",
      "'display': 'standalone',".encode("utf-8"),

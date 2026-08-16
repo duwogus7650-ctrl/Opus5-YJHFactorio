@@ -563,10 +563,18 @@ function resetTutorial(on) {
 }
 
 // --- 패널 --------------------------------------------------------------------
+// 튜토리얼 판이 차지한 높이를 CSS 로 넘긴다. 좁은 화면에서 다른 시트가 이 값을
+// 읽어 그만큼 위로 올라간다 — 안 그러면 둘이 같은 자리에 겹쳐 서로를 가린다
+// (실기 스크린샷에서 건설 시트와 튜토리얼이 정확히 그랬다).
+function syncTutorHeight(host) {
+  var h = (host && host.style.display !== 'none') ? Math.round(host.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty('--tutor-h', h + 'px');
+}
+
 function renderTutorial() {
   var host = document.getElementById('tutor');
   if (!host) return;
-  if (!tutorial.on) { host.style.display = 'none'; return; }
+  if (!tutorial.on) { host.style.display = 'none'; syncTutorHeight(host); return; }
   host.style.display = 'block';
 
   var body = document.getElementById('tutorBody');
@@ -624,6 +632,7 @@ function renderTutorial() {
   lines.push('</ol>');
   if (s.need) lines.push('<div class="tneed">' + s.need + '</div>');
   body.innerHTML = lines.join('');
+  syncTutorHeight(host);
 }
 
 function bindTutorial() {

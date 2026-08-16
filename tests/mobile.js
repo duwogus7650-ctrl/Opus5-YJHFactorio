@@ -167,7 +167,148 @@
         ' · maxTouchPoints=' + navigator.maxTouchPoints +
         ' (거짓이면 이 시험은 폰이 아니라 좁은 데스크톱을 재고 있다)');
 
+      // ---------- 0. 화면에 뜬 판이 화면 안에 있는가 -----------------------
+      // **이 절은 실기 스크린샷이 만들어 냈다.** 여기 있던 게이트들은 측정 전에
+      // `G.ui.closeHelp()` 로 도움말을 닫고 있었다 — 그래서 도움말 판이 폭 680px 로
+      // 화면(390) 밖 왼쪽 145px 에 걸쳐 있고, 그 폭 때문에 브라우저가 화면 전체를
+      // 축소해 넣던 것을 **한 번도 못 봤다.** 깨진 상태를 피해 다니는 검사는 검사가
+      // 아니다. 그래서 판을 하나씩 열어 놓고 잰다.
+      // **레이아웃이 둘이다.** 좁은 화면은 바닥 시트, 넓은 터치 화면(태블릿)은
+      // 데스크톱과 같은 좌우 도크다. 시트 전제의 검사를 도크에 들이대면 게이트가
+      // 레이아웃 탓에 빨개진다 — 그건 게이트가 아니라 잡음이다.
+      var NARROW = !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches);
+      out.measured.narrow = NARROW;
+
+      function panelBox(id) {
+        var el = document.getElementById(id);
+        if (!el) return null;
+        var cs = getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return null;
+        var r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return null;
+        return { id: id, l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height };
+      }
+      var PANEL_IDS = ['top', 'build', 'right', 'insp', 'tutor', 'help', 'mobBar'];
+      function visiblePanels() {
+        var out2 = [];
+        for (var i = 0; i < PANEL_IDS.length; i++) {
+          var p2 = panelBox(PANEL_IDS[i]); if (p2) out2.push(p2);
+        }
+        return out2;
+      }
+      function clippedList() {
+        var bad = [], ps = visiblePanels();
+        for (var i = 0; i < ps.length; i++) {
+          var p3 = ps[i];
+          if (p3.l < -1) bad.push(p3.id + ' 왼쪽 ' + Math.round(-p3.l) + 'px 밖');
+          if (p3.r > VW + 1) bad.push(p3.id + ' 오른쪽 ' + Math.round(p3.r - VW) + 'px 밖');
+        }
+        return bad;
+      }
+
+      // (a) 도움말을 **열어 놓고** 잰다 — 여기가 실제로 깨져 있던 자리다
+      G.ui.openHelp();
+      var clipOpen = clippedList();
+      var helpBox = panelBox('help');
+      chk('mobile.helpFitsOnScreenWhenOpen',
+        !!helpBox && clipOpen.length === 0 && helpBox.l >= -1 && helpBox.r <= VW + 1,
+        helpBox ? ('도움말 ' + Math.round(helpBox.l) + '..' + Math.round(helpBox.r) +
+                   ' (화면 0..' + VW + ') · 화면 밖으로 나간 판 ' + clipOpen.length + '건' +
+                   (clipOpen.length ? ': ' + clipOpen.join(' · ') : ''))
+                : '도움말이 안 열렸다');
+
+      // (b) 열린 상태에서도 브라우저가 축소해 넣지 않아야 한다.
+      //     넓은 판 하나가 레이아웃을 넓히면 **글자 전체가 쪼그라든다** — 실기에서
+      //     레이아웃 뷰포트가 390 이 아니라 535 로 커져 있었다.
+      var layoutOpen = document.documentElement.clientWidth;
+      var scaleOpen = window.visualViewport ? window.visualViewport.scale : 1;
+      chk('mobile.noShrinkToFitWithHelpOpen',
+        layoutOpen <= window.screen.width + 1 && scaleOpen <= 1.01,
+        '도움말 열린 채 레이아웃 뷰포트 ' + layoutOpen + 'px · 기기 폭 ' +
+        window.screen.width + 'px · 배율 ' + scaleOpen);
+
+      // (c) 음성 대조군 — 이 자로 재면 **정말 밖에 나간 것을 잡는가.**
+      //     도움말을 일부러 왼쪽으로 200px 밀어 보고 같은 검사를 돌린다.
+      var helpEl = document.getElementById('help');
+      var savedLeft = helpEl.style.left;
+      helpEl.style.left = '-200px'; helpEl.style.right = 'auto';
+      var clipBait = clippedList();
+      helpEl.style.left = savedLeft; helpEl.style.right = '';
+      var clipBack = clippedList();
+      chk('mobile.clipCheckDetectsOffscreen',
+        clipBait.length > 0 && clipBack.length === 0,
+        '일부러 200px 밀었을 때 걸린 건수 ' + clipBait.length + ' (0 이면 이 검사는 죽은 것) · ' +
+        '되돌린 뒤 ' + clipBack.length + '건');
+
+      // (d) 큰 판 둘이 겹치면 아무것도 안 읽힌다. 열린 판들끼리 겹치지 않아야 한다.
+      //     (조작 바·상단 계기는 늘 있는 틀이라 셈에서 뺀다.)
+      function overlaps() {
+        var ps = visiblePanels().filter(function (q) { return q.id !== 'mobBar' && q.id !== 'top'; });
+        var hits = [];
+        for (var i = 0; i < ps.length; i++) {
+          for (var j = i + 1; j < ps.length; j++) {
+            var A = ps[i], B = ps[j];
+            var ov = Math.max(0, Math.min(A.b, B.b) - Math.max(A.t, B.t)) *
+                     Math.max(0, Math.min(A.r, B.r) - Math.max(A.l, B.l));
+            if (ov > 400) hits.push(A.id + '×' + B.id + ' ' + Math.round(ov) + 'px²');
+          }
+        }
+        return hits;
+      }
+      var ovOpen = NARROW ? overlaps() : [];
+      chk('mobile.openPanelsDoNotOverlap', ovOpen.length === 0,
+        (NARROW ? '' : '(넓은 레이아웃 — 도크와 대화상자는 겹쳐도 된다) ') +
+        '도움말 열린 상태에서 겹친 판 ' + ovOpen.length + '건' +
+        (ovOpen.length ? ': ' + ovOpen.join(' · ') : '') +
+        ' · 떠 있는 판 ' + visiblePanels().map(function (q) { return q.id; }).join(','));
+
       G.ui.closeHelp();
+
+      // (d-2) **시트를 열어 놓고도** 잰다. 첫 화면만 보면 시트가 닫혀 있어서, 시트와
+      // 튜토리얼이 같은 자리에 겹치는 결함을 영원히 못 본다 — 실제로 돌연변이 두 개가
+      // 이 자리에서 통과해 버렸고(놓침), 그래서 상태를 하나 더 넣었다.
+      if (NARROW) {
+        var openBtn = document.getElementById('btnSheetBuild');
+        if (openBtn) tap(openBtn, 10, 10);
+      }
+      var ovSheet = NARROW ? overlaps() : [];
+      var sheetBox = panelBox('build'), tutBox = panelBox('tutor');
+      chk('mobile.openSheetDoesNotCoverTutorial', ovSheet.length === 0,
+        (NARROW
+          ? ('건설 시트 ' + (sheetBox ? Math.round(sheetBox.t) + '..' + Math.round(sheetBox.b) : '없음') +
+             ' · 튜토리얼 ' + (tutBox ? Math.round(tutBox.t) + '..' + Math.round(tutBox.b) : '없음') +
+             ' · 겹친 판 ' + ovSheet.length + '건' + (ovSheet.length ? ': ' + ovSheet.join(' · ') : ''))
+          : '(넓은 레이아웃 — 도크라 해당 없음)'));
+      // 시트가 **상단 계기까지 덮으면 안 된다.** 시간·전력·오염은 판을 열어 둔 채로도
+      // 봐야 하는 값이다. 겹침 검사만으로는 이걸 못 잡는다 — 시트는 아래에서 위로
+      // 자라므로 튜토리얼과는 안 겹치면서 위쪽 계기만 먹어 들어간다(돌연변이 실증).
+      var topBox2 = panelBox('top');
+      var sheetTop = sheetBox ? sheetBox.t : null;
+      chk('mobile.openSheetKeepsTopBarVisible',
+        !NARROW || (sheetTop !== null && topBox2 && sheetTop >= topBox2.b - 1),
+        (NARROW
+          ? ('상단 계기 아래끝 ' + (topBox2 ? Math.round(topBox2.b) : '?') + 'px · 건설 시트 윗끝 ' +
+             (sheetTop === null ? '없음' : Math.round(sheetTop)) + 'px (시트가 계기 아래에서 시작해야 한다)')
+          : '(넓은 레이아웃 — 도크라 해당 없음)'));
+
+      if (NARROW) {
+        var closeBtn = document.getElementById('btnSheetBuild');
+        if (closeBtn) tap(closeBtn, 10, 10);      // 다시 닫는다 (뒤 검사가 첫 화면을 본다)
+      }
+
+      // (e) 첫 화면에서 **지도가 보여야 한다.** 판이 화면을 다 덮으면 게임이 아니다.
+      //     실측으로 90px 만 남은 적이 있다(건설 시트 + 튜토리얼이 같이 떠서).
+      var covered = 0, ps0 = visiblePanels();
+      for (var pi = 0; pi < ps0.length; pi++) {
+        if (ps0[pi].id === 'top') continue;          // 상단 계기는 얇은 띠다
+        covered += Math.max(0, Math.min(ps0[pi].b, VH) - Math.max(ps0[pi].t, 0));
+      }
+      var mapH = VH - covered;
+      chk('mobile.mapStaysVisibleOnFirstScreen', !NARROW || mapH >= VH * 0.35,
+        (NARROW ? '' : '(넓은 레이아웃 — 판이 좌우 도크라 높이 합은 척도가 아니다) ') +
+        '첫 화면에서 지도로 남은 높이 ' + Math.round(mapH) + 'px / ' + VH +
+        'px (' + Math.round(mapH / VH * 100) + '%) · 35% 이상이어야 · 떠 있는 판 ' +
+        ps0.map(function (q) { return q.id; }).join(','));
 
       // ---------- 1. 가로 스크롤이 생기면 안 된다 -------------------------
       var docW = document.documentElement.scrollWidth;
@@ -227,9 +368,21 @@
         '캔버스 ' + (cv ? JSON.stringify(cv.getBoundingClientRect().width + 'x' +
           cv.getBoundingClientRect().height) : '없음'));
 
+      // 건설 시트는 **처음엔 닫혀 있다** (예전엔 미리 열어 뒀는데, 튜토리얼 판까지
+      // 같이 떠서 지도가 90px 밖에 안 남았다). 그러니 이 검사는 "목록이 보이는가" 가
+      // 아니라 **"버튼을 눌러 목록에 닿을 수 있는가"** 를 봐야 한다 — 폰에서 그게
+      // 실제 경로다. 여기서 탭까지 하면 '건설' 버튼이 죽어 있을 때도 걸린다.
+      var beforeOpen = onScreen(document.querySelector('#buildList .bitem'));
+      if (NARROW) {
+        var sheetBtn = document.getElementById('btnSheetBuild');
+        if (sheetBtn) tap(sheetBtn, 10, 10);   // tap 은 좌표를 반드시 받는다(생략하면 NaN)
+      }
       var firstBuild = document.querySelector('#buildList .bitem');
-      chk('mobile.buildListReachable', onScreen(firstBuild),
-        '건설 목록 첫 항목이 화면 안에 있는가=' + onScreen(firstBuild) +
+      chk('mobile.buildListReachable',
+        NARROW ? (onScreen(firstBuild) && !beforeOpen) : onScreen(firstBuild),
+        (NARROW ? '[건설] 누르기 전 보임=' + beforeOpen + ' → 누른 뒤 보임=' + onScreen(firstBuild) +
+                  ' (좁은 화면은 처음엔 닫혀 있고 눌러야 열려야 한다)'
+                : '넓은 레이아웃 — 도크라 처음부터 보여야 한다: ' + onScreen(firstBuild)) +
         (firstBuild ? ' · 위치 ' + JSON.stringify(firstBuild.getBoundingClientRect()) : ' · 항목 없음'));
 
       // ---------- 3. 키보드 없이 되는가 ------------------------------------

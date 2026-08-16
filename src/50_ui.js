@@ -160,6 +160,10 @@ function selectTool(t) {
   }
   tool = t; selected = null; hideInsp();
   renderBuildList();
+  // **폰에서는 고르면 시트를 닫는다.** 안 닫으면 지도가 시트에 가려 방금 고른 것을
+  // 놓을 자리가 안 보인다 — 손가락으로 하는 순서는 "고른다 → 지도를 누른다" 이고,
+  // 그 사이에 판을 손수 닫게 만들면 단계가 하나 늘 뿐이다.
+  if (t && window.matchMedia && window.matchMedia('(max-width: 720px)').matches) closeSheets();
 }
 
 function tryPlace(tx, ty) {
@@ -1019,9 +1023,20 @@ function renderTech() {
 }
 
 // --- 도움말 ------------------------------------------------------------------
+// 좁은 화면에서 큰 판 둘이 겹치면 아무것도 안 읽힌다. 하나를 열면 다른 하나는 닫는다.
+function closeSheets() {
+  document.body.classList.remove('sheet-build', 'sheet-right');
+  var ids = ['btnSheetBuild', 'btnSheetRight'];
+  for (var i = 0; i < ids.length; i++) {
+    var b = document.getElementById(ids[i]); if (b) b.classList.remove('on');
+  }
+}
+
 function toggleHelp() {
   var t = document.getElementById('help');
-  t.style.display = t.style.display === 'block' ? 'none' : 'block';
+  var opening = t.style.display !== 'block';
+  if (opening) closeSheets();
+  t.style.display = opening ? 'block' : 'none';
 }
 function closeHelp() { document.getElementById('help').style.display = 'none'; }
 
@@ -1244,6 +1259,7 @@ function setDemolish(on) {
 }
 function toggleSheet(name) {
   var cls = 'sheet-' + name, on = document.body.classList.contains(cls);
+  closeHelp();                       // 도움말과 시트는 같이 뜨지 않는다
   document.body.classList.remove('sheet-build', 'sheet-right');
   if (!on) document.body.classList.add(cls);
   var ids = { build: 'btnSheetBuild', right: 'btnSheetRight' };
@@ -1262,11 +1278,7 @@ function bindMobileBar() {
   on('btnBlueprint', function () { toggleBlueprint(); });
   on('btnTech', function () { toggleTech(); });
   on('btnHelp', function () { toggleHelp(); });
-  // 좁은 화면에서는 건설 시트를 먼저 열어 둔다 — 빈 화면만 보이면 무엇부터
-  // 해야 할지 알 수 없다.
-  if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) {
-    document.body.classList.add('sheet-build');
-    var bb = document.getElementById('btnSheetBuild');
-    if (bb) bb.classList.add('on');
-  }
+  // **자동으로 열지 않는다.** 예전엔 좁은 화면에서 건설 시트를 미리 열어 뒀는데,
+  // 튜토리얼 판까지 같이 뜨면 둘이 지도를 거의 다 덮어 첫 화면에 지도가 90px 밖에
+  // 안 남았다(실측). 첫 안내는 튜토리얼이 맡고, 건설은 아래 [건설] 버튼으로 연다.
 }
