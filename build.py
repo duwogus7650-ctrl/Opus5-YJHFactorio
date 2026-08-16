@@ -6,8 +6,10 @@ LOGIC FOUNDRY 빌드 — src/*.js 를 shell.html 한 장으로 인라인한다.
       조립한다 (replacement 안의 특수문자가 조용히 먹히는 계열의 함정을 원천 차단).
 """
 import io
+import json
 import os
 import sys
+from urllib.parse import quote
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -28,6 +30,11 @@ FILES = [
 MARK = '<!--GAME_INLINE-->'
 OUT_NAME = 'Logic-Foundry.html'
 
+# 폰 설치용 자리표시자. 아이콘 픽셀의 출처는 tools/make_icon.py 한 곳이다 —
+# base64 덩어리를 shell.html 에 손으로 박아 두면 나중에 그게 어디서 나왔는지 알 수 없다.
+ICON_MARK = '<!--ICON192-->'
+MANIFEST_MARK = '<!--MANIFEST-->'
+
 
 def read(path):
     with io.open(path, 'r', encoding='utf-8') as f:
@@ -37,6 +44,40 @@ def read(path):
 def splice(host, marker, payload):
     i = host.index(marker)
     return host[:i] + payload + host[i + len(marker):]
+
+
+def splice_all(host, marker, payload):
+    while marker in host:
+        host = splice(host, marker, payload)
+    return host
+
+
+def manifest_uri(icon192, icon512):
+    """홈화면 설치용 매니페스트를 data: URI 로 만든다.
+
+    파일로 빼지 않는 이유: 배포본은 **HTML 한 장**이고, 매니페스트를 파일로 빼는 순간
+    그 약속이 깨진다. JSON 을 URL 인코딩해 링크에 그대로 싣는다.
+    """
+    man = {
+        'name': 'Logic Foundry',
+        'short_name': 'Foundry',          # 홈화면 라벨은 짧아야 안 잘린다
+        'start_url': '.',
+        'scope': '.',
+        'display': 'standalone',          # 주소창 없이 앱처럼
+        'orientation': 'any',
+        'background_color': '#1c2024',
+        'theme_color': '#1c2024',
+        'description': '제어기를 배선해 공장이 스스로 판단하게 만드는 공정자동화 게임',
+        'icons': [
+            {'src': icon192, 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},
+            {'src': icon512, 'sizes': '512x512', 'type': 'image/png', 'purpose': 'any'},
+        ],
+    }
+    raw = json.dumps(man, ensure_ascii=False, separators=(',', ':'))
+    # href 속성 안에 들어가므로 따옴표·부등호·#·% 는 반드시 인코딩한다.
+    # 남겨 두면 속성이 그 자리에서 끊겨 매니페스트가 통째로 사라진다.
+    return ('data:application/manifest+json;charset=utf-8,'
+            + quote(raw, safe="!$&'()*+,-./:;=?@_~"))
 
 
 def main():
@@ -62,6 +103,19 @@ def main():
 
     block = '<script>\n(function(){\n"use strict";\n' + game + '\n})();\n</' + 'script>'
     out = splice(shell, MARK, block)
+
+    # 폰 설치용 아이콘·매니페스트 — 생성기에서 받아 자리표시자에 끼운다.
+    # 생성기의 자기 시험을 **여기서 먼저 돌린다**: 깨진 PNG 를 배포본에 박아 두면
+    # 홈화면 아이콘이 빈 사각형으로 뜨고, 그건 아무 게이트도 안 보는 자리다.
+    sys.path.insert(0, os.path.join(ROOT, 'tools'))
+    import make_icon
+    icon_problems = make_icon.selftest()
+    if icon_problems:
+        print('FATAL: 아이콘 생성기가 자기 시험에서 실패했다 — ' + ' · '.join(icon_problems))
+        return 2
+    i192, i512 = make_icon.data_uri(192), make_icon.data_uri(512)
+    out = splice_all(out, ICON_MARK, i192)
+    out = splice(out, MANIFEST_MARK, manifest_uri(i192, i512))
 
     if not os.path.isdir(DIST):
         os.makedirs(DIST)

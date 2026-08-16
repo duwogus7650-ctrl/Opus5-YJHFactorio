@@ -195,7 +195,7 @@ harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1�
 harness.py fullplay.js GREEN — 노드 35종·건물 22종 전수 40건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 177건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 181건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 15건 중 14건 통과 (연구 8/8 · 손실 0 · 아래 "여유가 46초뿐이다")
@@ -208,9 +208,41 @@ harness.py clear.js    RED  — 15건 중 14건 통과 (연구 8/8 · 손실 0 �
 | **Firefox** (Playwright) | GREEN | GREEN | GREEN | GREEN |
 | **WebKit** = Safari 엔진 (Playwright) | GREEN | GREEN | GREEN | GREEN |
 
-터치는 **진짜 `TouchEvent`** 가 만들어지는 조합만 센다: chromium mobile 26건 · chromium tablet
-26건 GREEN. webkit·firefox 는 Playwright 가 합성 터치를 못 만들어 **미검증으로 보고**하고
+터치는 **진짜 `TouchEvent`** 가 만들어지는 조합만 센다: chromium mobile 30건 · chromium tablet
+30건 GREEN. webkit·firefox 는 Playwright 가 합성 터치를 못 만들어 **미검증으로 보고**하고
 통과로 세지 않는다 — 못 잰 것을 GREEN 칸에 넣는 순간 그 표는 거짓말이 된다.
+
+#### 폰에 설치해서 쓰기
+
+브라우저 탭으로 여는 것과 홈화면에 얹는 것은 다른 물건이다. 얹으면 주소창이 사라지고
+아이콘이 생긴다. 그러자면 매니페스트·아이콘·상태바 메타가 필요한데, **배포본은 여전히
+HTML 한 장이어야 한다** — 그래서 매니페스트는 `data:application/manifest+json` URI 로,
+아이콘은 base64 PNG 로 문서 안에 넣는다(외부 참조는 여전히 0 · `offline_check.py` 가 확인).
+
+아이콘 픽셀의 출처는 `tools/make_icon.py` 한 곳이다. base64 덩어리를 손으로 박아 두면
+나중에 그게 어디서 나왔는지 알 수 없다. 생성기는 **자기 시험**을 갖고 있고(서명·IHDR·
+네 색이 다 들어갔는가 + 깨뜨린 바이트열을 거르는 음성 대조군), 빌드가 그 시험을 먼저
+돌린 뒤에만 아이콘을 박는다.
+
+| 게이트 | 보는 것 |
+|---|---|
+| `mobile.manifestIsInstallable` | 매니페스트가 JSON 으로 읽히고 `standalone` · 아이콘 2종 |
+| `mobile.appleTouchIconIsRealPng` | 링크의 base64 를 되풀어 PNG 서명과 192x192 확인 (iOS 는 매니페스트가 아니라 이 링크를 본다) |
+| `mobile.standaloneMetaPresent` | 전체화면 메타 · 테마색 · `viewport-fit=cover` |
+| `mobile.safeAreaPushesContentIn` | 노치 값을 44px 로 **덮어써서 계기가 실제로 내려오는지** 재고, 되돌리면 원위치인지까지 |
+
+마지막 게이트가 이 절의 요점이다. `env(safe-area-inset-*)` 는 노치가 없으면 0 이라,
+"규칙이 CSS 에 있는가"를 문자열로 훑으면 아무것도 검정하지 않는다. 값을 시험이 직접
+덮어써서 **여백이 그만큼 밀려나는지**를 재야 한다.
+
+여기서 두 번 헛디뎠고 둘 다 게이트가 짚었다. 안전영역 변수를 좁은 화면 미디어쿼리
+**안에** 뒀더니 태블릿에서 통째로 안 먹었고(폰만 보고 GREEN 이라 했으면 아이패드
+설치판이 깨진 채 나갔다), 그다음엔 상단 계기의 **박스** 위치를 재는 바람에 폰에서
+"안 밀렸다"가 나왔다 — 좁은 레이아웃은 여백으로 미는 것이라 박스 top 은 0 그대로다.
+지금은 눈에 보이는 계기(자식 요소)의 위치를 잰다.
+
+**실제 기기 설치는 여전히 미검증이다.** 여기서 잰 것은 "설치에 필요한 재료가 문서 안에
+있고 읽히는 형태인가" 까지다.
 
 #### 완주 주행 — 마지막 한 건은 연구 **순서** 였다
 
@@ -970,9 +1002,10 @@ src/60_game.js      루프, 저장/불러오기, __GAME 테스트 API
   처리는 있는데 게이트가 없어서, 다음 수정에서 조용히 사라져도 아무도 몰랐을 자리였다.
 - 검증은 헤드리스 4엔진(Edge·Chromium·Firefox·WebKit) 기준이다. **실기 Safari 와 실기 모바일,
   그리고 "재미"는 미검증** — 페이싱 표는 규칙이 맞는지만 보여주고 재미는 못 잰다.
-- 터치는 있다(폰·태블릿 레이아웃, 노드 편집기 터치 배선, 모바일 조작 바). 다만 자동 검증은
-  chromium 의 mobile·tablet 에뮬레이션 두 조합뿐이고, webkit·firefox 는 합성 터치를 못 만들어
-  미검증이다. **실제 기기에서는 아직 아무도 안 만져 봤다.**
+- 터치는 있다(폰·태블릿 레이아웃, 노드 편집기 터치 배선, 모바일 조작 바, 홈화면 설치).
+  다만 자동 검증은 chromium 의 mobile·tablet 에뮬레이션 두 조합뿐이고, webkit·firefox 는
+  합성 터치를 못 만들어 미검증이다. **실제 기기에서는 아직 아무도 안 만져 봤다** — 설치도
+  마찬가지로, 재료가 갖춰졌다는 것까지만 확인했다.
 - 신호 버스는 8채널 고정이고 값은 실수 하나다. 이름표·품목 같은 것은 못 보낸다.
 - 새 노드 셋 중 **상태기계만** 문장 편집기에 없다(전이가 넷이라 한 줄로 안 접힌다).
   평활 필터와 신호 버스는 문장으로도 쓴다.

@@ -775,6 +775,27 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 홈화면 설치 — 재료가 하나만 빠져도 "설치했더니 브라우저 껍데기 그대로" 가 된다
+    ("매니페스트를 브라우저 탭 모드로 되돌린다", "build.py",
+     "'display': 'standalone',".encode("utf-8"),
+     "'display': 'browser',".encode("utf-8"),
+     ["mobile.manifestIsInstallable"], "mobile.js"),
+
+    ("아이콘을 192 가 아닌 크기로 넣는다", "build.py",
+     "i192, i512 = make_icon.data_uri(192), make_icon.data_uri(512)".encode("utf-8"),
+     "i192, i512 = make_icon.data_uri(128), make_icon.data_uri(512)".encode("utf-8"),
+     ["mobile.appleTouchIconIsRealPng"], "mobile.js"),
+
+    ("전체화면 메타를 뺀다", "shell.html",
+     '<meta name="apple-mobile-web-app-capable" content="yes">'.encode("utf-8"),
+     '<meta name="apple-mobile-web-app-capable" content="no">'.encode("utf-8"),
+     ["mobile.standaloneMetaPresent"], "mobile.js"),
+
+    ("노치 여백을 상단 계기에 안 준다", "shell.html",
+     "       padding-top:var(--safe-t);".encode("utf-8"),
+     "       padding-top:0;".encode("utf-8"),
+     ["mobile.safeAreaPushesContentIn"], "mobile.js"),
+
     ('캔버스가 터치를 아예 안 받는다', '50_ui.js',
      b"  canvas.addEventListener('touchstart', function (ev) {",
      b"  canvas.addEventListener('__nope', function (ev) {",
@@ -1265,7 +1286,12 @@ def main():
     for mut in MUTATIONS:
         name, fname, find, repl, expect = mut[0], mut[1], mut[2], mut[3], mut[4]
         drv = mut[5] if len(mut) > 5 else 'driver.js'
+        # 대상은 기본이 src/ 지만, 레포 뿌리의 도구(build.py · tools/*.py)도
+        # 배포본을 만드는 코드다 — 아이콘·매니페스트가 거기서 나오므로
+        # 그쪽도 돌연변이를 걸 수 있어야 한다.
         path = os.path.join(SRC, fname)
+        if not os.path.isfile(path):
+            path = os.path.join(ROOT, fname)
         orig = read_bytes(path)
         n = orig.count(find)
         if n != 1:

@@ -451,6 +451,92 @@
         '높이 44px 미만인 탭 표적 ' + small.length + '개' +
         (small.length ? ' — ' + small.slice(0, 6).join(', ') : ''));
 
+      // --- 홈화면 설치 (폰에 "앱처럼" 얹기) --------------------------------
+      // 브라우저 탭으로 여는 것과 홈화면에 얹는 것은 다른 경험이다. 얹으면 주소창이
+      // 사라지고 아이콘이 생기며, 그러자면 매니페스트·아이콘·상태바 메타가 필요하다.
+      // **실기 설치는 여기서 검증할 수 없다** — 대신 설치에 필요한 재료가 실제로
+      // 문서 안에 있고 읽히는 형태인지까지를 잰다.
+      var manLink = document.querySelector('link[rel="manifest"]');
+      var manHref = manLink ? manLink.getAttribute('href') : '';
+      var man = null, manErr = '';
+      try {
+        var comma = manHref.indexOf(',');
+        man = JSON.parse(decodeURIComponent(manHref.slice(comma + 1)));
+      } catch (e9) { manErr = String(e9); }
+      chk('mobile.manifestIsInstallable',
+        !!man && man.display === 'standalone' && !!man.name && !!man.short_name &&
+        !!man.icons && man.icons.length >= 2 &&
+        man.icons[0].src.indexOf('data:image/png;base64,') === 0,
+        man ? ('이름 "' + man.name + '" · 홈화면 라벨 "' + man.short_name + '" · 표시 ' +
+               man.display + ' · 아이콘 ' + man.icons.length + '종(' +
+               man.icons.map(function (ic) { return ic.sizes; }).join(',') + ')')
+            : ('매니페스트를 못 읽었다: ' + (manErr || '링크 없음')));
+
+      // 아이콘이 **진짜 PNG 인가.** data: URI 는 무엇이든 담을 수 있어서, 길이만
+      // 보면 깨진 바이트열도 통과한다. 서명과 IHDR 의 크기까지 되읽는다.
+      var appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
+      var iconHref = appleIcon ? appleIcon.getAttribute('href') : '';
+      var iw = 0, ih = 0, sigOk = false;
+      try {
+        var bin = atob(iconHref.slice(iconHref.indexOf(',') + 1));
+        sigOk = bin.charCodeAt(0) === 0x89 && bin.slice(1, 4) === 'PNG';
+        function be32(o) {
+          return ((bin.charCodeAt(o) << 24) | (bin.charCodeAt(o + 1) << 16) |
+                  (bin.charCodeAt(o + 2) << 8) | bin.charCodeAt(o + 3)) >>> 0;
+        }
+        iw = be32(16); ih = be32(20);
+      } catch (e10) { /* 아래 게이트가 실패로 드러낸다 */ }
+      chk('mobile.appleTouchIconIsRealPng',
+        sigOk && iw === 192 && ih === 192,
+        'apple-touch-icon PNG 서명=' + sigOk + ' · 크기 ' + iw + 'x' + ih +
+        ' (192x192 여야 · iOS 는 매니페스트가 아니라 이 링크를 본다)');
+
+      chk('mobile.standaloneMetaPresent',
+        !!document.querySelector('meta[name="apple-mobile-web-app-capable"][content="yes"]') &&
+        !!document.querySelector('meta[name="theme-color"]') &&
+        (document.querySelector('meta[name="viewport"]').getAttribute('content') || '')
+          .indexOf('viewport-fit=cover') >= 0,
+        '전체화면 메타=' + !!document.querySelector('meta[name="apple-mobile-web-app-capable"]') +
+        ' · 테마색=' + (document.querySelector('meta[name="theme-color"]') || {}).content +
+        ' · viewport-fit=cover 포함=' +
+        ((document.querySelector('meta[name="viewport"]').getAttribute('content') || '')
+          .indexOf('viewport-fit=cover') >= 0));
+
+      // --- 노치 여백이 **실제로 밀어내는가** --------------------------------
+      // env(safe-area-inset-*) 는 노치가 없으면 0 이라, 규칙이 있는지 문자열로 훑어봐야
+      // 아무것도 검정하지 않는다. 변수를 시험이 직접 44px 로 덮어 **여백이 그만큼
+      // 늘어나는지**를 잰다. 안 늘어나면 그 규칙은 어딘가에서 끊긴 것이다.
+      // 레이아웃마다 요소가 다르다 — 좁은 화면에는 조작 바가 있고 태블릿에는 없다.
+      // **그 레이아웃에 실제로 있는 것만** 잰다. 없는 요소를 재면 게이트가 레이아웃
+      // 탓에 빨개지고, 그러면 게이트가 아니라 잡음이 된다(실제로 태블릿에서 그랬다).
+      var topBar = document.getElementById('top');
+      var mob = document.getElementById('mobBar');
+      var mobVisible = !!mob && getComputedStyle(mob).display !== 'none';
+      // **박스가 아니라 눈에 보이는 계기의 위치를 잰다.** 좁은 레이아웃에서는 여백
+      // (padding) 으로 밀어내므로 박스의 top 은 0 에 그대로 있고 안의 숫자만 내려온다 —
+      // 박스를 재면 폰에서 "안 밀렸다" 는 잘못된 판정이 나온다(실제로 그랬다).
+      function topEdge() {
+        var first = topBar.querySelector('.stat') || topBar.firstElementChild || topBar;
+        return first.getBoundingClientRect().top;
+      }
+      var t0 = topEdge();
+      var b0 = mobVisible ? (parseFloat(getComputedStyle(mob).paddingBottom) || 0) : null;
+      document.documentElement.style.setProperty('--safe-t', '44px');
+      document.documentElement.style.setProperty('--safe-b', '34px');
+      var t1 = topEdge();
+      var b1 = mobVisible ? (parseFloat(getComputedStyle(mob).paddingBottom) || 0) : null;
+      document.documentElement.style.removeProperty('--safe-t');
+      document.documentElement.style.removeProperty('--safe-b');
+      var t2 = topEdge();
+      var topOk = (t1 - t0) >= 43 && Math.abs(t2 - t0) < 0.6;
+      var botOk = !mobVisible || (b1 - b0) >= 33;
+      chk('mobile.safeAreaPushesContentIn', topOk && botOk,
+        '상단 계기 위치 ' + Math.round(t0) + 'px → 노치 44px 로 두면 ' + Math.round(t1) +
+        'px → 되돌리면 ' + Math.round(t2) + 'px' +
+        (mobVisible ? (' · 조작 바 아래 여백 ' + b0 + ' → ' + b1 + 'px')
+                    : ' · 이 레이아웃엔 조작 바가 없다(태블릿·데스크톱)') +
+        ' (밀려나고 되돌아와야 한다 — 안 밀리면 계기가 노치 밑에 깔린다)');
+
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', VW < 0, '뷰포트 폭이 음수일 리 없다', true);
