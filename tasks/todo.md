@@ -708,3 +708,22 @@ logic-ctrl 1715 · automation-2 1980 · defense-ai 2073 · belt-2 2355.
 
 남은 74초는 조립기를 더 지어서는 안 나온다. 초반 램프를 당기거나 후반 급유를
 늘려야 하고 둘 다 계획 재설계다 — 값어치 판단이 먼저다.
+
+## 이번에 메운 것 (2026-08-11, 저장본 판 표시)
+
+저장본은 `v: VERSION` 을 적어 왔는데 **불러올 때 아무도 읽지 않았다.** 형식이 바뀌면
+없는 필드가 조용히 기본값으로 채워져 "열었더니 연구가 사라졌다" 처럼 나타나고,
+플레이어는 그게 판이 바뀐 탓인지 자기 탓인지 알 수 없다.
+
+- 이제 `loadGame` 이 `data.v` 를 읽어 `G.state().load = {version, foreign}` 로 내놓고,
+  다른 판이면 화면에 알린다
+- **거절하지는 않는다** — 거절하면 판 하나 올릴 때마다 남의 저장본을 버리는 셈이다.
+  열되 말해 준다
+- `save.recordsVersion` · `save.sameVersionIsNotFlagged` ·
+  `save.foreignVersionIsFlaggedButStillLoads` · `save.missingVersionIsFlagged`
+  (마지막이 음성 대조군 — 판을 안 적은 저장본을 조용히 같은 판 취급하면 이 게이트가
+   아무것도 검정하지 않는다)
+
+돌연변이 2건(저장본에 판 안 적기 · 다른 판을 같은 판인 척 열기) 전부 CAUGHT.
+
+검증: 모델 265 · 클릭 79 GREEN, 돌연변이 177건 전부 CAUGHT(놓침 0 · 무효 0).

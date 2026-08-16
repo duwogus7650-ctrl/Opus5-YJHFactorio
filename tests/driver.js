@@ -3925,6 +3925,46 @@
         ' · 없는 낱말(핵융합로) 찾음=' + (helpTxt.indexOf('핵융합로') >= 0) +
         ' (뒤가 true 면 대조가 죽은 것)');
 
+      // ================= 11.15 저장본 판 표시 ==============================
+      // 저장본은 `v` 를 적어 왔는데 **아무도 읽지 않았다.** 형식이 바뀌면 없는 필드가
+      // 조용히 기본값으로 채워져 "열었더니 연구가 사라졌다" 처럼 나타나고, 플레이어는
+      // 그게 판이 바뀐 탓인지 자기 탓인지 알 수 없다. 거절하는 대신 **열되 말해 준다** —
+      // 거절하면 판 하나 올릴 때마다 남의 저장본을 버리는 셈이다.
+      labSetup();
+      G.place('chest', 44, 44, 0);
+      G.run(0.2);
+      var verRaw = G.saveRaw();
+      var verObj = JSON.parse(verRaw);
+      chk('save.recordsVersion', typeof verObj.v === 'string' && verObj.v.length > 0,
+        '저장본에 적힌 판 = ' + JSON.stringify(verObj.v) + ' (없으면 나중에 대조할 근거가 없다)');
+
+      G.load(verRaw); G.run(0.05);
+      var selfLoad = G.state().load;
+      chk('save.sameVersionIsNotFlagged',
+        !!selfLoad && selfLoad.version === verObj.v && selfLoad.foreign === false,
+        '같은 판을 열었을 때 표시 = ' + JSON.stringify(selfLoad) + ' (foreign 이 false 여야)');
+
+      // 남의 판에서 온 저장본 — 형식은 멀쩡하고 버전 문자열만 다르다.
+      verObj.v = '0.0.1-옛판';
+      var okForeign = G.load(JSON.stringify(verObj));
+      G.run(0.05);
+      var foreignLoad = G.state().load;
+      chk('save.foreignVersionIsFlaggedButStillLoads',
+        okForeign !== false && !!foreignLoad && foreignLoad.foreign === true &&
+        foreignLoad.version === '0.0.1-옛판' && G.state().entityCount > 0,
+        '다른 판 저장본을 열었다 → 성공=' + (okForeign !== false) + ' · 표시=' +
+        JSON.stringify(foreignLoad) + ' · 엔티티 ' + G.state().entityCount +
+        '개 (열리되 다른 판이라고 말해야 한다)');
+
+      // 버전을 아예 안 적은 저장본도 "없음" 으로 잡아야 한다 — 조용히 같은 판 취급하면
+      // 이 게이트는 아무것도 검정하지 않는다(음성 대조군).
+      delete verObj.v;
+      G.load(JSON.stringify(verObj)); G.run(0.05);
+      var noVer = G.state().load;
+      chk('save.missingVersionIsFlagged',
+        !!noVer && noVer.foreign === true && noVer.version === '(없음)',
+        '판 표시가 없는 저장본 → ' + JSON.stringify(noVer) + ' (foreign 이 true 여야)');
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

@@ -349,6 +349,18 @@ MUTATIONS = [
      b"      var sm = graphAddNode(g, 'smooth', x, y0);",
      ['rule.rateCompilesAsItsOwnNode']),
 
+    # ---- 저장본 판 표시 ----
+    # 판이 바뀌어도 조용히 열리면 "열었더니 연구가 사라졌다" 의 원인을 아무도 못 짚는다.
+    ("저장본에 판을 안 적는다", "60_game.js",
+     "    v: VERSION, seed: worldSeed, t: gameTime,".encode("utf-8"),
+     "    seed: worldSeed, t: gameTime,".encode("utf-8"),
+     ["save.recordsVersion", "save.sameVersionIsNotFlagged"]),
+
+    ("다른 판에서 온 저장본을 같은 판인 척 연다", "60_game.js",
+     "  lastLoadWasForeign = (lastLoadVersion !== VERSION);".encode("utf-8"),
+     "  lastLoadWasForeign = false;".encode("utf-8"),
+     ["save.foreignVersionIsFlaggedButStillLoads", "save.missingVersionIsFlagged"]),
+
     # ---- 도움말 본문 ----
     # 튜토리얼을 건너뛴 사람은 도움말만 읽는다. 여기 숫자가 틀리면 배선이 안 되고
     # 이유를 모른다.

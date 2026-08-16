@@ -8612,6 +8612,9 @@ function saveGame() {
   } catch (e) { logError('save', e); toast('저장 실패: ' + e, 'bad'); return false; }
 }
 
+// 마지막으로 연 저장본이 어느 판에서 왔는가. 화면과 시험이 같은 값을 본다.
+var lastLoadVersion = null, lastLoadWasForeign = false;
+
 function loadGame(raw) {
   var data;
   try { data = typeof raw === 'string' ? JSON.parse(raw) : JSON.parse(localStorage.getItem('logic-foundry-save')); }
@@ -8624,6 +8627,13 @@ function loadGame(raw) {
     toast('저장본 형식이 맞지 않다 — 현재 게임은 그대로 둔다', 'bad');
     return false;
   }
+  // **버전을 읽는다.** 저장본은 v 를 적어 왔는데 아무도 읽지 않았다. 형식이 바뀌면
+  // 없는 필드가 조용히 기본값으로 채워져 "열었더니 연구가 사라졌다" 처럼 나타나고,
+  // 플레이어는 그게 판이 바뀐 탓인지 자기 탓인지 알 수 없다. 거절하지는 않는다 —
+  // 거절하면 판 하나 올릴 때마다 남의 저장본을 버리는 셈이다. **열되 말해 준다.**
+  lastLoadVersion = (typeof data.v === 'string' && data.v) ? data.v : '(없음)';
+  lastLoadWasForeign = (lastLoadVersion !== VERSION);
+
   try {
     newGame(data.seed);
     // newGame 이 심어 둔 시작 키트를 지운다 — 저장본이 진실이다
@@ -8762,6 +8772,10 @@ function loadGame(raw) {
     rebuildPower();
     refreshAllUI();
     toast('불러오기 완료 — ' + fmtTime(gameTime), 'good');
+    if (lastLoadWasForeign) {
+      toast('이 저장본은 다른 판(' + lastLoadVersion + ')에서 왔다 — 지금은 ' + VERSION +
+            '. 없는 항목은 기본값으로 채웠다.', 'bad');
+    }
     return true;
   } catch (e3) { logError('load', e3); toast('불러오기 실패: ' + e3, 'bad'); return false; }
 }
@@ -9535,6 +9549,7 @@ window.__GAME = {
       handQueueHead: handQueue.length ? { rid: handQueue[0].rid, left: handQueue[0].left } : null,
       alarms: alarms.slice(), displays: displays.slice(),
       mult: { belt: beltSpeedMul, machine: machineSpeedMul, power: machinePowerMul },
+      load: { version: lastLoadVersion, foreign: lastLoadWasForeign },
       rngDraws: RNG.draws()
     };
   },

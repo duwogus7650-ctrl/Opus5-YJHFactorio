@@ -162,7 +162,7 @@ UI 는 창이 아니라 **장비의 앞면**이다. 어두운 세계 위에 밝�
 python build.py                      # src/*.js → dist/Logic-Foundry.html 인라인
 node tests/syntax_check.js           # 합쳐진 인라인 스크립트를 실제로 파싱
 python tests/offline_check.py        # 외부 참조 0건인가 (단일 HTML·의존성 0 검정)
-python tests/harness.py              # 모델 게이트 261건 (헤드리스 Edge)
+python tests/harness.py              # 모델 게이트 265건 (헤드리스 Edge)
 python tests/harness.py uismoke.js   # 클릭 경로 게이트 79건 (합성 마우스/키 이벤트)
 python tests/harness.py fullplay.js  # 노드·건물·레시피·연구 전수 스윕 40건
 python tests/harness.py shedding.js  # 부하 차단 시나리오 10건
@@ -190,18 +190,18 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
 offline_check.py       GREEN — 외부 참조 0건 (규칙 9개 · 자기 시험 포함)
-harness.py             GREEN — 실검사 261건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 265건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py uismoke.js  GREEN — 실검사 79건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py fullplay.js GREEN — 노드 35종·건물 22종 전수 40건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 175건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 177건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    RED  — 15건 중 14건 통과 (연구 8/8 · 손실 0 · 아래 "여유가 46초뿐이다")
 ```
 
-| 엔진 | 모델 261 | 클릭 79 | 전수 40 | 부하차단 10 |
+| 엔진 | 모델 265 | 클릭 79 | 전수 40 | 부하차단 10 |
 |---|---|---|---|---|
 | Edge (Chromium 151) | GREEN | GREEN | GREEN | GREEN |
 | Chromium (Playwright) | GREEN | GREEN | GREEN | GREEN |
@@ -450,6 +450,10 @@ det.differentSeedDiffers     음성 대조군 — 씨앗을 바꾸면 반드시 
 - **도움말 본문** — 튜토리얼을 건너뛴 사람은 도움말(`H`)만 읽는다. 거기 적힌 숫자 약속
   ("전주 5×5", "8 타일/s", "5초가 지나면 간다", "0.5 이상이 참", "1틱 약 17ms")을 상수에서
   조각으로 만들어 본문에서 찾는다.
+- **저장본이 어느 판에서 왔는가** — 저장본은 `v` 를 적어 왔는데 불러올 때 아무도 읽지
+  않았다. 형식이 바뀌면 없는 필드가 조용히 기본값으로 채워져 "열었더니 연구가 사라졌다"
+  처럼 나타난다. 이제 읽고, **거절 대신 알린다** — 거절하면 판 하나 올릴 때마다 남의
+  저장본을 버리는 셈이다. 판이 없는 저장본도 "없음"으로 잡는다.
 - **물질수지** — 땅에서 뽑은 개수 == 세계에 존재하는 개수 증가분 (벨트 위 재고 포함).
   복제·소멸이 생기면 즉시 어긋난다.
 - **에너지수지** — 태운 연료 kJ == 실제 공급 kW × 시간.
