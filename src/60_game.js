@@ -1184,6 +1184,10 @@ window.__GAME = {
   specRaw: function () { var o = {}; for (var k in SPEC) o[k] = SPEC[k]; return o; },
   // SPEC 밖의 두 상수 — 도움말이 '0.5 이상이 참', '1틱 약 17ms' 라고 약속한다
   trueEps: function () { return TRUE_EPS; },
+  manifest: function () {
+    var l = document.querySelector('link[rel="manifest"]');
+    return { man: lastManifest, href: l ? (l.getAttribute('href') || '') : '' };
+  },
   tickSeconds: function () { return TICK; },
 
   // 오라클 상수 — 하네스가 이 값으로 기대 처리량을 계산한다
@@ -1202,7 +1206,53 @@ window.__GAME = {
   }
 };
 
+// --- 매니페스트의 주소를 지금 자리로 다시 쓴다 ------------------------------
+// **data: URI 안의 상대 주소는 풀 기준이 없다.** 매니페스트를 문서에 박아 넣은 대신
+// 치른 값이다. 크롬에게 물어보면(CDP Page.getAppManifest) 오류는 0건인데 start_url 이
+// **빈 채로** 돌아온다 — 조용히 실패하므로 눈으로는 절대 안 보인다. 그 상태로 홈화면에
+// 얹으면 아이콘을 눌렀을 때 어디로 갈지가 브라우저 맘이다.
+//
+// 그래서 열린 자리(location)에서 절대 주소를 만들어 링크를 갈아 끼운다. 파일을 그냥
+// 열었든(file://) 웹에 올렸든 그 자리의 절대 주소가 된다.
+var lastManifest = null;   // 시험이 결과를 읽는 창구 (blob: 은 되읽기가 번거롭다)
+function fixManifestUrls() {
+  var link = document.querySelector('link[rel="manifest"]');
+  if (!link) return null;
+  var href = link.getAttribute('href') || '';
+  var comma = href.indexOf(',');
+  if (comma < 0) return null;
+  var man;
+  try { man = JSON.parse(decodeURIComponent(href.slice(comma + 1))); }
+  catch (e) { return null; }
+  var here = location.href.split('#')[0].split('?')[0];
+  man.start_url = here;
+  man.scope = here.slice(0, here.lastIndexOf('/') + 1);
+
+  // **data: 로는 여기까지가 끝이다.** start_url 은 매니페스트와 **같은 출처**여야 하는데
+  // data: URI 에는 출처가 없다(불투명 출처). 그래서 절대 주소로 써 넣어도 크롬이 조용히
+  // 버린다 — 실측: 오류 0건, start_url undefined.
+  //
+  // blob: 은 다르다. `blob:https://호스트/uuid` 로 **문서의 출처를 물려받는다.** 그래서
+  // 같은 내용을 blob 으로 바꿔 달면 같은 파일 한 장을 유지하면서 start_url 이 산다.
+  // (파일을 그냥 연 경우 file:// 는 출처가 null 이라 여전히 안 될 수 있다 — 설치는
+  //  웹에 올렸을 때의 이야기이므로 그 경우는 손해가 없다.)
+  var url = null;
+  try {
+    if (typeof Blob === 'function' && window.URL && URL.createObjectURL) {
+      url = URL.createObjectURL(new Blob([JSON.stringify(man)],
+                                         { type: 'application/manifest+json' }));
+    }
+  } catch (e2) { url = null; }
+  link.setAttribute('href', url || ('data:application/manifest+json;charset=utf-8,'
+    + encodeURIComponent(JSON.stringify(man))));
+  lastManifest = man;
+  return man;
+}
+
 if (typeof document !== 'undefined') {
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { guard('boot', boot); });
-  else guard('boot', boot);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      guard('manifest', fixManifestUrls); guard('boot', boot);
+    });
+  } else { guard('manifest', fixManifestUrls); guard('boot', boot); }
 }

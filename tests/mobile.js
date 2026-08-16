@@ -456,21 +456,27 @@
       // 사라지고 아이콘이 생기며, 그러자면 매니페스트·아이콘·상태바 메타가 필요하다.
       // **실기 설치는 여기서 검증할 수 없다** — 대신 설치에 필요한 재료가 실제로
       // 문서 안에 있고 읽히는 형태인지까지를 잰다.
-      var manLink = document.querySelector('link[rel="manifest"]');
-      var manHref = manLink ? manLink.getAttribute('href') : '';
-      var man = null, manErr = '';
-      try {
-        var comma = manHref.indexOf(',');
-        man = JSON.parse(decodeURIComponent(manHref.slice(comma + 1)));
-      } catch (e9) { manErr = String(e9); }
+      // 링크의 href 를 되읽지 않는다 — 게임이 뜨면서 blob: 로 갈아 끼우기 때문이다
+      // (data: 안의 상대 주소는 풀 기준이 없어 규격상 start_url 이 탈락한다).
+      // 게임이 실제로 내건 매니페스트 객체를 그대로 받아 본다.
+      var manInfo = G.manifest ? G.manifest() : { man: null, href: '' };
+      var man = manInfo.man, manHref = manInfo.href, manErr = man ? '' : '게임이 매니페스트를 안 내걸었다';
       chk('mobile.manifestIsInstallable',
         !!man && man.display === 'standalone' && !!man.name && !!man.short_name &&
         !!man.icons && man.icons.length >= 2 &&
         man.icons[0].src.indexOf('data:image/png;base64,') === 0,
         man ? ('이름 "' + man.name + '" · 홈화면 라벨 "' + man.short_name + '" · 표시 ' +
                man.display + ' · 아이콘 ' + man.icons.length + '종(' +
-               man.icons.map(function (ic) { return ic.sizes; }).join(',') + ')')
+               man.icons.map(function (ic) { return ic.sizes; }).join(',') + ') · 링크 ' +
+               manHref.slice(0, 12))
             : ('매니페스트를 못 읽었다: ' + (manErr || '링크 없음')));
+
+      // start_url 은 열린 자리의 절대 주소여야 한다 — 상대 주소로 두면 규격상 탈락한다
+      chk('mobile.startUrlIsAbsolute',
+        !!man && typeof man.start_url === 'string' &&
+        /^(https?|file|blob):/.test(man.start_url) &&
+        man.start_url.indexOf(location.href.split('#')[0].split('?')[0]) === 0,
+        'start_url = ' + (man ? man.start_url : '없음') + ' (지금 주소로 시작해야 한다)');
 
       // 아이콘이 **진짜 PNG 인가.** data: URI 는 무엇이든 담을 수 있어서, 길이만
       // 보면 깨진 바이트열도 통과한다. 서명과 IHDR 의 크기까지 되읽는다.
