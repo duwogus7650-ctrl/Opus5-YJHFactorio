@@ -414,6 +414,46 @@
                 : '넓은 레이아웃 — 도크라 처음부터 보여야 한다: ' + onScreen(firstBuild)) +
         (firstBuild ? ' · 위치 ' + JSON.stringify(firstBuild.getBoundingClientRect()) : ' · 항목 없음'));
 
+      // ---------- 2.4 시트가 상단 계기를 덮지 않는가 (연구 판 포함) ---------
+      // 시간·전력·오염은 판을 열어 둔 채로도 봐야 하는 값이다. 연구 판은 62vh 로
+      // 잡혀 있어 상단 계기 위까지 올라와 있었다(실측: ✕ 가 y=13 — 계기 띠 한복판).
+      var topBox3 = panelBox('top');
+      var sheetTops = [];
+      var SHEET_IDS = ['tech', 'help'];
+      for (var st3 = 0; st3 < SHEET_IDS.length; st3++) {
+        var bid = SHEET_IDS[st3] === 'tech' ? 'btnTech' : 'btnHelp';
+        var bel = document.getElementById(bid);
+        if (bel) tap(bel, 10, 10);
+        var pb = panelBox(SHEET_IDS[st3]);
+        if (pb) sheetTops.push({ id: SHEET_IDS[st3], t: pb.t });
+        if (bel) tap(bel, 10, 10);
+      }
+      var coveringTop = sheetTops.filter(function (q) {
+        return topBox3 && q.t < topBox3.b - 1;
+      });
+      chk('mobile.sheetsKeepTopBarVisible', !NARROW || coveringTop.length === 0,
+        (NARROW
+          ? ('상단 계기 아래끝 ' + (topBox3 ? Math.round(topBox3.b) : '?') + 'px · 판 윗끝 ' +
+             sheetTops.map(function (q) { return q.id + ':' + Math.round(q.t); }).join(' ') +
+             ' · 계기를 덮은 판 ' + coveringTop.length + '건')
+          : '(넓은 레이아웃 — 해당 없음)'));
+
+      // ---------- 2.45 튜토리얼을 닫으면 되돌아올 수 있는가 -----------------
+      // 닫는 ✕ 는 화면에 있는데 **다시 여는 길은 건설 판 머리에 숨어 있었다** — 닫고
+      // 나면 그런 버튼이 있다는 사실조차 알 수 없다. 실기에서 "튜토리얼이 사라졌다" 로
+      // 나타났다. 닫아 보고, 화면에 보이는 손잡이로 되돌아오는지까지 잰다.
+      var tutClose = document.getElementById('tutorClose');
+      if (tutClose) tap(tutClose, 5, 5);
+      var tutGone = !panelBox('tutor');
+      var tutChip = document.getElementById('tutorChip');
+      var chipVisible = !!tutChip && getComputedStyle(tutChip).display !== 'none' && onScreen(tutChip);
+      if (chipVisible) tap(tutChip, 10, 10);
+      var tutBack = !!panelBox('tutor');
+      chk('mobile.tutorialCanBeReopened',
+        tutGone && (!NARROW || chipVisible) && tutBack,
+        '✕ 로 닫힘=' + tutGone + ' · 되돌리는 손잡이가 화면에 보임=' + chipVisible +
+        ' → 눌러서 돌아옴=' + tutBack + ' (닫는 길만 있고 여는 길이 없으면 갇힌다)');
+
       // ---------- 2.5 고른 도구를 그만둘 수 있는가 --------------------------
       // 폰에는 ESC 도 우클릭도 없다. 한 번 고르면 지도를 누를 때마다 계속 지어지고,
       // 푸는 길이 화면에 없으면 **갇힌다** — 실기 제보가 정확히 그것이었다.

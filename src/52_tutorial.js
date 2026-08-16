@@ -569,6 +569,9 @@ function resetTutorial(on) {
 function syncTutorHeight(host) {
   var h = (host && host.style.display !== 'none') ? Math.round(host.getBoundingClientRect().height) : 0;
   document.documentElement.style.setProperty('--tutor-h', h + 'px');
+  // 닫혀 있고 아직 다 안 끝냈으면 **되돌아올 손잡이**를 띄운다. 폰에서 다시 여는
+  // 버튼은 건설 판 머리에 있어서, 닫아 놓고는 그것이 있다는 사실조차 알 수 없다.
+  document.body.classList.toggle('tutor-off', !tutorial.on && !tutorial.done);
 }
 
 function renderTutorial() {
@@ -640,6 +643,8 @@ function bindTutorial() {
   var cl = document.getElementById('tutorClose');
   if (sk) sk.onclick = function () { skipTutorialStep(); renderTutorial(); };
   if (cl) cl.onclick = function () { tutorial.on = false; renderTutorial(); };
+  var chip = document.getElementById('tutorChip');
+  if (chip) chip.onclick = function () { tutorial.on = true; renderTutorial(); };
   var re = document.getElementById('tutorBtn');
   if (re) re.onclick = function () {
     if (!tutorial.on) { tutorial.on = true; renderTutorial(); return; }

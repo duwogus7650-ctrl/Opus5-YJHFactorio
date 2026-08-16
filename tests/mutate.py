@@ -775,6 +775,17 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 실기 3차 제보 — 연구 판이 상단 계기를 덮었고, 튜토리얼을 닫으면 못 돌아왔다.
+    ("시트 높이를 다시 62vh 로 (상단 계기를 덮는다)", "shell.html",
+     "    max-height:calc(100vh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));".encode("utf-8"),
+     "    max-height:62vh;".encode("utf-8"),
+     ["mobile.sheetsKeepTopBarVisible"], "mobile.js"),
+
+    ("튜토리얼을 닫아도 되돌아올 손잡이를 안 띄운다", "52_tutorial.js",
+     "  document.body.classList.toggle('tutor-off', !tutorial.on && !tutorial.done);".encode("utf-8"),
+     "  document.body.classList.toggle('tutor-off', false);".encode("utf-8"),
+     ["mobile.tutorialCanBeReopened"], "mobile.js"),
+
     # 실기 2차 제보 — 연구 판이 데스크톱 대화상자로 남아 있었고, 고른 도구를 푸는 길이
     # 폰에 없었다.
     ("연구 판을 좁은 화면 시트에서 뺀다 (데스크톱 660px 대화상자가 되살아난다)", "shell.html",

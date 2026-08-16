@@ -397,7 +397,8 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
   #help,#tech{
     position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px));top:auto;
     width:auto;max-width:100%;transform:none;
-    max-height:62vh;overflow-y:auto;border-radius:0;border-left:none;border-right:none;
+    max-height:calc(100vh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));
+    overflow-y:auto;border-radius:0;border-left:none;border-right:none;
     z-index:26}
   #help .pad,#tech .pad{padding:10px 12px}
   /* 연구 목록의 오른쪽 [시작] 버튼과 비용이 좁은 폭에서 겹치지 않게 세로로 쌓는다 */
@@ -412,6 +413,18 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
     font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 87;
     font-size:13px;box-shadow:0 3px 10px rgba(0,0,0,.45)}
   body.tool-on #toolChip{display:flex}
+
+  /* 튜토리얼을 닫으면 폰에서는 **되돌아올 길이 없었다.** 다시 여는 버튼이 건설 판
+     머리에 있어서, 건설 시트를 열어야 보인다 — 닫아 놓고는 그 사실을 알 수 없다.
+     그래서 닫힌 동안(그리고 아직 다 안 끝냈으면) 조작 바 위에 손잡이를 띄운다. */
+  #tutorChip{display:none;position:fixed;left:8px;right:8px;
+    bottom:calc(60px + var(--safe-b));z-index:24;
+    min-height:44px;align-items:center;justify-content:center;
+    background:var(--face);color:var(--ink);border:1px solid var(--edge);
+    font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 87;font-size:13px}
+  body.tutor-off #tutorChip{display:flex}
+  /* 도구 칩과 겹치지 않게 — 도구를 든 동안에는 도구 칩이 위, 튜토리얼 손잡이는 숨긴다 */
+  body.tool-on #tutorChip{display:none}
   body.sheet-build #build{display:block}
   body.sheet-right #right{display:flex}
   /* 인스펙터와 튜토리얼은 시트 토글과 무관하게 스스로 뜬다 (선택·진행에 따라) */
@@ -556,6 +569,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
 </div>
 
 <div id="toolChip"></div>
+<div id="tutorChip">튜토리얼 다시 열기</div>
 <div id="pickBanner">지도에서 대상을 클릭하세요 &nbsp;·&nbsp; ESC 취소</div>
 <div id="toast"></div>
 
@@ -7357,6 +7371,9 @@ function resetTutorial(on) {
 function syncTutorHeight(host) {
   var h = (host && host.style.display !== 'none') ? Math.round(host.getBoundingClientRect().height) : 0;
   document.documentElement.style.setProperty('--tutor-h', h + 'px');
+  // 닫혀 있고 아직 다 안 끝냈으면 **되돌아올 손잡이**를 띄운다. 폰에서 다시 여는
+  // 버튼은 건설 판 머리에 있어서, 닫아 놓고는 그것이 있다는 사실조차 알 수 없다.
+  document.body.classList.toggle('tutor-off', !tutorial.on && !tutorial.done);
 }
 
 function renderTutorial() {
@@ -7428,6 +7445,8 @@ function bindTutorial() {
   var cl = document.getElementById('tutorClose');
   if (sk) sk.onclick = function () { skipTutorialStep(); renderTutorial(); };
   if (cl) cl.onclick = function () { tutorial.on = false; renderTutorial(); };
+  var chip = document.getElementById('tutorChip');
+  if (chip) chip.onclick = function () { tutorial.on = true; renderTutorial(); };
   var re = document.getElementById('tutorBtn');
   if (re) re.onclick = function () {
     if (!tutorial.on) { tutorial.on = true; renderTutorial(); return; }
