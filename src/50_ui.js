@@ -808,7 +808,13 @@ function renderTop() {
     stat('진화도', evoPct + '%', evoPct > 55 ? 'badv' : (evoPct > 25 ? 'warnv' : '')) +
     stat('적', String(enemies.length), threat > 0 ? 'badv' : '', '접근 ' + threat) +
     stat('연구', res, currentResearch ? 'okv' : 'warnv') +
-    stat('손실', String(waveStats.buildingsLost), waveStats.buildingsLost ? 'badv' : '');
+    stat('손실', String(waveStats.buildingsLost), waveStats.buildingsLost ? 'badv' : '') +
+    // **프레임**: 한 장을 그리는 데 걸린 시간. 폰이 버거운지 여기서만 알 수 있다 —
+    // 헤드리스 측정은 이 개발 기계의 비용일 뿐, 그 사람 폰의 비용이 아니다.
+    // 16.7ms 가 60fps 의 예산이다. 그 아래면 초록, 넘으면 주황.
+    stat('프레임', frameWorkMs.toFixed(1) + 'ms',
+         frameWorkMs > 16.7 ? 'badv' : (frameWorkMs > 11 ? 'warnv' : 'okv'),
+         '한 프레임 예산 16.7ms (60fps)');
   // 라벨은 판에 각인, 값은 판에 박힌 계기창(well) 안에서 빛난다 — 이 UI 의 시그니처
   function stat(k, v, cls, sub) {
     return '<div class="stat" title="' + (sub || '') + '"><span class="k">' + k + '</span>' +

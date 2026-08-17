@@ -116,9 +116,11 @@ function advance(elapsed) {
   return steps;
 }
 
+var frameWorkMs = 0;      // 계기창에 띄우는 프레임 작업 시간(ms)
 function frame(now) {
   var elapsed = lastFrame ? Math.min(0.25, (now - lastFrame) / 1000) : 0;
   lastFrame = now;
+  var __t0 = performance.now();
   if (!paused) {
     stepCameraKeys(elapsed);
     // 배속은 **녹화·소크 시험 전용**이다. UI 에 노출하지 않는다 — 게임 난이도를
@@ -127,6 +129,10 @@ function frame(now) {
     guard('advance', function () { advance(elapsed * gameSpeed); });
   }
   guard('render', render);
+  // **한 프레임이 실제로 얼마나 걸렸는가.** 폰에서 프레임률을 물으면 답할 방법이
+  // 이것뿐이다 — 헤드리스로는 이 기계의 비용만 알 수 있고, 그 사람 폰의 비용은
+  // 그 폰에서 재야 한다. 지수평활으로 흔들림을 눌러 계기창에 띄운다.
+  frameWorkMs = frameWorkMs * 0.9 + (performance.now() - __t0) * 0.1;
   // 손 조립 대기열은 매 프레임 — 0.2초 주기로 그리면 0.5초짜리 레시피의 진행
   // 막대가 두 칸만 움직여 "멈춘 것"처럼 보인다. 줄이 그대로면 폭만 고치므로 싸다.
   guard('cqueue', renderCraftQueue);
@@ -455,6 +461,18 @@ window.__GAME = {
     return { ticks: n, t: gameTime };
   },
   tickOnce: function () { tick(TICK); return gameTime; },
+  // 한 프레임이 **실제로 얼마나 걸리는가**. rAF 간격은 60Hz 에 물려 있어 늘 16.7ms 로
+  // 나오고, 그래서 여유가 얼마인지 아무것도 말해 주지 않는다(실측으로 확인했다).
+  // 시뮬 한 틱과 렌더 한 장을 실제로 돌려 그 시간을 잰다.
+  frameCost: function (n) {
+    n = n || 60;
+    var sim = 0, drw = 0, i, t0;
+    for (i = 0; i < n; i++) {
+      t0 = performance.now(); tick(TICK); sim += performance.now() - t0;
+      t0 = performance.now(); render(); drw += performance.now() - t0;
+    }
+    return { n: n, simMs: sim / n, drawMs: drw / n, totalMs: (sim + drw) / n };
+  },
   // **검증 전용 — 게임은 여전히 60 UPS 고정 스텝이다.** 시뮬을 임의의 dt 로 한 번
   // 미는 유일한 경로이고, 존재 이유는 하나다: 같은 게임시간을 다르게 쪼개도 결과가
   // 같은지 물어야 dt 를 곱했는지 아닌지가 갈린다 (교훈 03 의 60배 오염이 그 실패다).
@@ -1179,6 +1197,7 @@ window.__GAME = {
       handQueueHead: handQueue.length ? { rid: handQueue[0].rid, left: handQueue[0].left } : null,
       alarms: alarms.slice(), displays: displays.slice(),
       mult: { belt: beltSpeedMul, machine: machineSpeedMul, power: machinePowerMul },
+      frameMs: Math.round(frameWorkMs * 100) / 100,
       load: { version: lastLoadVersion, foreign: lastLoadWasForeign },
       rngDraws: RNG.draws()
     };

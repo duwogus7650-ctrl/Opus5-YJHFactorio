@@ -775,6 +775,12 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 성능 — 화면 밖까지 그리기 시작하면 폰에서 프레임이 무너진다
+    ("보이는 범위를 지도 전체로 넓힌다 (화면 밖까지 그린다)", "45_render.js",
+     "    x0: Math.max(0, Math.floor(cam.x - halfW) - 1), x1: Math.min(W - 1, Math.ceil(cam.x + halfW) + 1),".encode("utf-8"),
+     "    x0: 0, x1: W - 1,".encode("utf-8"),
+     ["mobile.frameCostFitsBudget"], "mobile.js"),
+
     # 같은 안내가 쌓여 판을 덮었다 (실기 스크린샷 · 녹화 프레임 둘 다)
     ("같은 안내를 합치지 않고 계속 쌓는다", "50_ui.js",
      "  if (last && last.getAttribute('data-msg') === msg) {".encode("utf-8"),

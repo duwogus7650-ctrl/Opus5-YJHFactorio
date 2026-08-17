@@ -963,6 +963,50 @@
                     : ' · 이 레이아웃엔 조작 바가 없다(태블릿·데스크톱)') +
         ' (밀려나고 되돌아와야 한다 — 안 밀리면 계기가 노치 밑에 깔린다)');
 
+      // ---------- 10. 한 프레임에 얼마나 걸리는가 (맨 끝에 둔다) -------------
+      // 이 블록은 G.reset 으로 판을 새로 만든다. 절 중간에 두었더니 뒤따르는
+      // 청사진 회전 검사가 담아 둔 청사진을 잃고 실패했다 — 이 레포 교훈 14 다.
+      // **한 번도 안 재던 것이다.** 40분 판 끝에 엔티티 289개인데 폰에서 몇 프레임이
+      // 나오는지 아무도 몰랐다. rAF 간격으로는 알 수 없다 — 60Hz 에 물려 늘 16.7ms 로
+      // 나오고 여유가 얼마인지는 말해 주지 않는다(실측으로 확인했다). 시뮬 한 틱과
+      // 렌더 한 장을 실제로 돌려 그 시간을 잰다.
+      //
+      // 문턱 10ms 의 근거: 이 기계에서 296개짜리 판이 6.7~6.8ms 로 아주 안정적이다
+      // (3회 측정 ±1%). 10ms 는 그 위 약 1.5배이고, "폰이 이 기계보다 1.5배쯤 느려도
+      // 한 프레임 안에 든다" 는 가정이다. **가정이라는 것을 여기 적어 둔다** — 실기
+      // 프레임률은 화면 위 [프레임] 계기로 그 폰에서 직접 봐야 한다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(999999); G.powerCheat(true);
+      G.research('steel');
+      var perfN = 0;
+      for (var pr = 0; pr < 8; pr++) {
+        for (var pi2 = 0; pi2 < 24; pi2++) if (G.place('belt', 60 + pi2, 60 + pr * 3, 1)) perfN++;
+        for (var pf = 0; pf < 6; pf++) if (G.place('furnace', 60 + pf * 4, 61 + pr * 3, 0)) perfN++;
+        for (var ps2 = 0; ps2 < 6; ps2++) if (G.place('inserter', 62 + ps2 * 4, 61 + pr * 3, 0)) perfN++;
+        if (G.place('pole', 84, 60 + pr * 3, 0)) perfN++;
+      }
+      var perfIds = G.entIds(), onBelt = 0;
+      for (var pj = 0; pj < perfIds.length; pj++) {
+        var pid = Array.isArray(perfIds[pj]) ? perfIds[pj][0] : perfIds[pj];
+        var pe = G.ent(pid);
+        if (pe && pe.type === 'belt') { for (var pk = 0; pk < 4; pk++) if (G.putOnBelt(pid, 'iron-plate', pk)) onBelt++; }
+      }
+      G.run(2);
+      var cost = G.frameCost(60);
+      // **절대 시간으로 문턱을 잡으면 안 된다.** 처음엔 10ms 로 뒀다가 태블릿에서
+      // 빨개졌다 — 화면이 넓으면 그릴 픽셀이 많아 당연히 오래 걸린다(폰 6.8ms /
+      // 1.32Mpx, 태블릿 17.0ms / 3.15Mpx). 둘 다 **5.2~5.4 ms/Mpx** 로 같다.
+      // 비용은 픽셀에 비례하므로 문턱도 픽셀당으로 잡는다. 7 ms/Mpx 는 그 위 약 30%.
+      var cvPerf = document.getElementById('view');
+      var mpx = (cvPerf.width * cvPerf.height) / 1e6;
+      var perMpx = cost.totalMs / mpx;
+      chk('mobile.frameCostFitsBudget',
+        perfN > 250 && onBelt > 100 && mpx > 0.5 && perMpx <= 7,
+        '엔티티 ' + perfN + '개 · 벨트 위 물건 ' + onBelt + '개 · 캔버스 ' +
+        cvPerf.width + 'x' + cvPerf.height + ' (' + mpx.toFixed(2) + 'Mpx) · 한 프레임 시뮬 ' +
+        cost.simMs.toFixed(2) + 'ms + 렌더 ' + cost.drawMs.toFixed(2) + 'ms = ' +
+        cost.totalMs.toFixed(2) + 'ms → ' + perMpx.toFixed(2) +
+        ' ms/Mpx (문턱 7 · 60fps 예산 16.7ms 는 이 화면에서 ' +
+        (16.7 / mpx).toFixed(1) + ' ms/Mpx 에 해당)');
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', VW < 0, '뷰포트 폭이 음수일 리 없다', true);
