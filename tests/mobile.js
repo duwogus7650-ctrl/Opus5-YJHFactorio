@@ -642,6 +642,45 @@
           : '(넓은 레이아웃 — 해당 없음)'));
       tHost.innerHTML = '';
 
+      // ---------- 2.95 인스펙터 안에서 실제로 조작이 되는가 ------------------
+      // 게이트는 "탭하면 인스펙터가 열린다" 까지만 보고 있었다. 그 판 **안에서 하는 일**
+      // (레시피 고르기·켜고 끄기·철거)은 아무도 안 봤다 — 청사진이 마우스에만 있던 것과
+      // 같은 모양의 사각지대다. 레시피를 못 고르면 폰에서 공장이 자라지 않는다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.powerCheat(true);
+      var asmId = G.place('assembler', 80, 80, 0);
+      var asmPt = tileToClient(81, 81);
+      tap(cv, asmPt.x, asmPt.y);
+      var inspEl = document.getElementById('insp');
+      var inspOpen = getComputedStyle(inspEl).display !== 'none';
+      var recSel = document.getElementById('recSel');
+      var opts = recSel ? Array.prototype.map.call(recSel.options, function (o) { return o.value; }) : [];
+      if (recSel) {
+        recSel.value = 'gear';
+        recSel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      var recipeSet = G.ent(asmId).recipe;
+      G.run(0.4);                      // 0.2초 주기 갱신을 지나 보낸다
+      var recSel2 = document.getElementById('recSel');
+      chk('mobile.inspectorRecipeCanBeChosen',
+        inspOpen && opts.indexOf('gear') >= 0 && recipeSet === 'gear' &&
+        !!recSel2 && recSel2.value === 'gear',
+        '인스펙터 열림=' + inspOpen + ' · 선택지 ' + opts.length + '개 · 고른 뒤 레시피 ' +
+        recipeSet + ' · 갱신 뒤 드롭다운 값 ' + (recSel2 ? recSel2.value : '없음') +
+        ' (갱신이 값을 되돌리면 폰에서 레시피를 못 건다)');
+
+      var tglB = document.getElementById('tglBtn');
+      var enBefore = G.ent(asmId).enabled;
+      if (tglB) tap(tglB, 5, 5);
+      var enAfter = G.ent(asmId).enabled;
+      var delB = document.getElementById('delBtn');
+      var entBefore2 = G.state().entityCount;
+      if (delB) tap(delB, 5, 5);
+      var gone = !G.entAtTile(81, 81);
+      chk('mobile.inspectorToggleAndDemolish',
+        enBefore === true && enAfter === false && gone && G.state().entityCount < entBefore2,
+        '켜짐 ' + enBefore + ' → 버튼 탭 → ' + enAfter + ' · [철거] 탭 → 사라짐=' + gone +
+        ' (엔티티 ' + entBefore2 + ' → ' + G.state().entityCount + ')');
+
       // ---------- 3. 키보드 없이 되는가 ------------------------------------
       // 폰에는 키보드가 없다. R(회전)·T(연구)·H(도움말)이 단축키뿐이면
       // 그 기능은 폰에서 **존재하지 않는 기능**이다.
@@ -877,8 +916,20 @@
 
       // ---------- 9. 탭 표적이 손가락 크기인가 ------------------------------
       // 접근성 지침의 최소 타깃은 44x44 CSS px 다. 그보다 작으면 오탭이 난다.
+      // **재기 전에 인스펙터를 열어 둔다.** 이 검사는 화면에 보이는 것만 재는데,
+      // 여기 올 때쯤엔 인스펙터가 닫혀 있어 드롭다운이 목록에 있어도 건너뛰었다 —
+      // 돌연변이(드롭다운을 24px 로)가 두 번 MISS 로 빠져나갔다. 판을 열어 놓고 잰다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.powerCheat(true);
+      G.place('assembler', 80, 80, 0);
+      var tgPt = tileToClient(81, 81);
+      tap(cv, tgPt.x, tgPt.y);
+
+      // **드롭다운과 입력칸도 손가락 표적이다.** 여기 목록에 select 가 없어서, 인스펙터의
+      // 레시피 드롭다운이 24px 인 채로 오래 남아 있었다(실측). 목록을 손으로 적는 검사는
+      // 적어 둔 것까지만 본다 — 이 레포에서 같은 실수를 판 목록에서도 했다.
       var small = [], all = document.querySelectorAll(
-        '#buildList .bitem, #top button, #side button, .close');
+        '#buildList .bitem, #top button, #side button, .close, ' +
+        '#insp select, #insp button, #insp input, #right select, #right button');
       for (var q = 0; q < all.length; q++) {
         if (!onScreen(all[q])) continue;
         var rr = all[q].getBoundingClientRect();

@@ -775,6 +775,17 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 인스펙터 안의 조작 — 레시피를 못 고르면 폰에서 공장이 자라지 않는다
+    ("드롭다운을 다시 손가락보다 작게 만든다", "shell.html",
+     "  .panel select,.panel input{min-height:44px;font-size:14px}".encode("utf-8"),
+     "  .panel select,.panel input{min-height:24px;font-size:11px}".encode("utf-8"),
+     ["mobile.tapTargetsBigEnough"], "mobile.js"),
+
+    ("레시피 드롭다운이 고른 값을 안 적용한다", "50_ui.js",
+     "    e.recipe = rs.value || null; e.progress = 0;".encode("utf-8"),
+     "    e.progress = 0;".encode("utf-8"),
+     ["mobile.inspectorRecipeCanBeChosen"], "mobile.js"),
+
     # 계기 칸을 다시 넓히면 마지막 칸([프레임])이 화면 밖으로 밀린다
     ("상단 계기 칸을 다시 넓혀 마지막 칸을 밀어낸다", "shell.html",
      "  #top .stat{min-width:0;padding:3px 4px 4px;flex:1 1 0}".encode("utf-8"),

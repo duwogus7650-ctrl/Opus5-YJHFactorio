@@ -489,6 +489,9 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
   .panel h3 .close{min-width:44px;min-height:44px;display:inline-flex;
                    align-items:center;justify-content:center}
   .panel button{min-height:44px}
+  /* **드롭다운도 손가락으로 누른다.** 레시피 고르기가 인스펙터의 핵심 조작인데
+     24px 라 오탭이 난다. 탭 표적 게이트가 select 를 안 훑어 여태 안 걸렸다. */
+  .panel select,.panel input{min-height:44px;font-size:14px}   /* 손가락 화면 전용 — 한 곳에만 둔다(둘로 두면 돌연변이 앵커가 겹친다) */
   #pal .pitem{min-height:44px}
   /* 바닥 바에 가리지 않게 아래를 비운다.
      **폭 조건을 함께 건다.** 이 블록은 '손가락으로 만지는 화면' 전부에 걸리므로,
