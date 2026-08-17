@@ -830,6 +830,24 @@
     jIn('furnace-cu#4', 'furnace', EAST_RC, 0, 'copper-plate', WEST_RC);
     jIn('asm-green#4', 'assembler', WEST_RC, 0, 'sci-green');
     jIn('asm-red#4', 'assembler', WEST_RC, 0, 'sci-red');
+    // **제련을 더 올린다.** 끝 상태를 재 보니 철판 재고 0 · 구리 재고 0 인데 광석은
+    // 658 개가 쌓여 있었고, 용광로 26대 중 24대가 쉬지 않고 돌고 있었다. 즉 캐는 것도
+    // 먹이는 것도 아니라 **굽는 용량**이 모자랐다. 조립기 13대 중 8대가 놀던 것도
+    // 그 때문이다(gear:in8 · wire:in1 · circuit:in48 — 전부 상류가 빈 모습).
+    // 물류 주기를 절반으로 줄여 보는 쪽이 먼저 떠올랐지만, 재 보니 오히려 나빠졌다
+    // (20분 판 적팩 153 → 117). 그 축이 아니었다.
+    jIn('furnace-fe#18', 'furnace', EAST_RC, 0, 'iron-plate');
+    jIn('furnace-fe#19', 'furnace', EAST_RC, 0, 'iron-plate');
+    jIn('furnace-cu#5', 'furnace', EAST_RC, 0, 'copper-plate', WEST_RC);
+    jIn('furnace-fe#20', 'furnace', EAST_RC, 0, 'iron-plate');
+    jIn('furnace-cu#6', 'furnace', EAST_RC, 0, 'copper-plate', WEST_RC);
+    // **톱니가 진짜 목이다.** 재고 궤적을 찍어 보니 철판은 후반에 490 까지 쌓이는데
+    // 톱니는 40분 내내 0 이었다 — 벨트·인서터·적팩·탄창·터렛이 모두 톱니를 먹는데
+    // 만드는 곳이 둘뿐이었다. 열차가 못 선 것도(톱니 2/10) 같은 이유다.
+    // 톱니 바닥 재고를 feed 에 걸어 보고 터렛에 양보시켜 봤지만 둘 다 결과가 한 톨도
+    // 안 바뀌었다 — **나눠 쓰는 문제가 아니라 만드는 양의 문제였다.**
+    jIn('asm-gear#3', 'assembler', WEST_RC, 0, 'gear');
+    jIn('asm-gear#4', 'assembler', WEST_RC, 0, 'gear');
     // 인서터 조립기를 한 대 더 넣어 봤다: 인서터는 256 → 296 으로 늘었는데
     // **녹팩은 259 → 229 로 줄었다** — 벨트가 대신 밀려났다. 사슬의 한 칸만
     // 넓히면 바로 옆 칸이 좁아진다. 그래서 넣지 않는다.
@@ -1000,9 +1018,38 @@
     // **저축하는 동안에는 더 조인다.** 증기 발전소·철도처럼 재고를 한 순간에 요구하는
     // 구매가 걸려 있으면(ironHold > 0), 기계 보급을 품목당 3개로 낮춰 재고가 쌓일
     // 틈을 만든다. 안 그러면 흐름은 넉넉한데 재고는 영원히 0 이라 큰 것을 못 산다.
+    // **짓는 데 쓸 몫을 남긴다.** 끝 상태를 재 보니 계획의 마지막 14개 작업(용광로 5·
+    // 조립기 3·채광기 2 …)이 통째로 안 지어졌고, 철판·구리 재고가 상시 0 이었다.
+    // feed 가 매 사이클 재고를 0 으로 훑어 가면 작업 줄은 영원히 못 산다 — ironHold 는
+    // craft 만 조일 뿐 여기를 못 막는다고 코드에 적혀 있었고, 그게 정확히 이 구멍이다.
+    //
+    // 그래서 **아직 못 지은 작업이 남아 있는 동안**에는 바닥 재고를 남긴다. 기계가
+    // 굶는 것보다 제련·조립 설비가 못 서는 쪽이 더 비싸다 — 설비는 남은 시간 내내
+    // 갚아 주기 때문이다.
+    var pending = 0;
+    for (var jj = 0; jj < JOBS.length; jj++) if (!JOBS[jj].done) pending++;
+    // **톱니는 상시로 잡으면 안 된다.** 첫 시도에서 열차만 못 샀길래(톱니 2/10) 톱니
+    // 바닥을 12 로 상시 걸었더니 여유가 170초 → 5초로 무너졌다 — 톱니는 벨트·인서터·
+    // 적팩이 모두 먹는 과학 사슬의 목이라, 상시로 조이면 연구 전체가 늦어진다
+    // (물류학 850s → 1402s). 그래서 **선로·역은 섰는데 열차만 못 산 그 순간에만** 잡는다.
+    var FLOOR = pending > 0
+      ? { 'iron-plate': 30, 'copper-plate': 12, 'brick': 8 } : {};
+    // 톱니 바닥은 여기 두지 않는다 — 두 번 시도해 봤지만(12·24) 결과가 한 톨도 안
+    // 바뀌었다. 톱니를 가져가는 것이 feed 가 아니라 **터렛 구매**였기 때문이다.
+    // 그쪽(jTurrets)에서 열차 몫을 양보하게 했다.
+    var invNow = G.state().inventory;
     for (var m = 0; m < machines.length; m++) {
       var mid = machines[m][0], me2 = G.ent(mid);
       var scarce = me2 && me2.type === 'assembler';
+      // 이 기계가 먹는 재료 중 바닥에 걸린 것이 있으면 이번 사이클은 건너뛴다
+      var blocked = false;
+      var rec = me2 && me2.recipe ? G.recipeInfo(me2.recipe) : null;
+      if (rec) {
+        for (var ing in rec.inp) {
+          if (FLOOR[ing] && (invNow[ing] || 0) <= FLOOR[ing]) { blocked = true; break; }
+        }
+      }
+      if (blocked) continue;
       G.putFromStock(mid, ironHold > 0 ? 3 : (scarce ? 10 : 0));
     }
 
@@ -2114,6 +2161,11 @@
 
     chk('selftest.mustFail', st.t < 0, '게임 시각이 음수일 리 없다', true);
     out.errors = G.errors();
+    // **못 끝낸 작업을 찍는다.** 용광로 5대를 계획에 더했는데 끝 상태가 26대 그대로였고,
+    // 왜 안 지어졌는지 알 길이 없어 추측할 뻔했다. 남은 작업과 그 사유가 보이면
+    // '자재가 없어서' 와 '자리가 없어서' 를 구별할 수 있다.
+    out.measured.undoneJobs = JOBS.filter(function (j) { return !j.done; })
+                                  .map(function (j) { return j.key; });
     out.finalState = st;
     emit(out);
   }
