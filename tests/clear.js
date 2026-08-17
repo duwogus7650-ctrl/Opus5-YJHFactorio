@@ -925,7 +925,10 @@
       // **채광기 전부에서 걷고, 용광로 전부에 넣는다.** 확장하며 세운 용광로 8대에
       // 인서터도 벨트도 없어 광석이 갈 길이 없었다 — 전기만 먹고 40분 동안 아무것도
       // 안 만들었다(실측: 철판 956개, 탄창 12개 → 전멸).
-      else if (ty === 'furnace' || ty === 'assembler' || ty === 'miner') G.takeOutputToStock(ids[i][0]);
+      // 화학공장도 고체를 낸다 — 안 걷으면 출력 버퍼 100 에서 스스로 멈춘다.
+      else if (ty === 'furnace' || ty === 'assembler' || ty === 'miner' || ty === 'chemplant') {
+        G.takeOutputToStock(ids[i][0]);
+      }
     }
   }
   // 완제품 재고 상한 — 레시피마다 다르다. 일괄 150이면 톱니 조립기 한 대가
@@ -1192,7 +1195,7 @@
   // 이 주행처럼 라인이 짧은 판에서는 거의 아무 일도 하지 않는다. 예전 순서로는 마지막
   // 생산 효율이 76% 에서 시간이 끝났다.
   var TECH_ORDER = ['military', 'logistics', 'steel', 'logic-mem',
-                    'logic-ctrl', 'automation-2', 'defense-ai', 'belt-2'];
+                    'logic-ctrl', 'automation-2', 'defense-ai', 'belt-2', 'oil'];
   // 연구가 **언제** 끝났는지 남긴다. 통과/실패만 보면 마지막 연구가 종료 1초 전에
   // 겨우 끝난 판과 여유 있게 끝난 판이 똑같이 GREEN 으로 보인다 — 앞의 것은 다음
   // 변경 한 번에 뒤집히는 GREEN 이고, 그 사실이 결과에 안 나타나면 아무도 모른다.
@@ -1622,6 +1625,113 @@
   }
   var railDone = false, stationA = null, stationB = null, trainId = null;
   var railSpot = null, railTiles = [];
+  // --- 석유·화학 -------------------------------------------------------------
+  // 증기 발전소와 같은 모양이다: **자리를 못 박고, 부품별로 사고, 막힌 이유를 남긴다.**
+  // 다른 점은 둘이다 — (1) 자리를 고를 수 없다. 펌프잭은 원유 광맥 위에만 서고 그
+  // 광맥은 일부러 멀리 두었다. (2) 그래서 전주를 거기까지 이어야 한다.
+  var oilSpotPos = null, oilParts = {}, oilWhy = '아직 시도 전', oilDone = false;
+  function oilSay(m) { oilWhy = m; return false; }
+  // 목표 지점까지 전주를 잇는다. 이미 닿아 있으면 아무것도 안 한다.
+  function reachPole(tx, ty) {
+    for (var guard = 0; guard < 6; guard++) {
+      if (poleLinked(tx, ty)) return true;
+      // 지금 망에서 목표에 가장 가까운 전주를 찾아, 그쪽으로 7칸 나아간다.
+      var bi = -1, bd = Infinity;
+      for (var i = 0; i < POLES.length; i++) {
+        var dx0 = POLES[i][0] - tx, dy0 = POLES[i][1] - ty, d0 = dx0 * dx0 + dy0 * dy0;
+        if (d0 < bd) { bd = d0; bi = i; }
+      }
+      if (bi < 0) return false;
+      var px = POLES[bi][0], py = POLES[bi][1];
+      var vx = tx - px, vy = ty - py, len = Math.sqrt(vx * vx + vy * vy) || 1;
+      var step = Math.min(7, len);
+      var nx = Math.round(px + vx / len * step), ny = Math.round(py + vy / len * step);
+      var placed = false;
+      for (var r = 0; r <= 2 && !placed; r++) {
+        for (var ddy = -r; ddy <= r && !placed; ddy++) {
+          for (var ddx = -r; ddx <= r && !placed; ddx++) {
+            if (Math.max(Math.abs(ddx), Math.abs(ddy)) !== r) continue;
+            if (!afford('pole')) return false;
+            if (putPole(nx + ddx, ny + ddy)) placed = true;
+          }
+        }
+      }
+      if (!placed) return false;
+    }
+    return poleLinked(tx, ty);
+  }
+  // 펌프잭 3x3 오른쪽으로 파이프·정제소·파이프·화학공장이 한 줄로 선다.
+  // 그 줄이 통째로 비어 있는 광맥을 고른다 — 반쪽만 서면 원유가 갈 곳이 없다.
+  // **지도 전체를 훑는 검색이다.** 매 사이클 부르면 40분 주행이 눈에 띄게 느려진다
+  // (1200 사이클 x 23만 칸). 한 번 찾아서 기억하고, 실패해도 한동안 다시 안 찾는다.
+  var oilScanAt = -1e9;
+  function findOilSpot() {
+    if (G.state().t - oilScanAt < 60) return null;
+    oilScanAt = G.state().t;
+    var sp = G.oilSpot(80, 80);
+    if (!sp) return null;
+    if (G.whyPlace('pumpjack', sp.x, sp.y, 0) !== 'ok') return null;
+    for (var k = 0; k < 3; k++) if (G.whyPlace('pipe', sp.x + 3, sp.y + k, 0) !== 'ok') return null;
+    if (G.whyPlace('refinery', sp.x + 4, sp.y, 0) !== 'ok') return null;
+    for (var k2 = 0; k2 < 3; k2++) if (G.whyPlace('pipe', sp.x + 7, sp.y + k2, 0) !== 'ok') return null;
+    if (G.whyPlace('chemplant', sp.x + 8, sp.y, 0) !== 'ok') return null;
+    return sp;
+  }
+  function stageOil() {
+    if (oilDone) return true;
+    if (!researched('oil')) return oilSay('석유 연구 대기');
+    var iv = invNow();
+    // 파이프 22개 = 펌프잭4 + 정제소10 + 화학공장5 + 이음 6 (하나씩 손으로 만든다)
+    if ((iv['pipe-item'] || 0) < 22) {
+      if ((iv['iron-plate'] || 0) < 4) {
+        return oilSay('철판 부족 ' + (iv['iron-plate'] || 0) + ' (파이프 재료)');
+      }
+      for (var i = 0; i < 3 && (invNow()['pipe-item'] || 0) < 22; i++) {
+        if (!G.handCraft('pipe-item')) break;
+      }
+      return oilSay('파이프 ' + (invNow()['pipe-item'] || 0) + '/22 제작 중');
+    }
+    if (!oilSpotPos) oilSpotPos = findOilSpot();
+    if (!oilSpotPos) return oilSay('자리 없음 (11x3 이 비어 있는 원유 광맥을 못 찾았다)');
+    var o = oilSpotPos;
+    // 전기가 없으면 세 대 다 멈춘 채 서 있다 — 먼저 망을 끌고 온다.
+    if (!poleLinked(o.x + 1, o.y + 1) && !reachPole(o.x + 1, o.y + 1)) {
+      return oilSay('전주 미도달 (' + (o.x + 1) + ',' + (o.y + 1) + ')');
+    }
+    if (!oilParts.pj && afford('pumpjack')) {
+      oilParts.pj = G.build('pumpjack', o.x, o.y, 0);
+      if (oilParts.pj) markBuilt('pumpjack');
+    }
+    if (oilParts.pj && !oilParts.pipeA) {
+      var n1 = 0;
+      for (var p1 = 0; p1 < 3; p1++) if (G.build('pipe', o.x + 3, o.y + p1, 0)) n1++;
+      if (n1) { markBuilt('pipe'); oilParts.pipeA = 1; }
+    }
+    if (oilParts.pipeA && !oilParts.ref && afford('refinery')) {
+      oilParts.ref = G.build('refinery', o.x + 4, o.y, 0);
+      if (oilParts.ref) markBuilt('refinery');
+    }
+    if (oilParts.ref && !oilParts.pipeB) {
+      var n2 = 0;
+      for (var p2 = 0; p2 < 3; p2++) if (G.build('pipe', o.x + 7, o.y + p2, 0)) n2++;
+      if (n2) { markBuilt('pipe'); oilParts.pipeB = 1; }
+    }
+    if (oilParts.pipeB && !oilParts.chem && afford('chemplant')) {
+      oilParts.chem = G.build('chemplant', o.x + 8, o.y, 0);
+      if (oilParts.chem) markBuilt('chemplant');
+    }
+    if (!oilParts.pj || !oilParts.ref || !oilParts.chem) {
+      return oilSay('부품 대기 — 펌프잭 ' + (oilParts.pj ? 'O' : 'X') +
+                    ' 정제소 ' + (oilParts.ref ? 'O' : 'X') +
+                    ' 화학공장 ' + (oilParts.chem ? 'O' : 'X') +
+                    ' · 강철 ' + (invNow()['steel'] || 0) + ' 회로 ' + (invNow()['circuit'] || 0) +
+                    ' 톱니 ' + (invNow()['gear'] || 0));
+    }
+    oilDone = true;
+    oilWhy = '완성';
+    return true;
+  }
+
   function stageTrain() {
     if (railDone) return true;
     if (!researched('steel')) return why('t', '강철 연구 대기');
@@ -1735,9 +1845,9 @@
   // 버퍼로 다 밀어 넣은 뒤라 철판이 언제나 0 이었다 — 40분 내내 '0/40'.
   // 재고를 잡아 두는 것(ironHold)만으로는 안 됐다. 그건 craft 만 막고 feed 는
   // 그대로 퍼 갔기 때문이다. **큰 것을 사려면 줄의 앞에 서야 한다.**
-  var buyDone = [0, 0, 0];
+  var buyDone = [0, 0, 0, 0];
   function runBuyStages() {
-    var BUY = [stageSteam, stageTank, stageTrain];
+    var BUY = [stageSteam, stageTank, stageTrain, stageOil];
     for (var i = 0; i < BUY.length; i++) {
       if (buyDone[i]) continue;
       var ok = false;
@@ -1811,6 +1921,7 @@
   var peakEnemies = 0, worstSat = 1;
   // 증기 발전소와 노선이 **실제로 돌았는가** — 배치 사실과 따로 잰다
   var steamPeak = 0, trainTravel = 0, trainLastX = null, trainMoved = false;
+  var plasticMade = 0;
   // **궤적 지문 — 사이클마다 찍는다.** 처음엔 배치(pump)가 끝날 때 찍었는데,
   // 그러면 배치 크기가 찍는 시각을 바꾼다(12면 t=72, 4면 t=64에 t=60 자리를 채운다).
   // 그 상태로 배치 12 와 4 를 비교했더니 t=60 부터 갈리는 것처럼 보였다 — 시뮬이
@@ -1849,6 +1960,16 @@
       if (steamEnt) {
         var fi = G.fluid(steamEnt.engine);
         if (fi && fi.steam > steamPeak) steamPeak = fi.steam;
+      }
+      // 석유도 같다 — 세 대가 서 있어도 전기가 없거나 파이프가 안 이어지면
+      // 플라스틱은 한 개도 안 나온다. 누적 산출을 계속 본다(창고가 걷어 가므로
+      // 기계 버퍼만 보면 0 으로 보인다).
+      if (oilParts.chem) {
+        // **기계 버퍼로는 누적을 못 센다.** harvest 가 매 사이클 비워 가므로 표본마다
+        // 0 이 찍힌다(첫 판에서 "누적 0개 · 창고 72"라는 앞뒤 안 맞는 문구가 나왔다).
+        // 아무도 안 먹는 품목이라 창고 최대치가 곧 만든 총량이다.
+        var pinv = (st.inventory['plastic'] || 0);
+        if (pinv > plasticMade) plasticMade = pinv;
       }
       if (trainId) {
         var tl = G.trainList();
@@ -2101,6 +2222,11 @@
     chk('clear.steamPlantRan', steamPeak > 0,
       '증기 최대 잔량 ' + steamPeak.toFixed(1) +
       (steamEnt ? ' (0 이면 보일러가 물이나 석탄을 못 받았다)' : ' — 발전소 미건설: ' + steamWhy));
+    chk('clear.oilChainRan', plasticMade > 0,
+      oilParts.chem
+        ? ('플라스틱 최대 ' + plasticMade + '개 (0 이면 세 대가 서 있기만 한 것 — ' +
+           '전기나 배관이 안 닿았다)')
+        : ('석유 설비 미건설: ' + oilWhy));
     chk('clear.trainRanRoute', trainMoved && trainTravel >= 10,
       trainId ? ('열차 이동 누적 ' + trainTravel.toFixed(1) + ' 타일 · 움직인 적 ' +
                  (trainMoved ? '있음' : '없음'))

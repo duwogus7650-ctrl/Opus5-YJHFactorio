@@ -38,7 +38,9 @@ var ITEMS = {
   'ammo':        { name: '탄창',     color: '#c94f3d', shape: 'ammo' },
 
   'sci-red':     { name: '적색 연구팩', color: '#e0483c', shape: 'flask' },
-  'sci-green':   { name: '녹색 연구팩', color: '#49c05a', shape: 'flask' }
+  'sci-green':   { name: '녹색 연구팩', color: '#49c05a', shape: 'flask' },
+  // 석유 계통의 산출. 원유·석유가스는 **유체라 아이템이 아니다** — 파이프로만 다닌다.
+  'plastic':     { name: '플라스틱',   color: '#d8d2c4', shape: 'plate' }
 };
 var ITEM_IDS = Object.keys(ITEMS);
 
@@ -62,7 +64,14 @@ var RECIPES = {
   'ammo':         { cat: 'craft', time: 1.0, inp: { 'iron-plate': 4 }, out: { 'ammo': 1 }, handOk: true, tech: 'military' },
 
   'sci-red':      { cat: 'craft', time: 5.0, inp: { 'copper-plate': 1, 'gear': 1 }, out: { 'sci-red': 1 }, handOk: true },
-  'sci-green':    { cat: 'craft', time: 6.0, inp: { 'belt-item': 1, 'inserter-item': 1 }, out: { 'sci-green': 1 }, handOk: true, tech: 'logistics' }
+  'sci-green':    { cat: 'craft', time: 6.0, inp: { 'belt-item': 1, 'inserter-item': 1 }, out: { 'sci-green': 1 }, handOk: true, tech: 'logistics' },
+
+  // **석유의 보상은 탄약이다.** 철판 4개로 탄창 1개를 만들던 것이, 플라스틱을
+  // 한 개 섞으면 2개가 된다 — 철 소모가 절반이다. 이 게임에서 철은 모든 것의
+  // 상류이고 탄약은 방어의 목이라, 그 둘을 동시에 푸는 것이 석유를 뚫을 이유다.
+  // (쓸 데 없는 산출물을 만들지 않는다 — 강철이 그 실수를 한 번 했다.)
+  'ammo-plastic': { cat: 'craft', time: 1.0, inp: { 'plastic': 1, 'iron-plate': 4 },
+                    out: { 'ammo': 2 }, handOk: true, tech: 'oil' }
 };
 var RECIPE_IDS = Object.keys(RECIPES);
 
@@ -157,6 +166,18 @@ var BUILDINGS = {
                  tech: 'steel', fluid: true, xfer: true, rot: true, power: 30,
                  desc: '★ 방향이 있다. 뒤쪽 망에서 앞쪽 망으로 200/s 옮긴다. 두 망은 안 합쳐진다 — ' +
                        '제어기로 끄면 그 자리에서 멈춘다.' },
+  // --- 석유·화학 (석유 처리 연구로 열린다) -----------------------------------
+  // 사슬: 원유 광맥 → 펌프잭(원유) → 정제소(석유가스) → 화학공장(플라스틱).
+  // 앞의 둘은 유체만 다루고, 화학공장만 고체를 뱉는다 — 그래서 벨트는 여기서 시작한다.
+  'pumpjack':  { name: '펌프잭', w: 3, h: 3, cost: { 'steel': 5, 'gear': 10, 'circuit': 5, 'pipe-item': 4 },
+                 tech: 'oil', fluid: true, power: 90,
+                 desc: '원유 광맥 위에 놓는다. 원유를 10/s 뽑아 파이프로 보낸다.' },
+  'refinery':  { name: '정제소', w: 3, h: 3, cost: { 'steel': 10, 'circuit': 10, 'gear': 10, 'pipe-item': 10 },
+                 tech: 'oil', fluid: true, power: 420,
+                 desc: '원유 20/s 를 석유가스 20/s 로 바꾼다. 420 kW 를 먹는다.' },
+  'chemplant': { name: '화학공장', w: 3, h: 3, cost: { 'steel': 5, 'circuit': 5, 'gear': 5, 'pipe-item': 5 },
+                 tech: 'oil', fluid: true, power: 210,
+                 desc: '석유가스 10/s 를 플라스틱 1개/s 로. 고체가 나오므로 인서터로 빼낸다.' },
   'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
                  tech: 'steel', fluid: true,
                  desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
@@ -187,6 +208,12 @@ var SPEC = {
   fluidPerTile: 100,          // 한 칸이 담는 유체 (pipe)
   tankCap: 25000,             // 저장 탱크 하나 (Factorio storage tank)
   xpumpRate: 200,             // 유체/s  (Factorio pump — 망 사이 이송)
+  // 석유 — Factorio 공개값을 이 게임의 배율(초당)로 옮긴 값이다.
+  pumpjackRate: 10,           // 원유/s  (Factorio pumpjack 은 광맥 수율에 비례하지만
+                              //  이 게임은 광맥 수율 개념이 없어 고정값으로 둔다)
+  refineryIn: 20,             // 원유/s → 가스/s (1:1 — 기본 석유 처리의 단순화)
+  chemGasPerPlastic: 10,      // 플라스틱 1개당 석유가스 (Factorio 는 20 가스 → 2 플라스틱)
+  chemPlasticRate: 1,         // 플라스틱/s
   // 기차 — **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
   // 160타일이라 그대로 쓰면 2초에 횡단한다. 8 타일/s 면 횡단에 20초 — 벨트(1.875)보다
   // 4.3배 빠르고, 먼 광맥을 쓸 이유가 되면서 화면에서 눈으로 따라갈 수 있다.
@@ -235,6 +262,9 @@ var TECHS = {
   'belt-2':     { name: '고속 벨트', cost: { 'sci-red': 80, 'sci-green': 80 }, needs: ['logistics', 'steel'],
                   unlock: ['벨트 속도 x2'],
                   desc: '모든 벨트가 30개/s 로 빨라진다.' },
+  'oil':        { name: '석유 처리', cost: { 'sci-red': 60, 'sci-green': 60 }, needs: ['steel', 'logistics'],
+                  unlock: ['펌프잭', '정제소', '화학공장', '탄창 레시피'],
+                  desc: '원유를 뽑아 플라스틱까지. 플라스틱을 섞으면 탄창이 철판 4개에 2개 나온다 — 철이 절반이다.' },
   'automation-2':{ name: '생산 효율', cost: { 'sci-red': 100, 'sci-green': 100 }, needs: ['steel', 'logic-ctrl'],
                   unlock: ['기계 속도 +50%', '전력 소비 -20%'],
                   desc: '전 기계가 빨라지고 전기를 덜 먹는다.' }

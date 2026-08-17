@@ -928,6 +928,36 @@ window.__GAME = {
   nestList: function () {
     return nests.map(function (n) { return { x: Math.round(n.x), y: Math.round(n.y), hp: Math.round(n.hp) }; });
   },
+  // 광맥 잔량을 그대로 내준다 — 고갈을 재려면 관측 창구가 있어야 한다.
+  oreAmtAt: function (x, y) {
+    if (!inBounds(x, y)) return null;
+    var i = idx(x, y);
+    return { type: world.ore[i], amt: world.oreAmt[i] };
+  },
+  // 원유는 아이템이 아니라 oreSpot(아이템 이름) 으로 못 찾는다 — 따로 연다.
+  // **가까운 것을 준다.** 좌상단부터 훑어 첫 자리를 주면 지도 끝의 광맥이 나와서
+  // 전주를 20칸 넘게 이어야 한다. 기준점을 안 주면 지도 중앙에서 잰다.
+  oilSpot: function (cx, cy) {
+    var best = null, bestD = Infinity;
+    for (var y = 0; y < H - 2; y++) {
+      for (var x = 0; x < W - 2; x++) {
+        var ok = true;
+        for (var dy = 0; dy < 3 && ok; dy++) {
+          for (var dx = 0; dx < 3 && ok; dx++) {
+            var i = idx(x + dx, y + dy);
+            if (world.ore[i] !== ORE_OIL || world.oreAmt[i] <= 0) ok = false;
+            if (world.occ[i]) ok = false;
+          }
+        }
+        if (ok) {
+          var d2 = (x - (cx === undefined ? (W >> 1) : cx)) * (x - (cx === undefined ? (W >> 1) : cx)) +
+                   (y - (cy === undefined ? (H >> 1) : cy)) * (y - (cy === undefined ? (H >> 1) : cy));
+          if (best === null || d2 < bestD) { best = { x: x, y: y }; bestD = d2; }
+        }
+      }
+    }
+    return best;
+  },
   oreSpot: function (itemId) {
     var want = ORE_ITEM.indexOf(itemId);
     if (want <= 0) return null;
@@ -1257,7 +1287,9 @@ function fixManifestUrls() {
   // data: URI 에는 출처가 없다(불투명 출처). 그래서 절대 주소로 써 넣어도 크롬이 조용히
   // 버린다 — 실측: 오류 0건, start_url undefined.
   //
-  // blob: 은 다르다. `blob:https://호스트/uuid` 로 **문서의 출처를 물려받는다.** 그래서
+  // blob: 은 다르다. `blob:` 뒤에 **문서의 출처가 그대로 붙어** 같은 출처가 된다.
+  // (주석에도 절대 주소를 예시로 적으면 안 된다 — 오프라인 검사가 파일 전체를 보므로
+  //  주석 한 줄 때문에 '외부 참조 1건' 으로 걸린다. 실제로 걸렸다.) 그래서
   // 같은 내용을 blob 으로 바꿔 달면 같은 파일 한 장을 유지하면서 start_url 이 산다.
   // (파일을 그냥 연 경우 file:// 는 출처가 null 이라 여전히 안 될 수 있다 — 설치는
   //  웹에 올렸을 때의 이야기이므로 그 경우는 손해가 없다.)

@@ -800,7 +800,9 @@ var ITEMS = {
   'ammo':        { name: '탄창',     color: '#c94f3d', shape: 'ammo' },
 
   'sci-red':     { name: '적색 연구팩', color: '#e0483c', shape: 'flask' },
-  'sci-green':   { name: '녹색 연구팩', color: '#49c05a', shape: 'flask' }
+  'sci-green':   { name: '녹색 연구팩', color: '#49c05a', shape: 'flask' },
+  // 석유 계통의 산출. 원유·석유가스는 **유체라 아이템이 아니다** — 파이프로만 다닌다.
+  'plastic':     { name: '플라스틱',   color: '#d8d2c4', shape: 'plate' }
 };
 var ITEM_IDS = Object.keys(ITEMS);
 
@@ -824,7 +826,14 @@ var RECIPES = {
   'ammo':         { cat: 'craft', time: 1.0, inp: { 'iron-plate': 4 }, out: { 'ammo': 1 }, handOk: true, tech: 'military' },
 
   'sci-red':      { cat: 'craft', time: 5.0, inp: { 'copper-plate': 1, 'gear': 1 }, out: { 'sci-red': 1 }, handOk: true },
-  'sci-green':    { cat: 'craft', time: 6.0, inp: { 'belt-item': 1, 'inserter-item': 1 }, out: { 'sci-green': 1 }, handOk: true, tech: 'logistics' }
+  'sci-green':    { cat: 'craft', time: 6.0, inp: { 'belt-item': 1, 'inserter-item': 1 }, out: { 'sci-green': 1 }, handOk: true, tech: 'logistics' },
+
+  // **석유의 보상은 탄약이다.** 철판 4개로 탄창 1개를 만들던 것이, 플라스틱을
+  // 한 개 섞으면 2개가 된다 — 철 소모가 절반이다. 이 게임에서 철은 모든 것의
+  // 상류이고 탄약은 방어의 목이라, 그 둘을 동시에 푸는 것이 석유를 뚫을 이유다.
+  // (쓸 데 없는 산출물을 만들지 않는다 — 강철이 그 실수를 한 번 했다.)
+  'ammo-plastic': { cat: 'craft', time: 1.0, inp: { 'plastic': 1, 'iron-plate': 4 },
+                    out: { 'ammo': 2 }, handOk: true, tech: 'oil' }
 };
 var RECIPE_IDS = Object.keys(RECIPES);
 
@@ -919,6 +928,18 @@ var BUILDINGS = {
                  tech: 'steel', fluid: true, xfer: true, rot: true, power: 30,
                  desc: '★ 방향이 있다. 뒤쪽 망에서 앞쪽 망으로 200/s 옮긴다. 두 망은 안 합쳐진다 — ' +
                        '제어기로 끄면 그 자리에서 멈춘다.' },
+  // --- 석유·화학 (석유 처리 연구로 열린다) -----------------------------------
+  // 사슬: 원유 광맥 → 펌프잭(원유) → 정제소(석유가스) → 화학공장(플라스틱).
+  // 앞의 둘은 유체만 다루고, 화학공장만 고체를 뱉는다 — 그래서 벨트는 여기서 시작한다.
+  'pumpjack':  { name: '펌프잭', w: 3, h: 3, cost: { 'steel': 5, 'gear': 10, 'circuit': 5, 'pipe-item': 4 },
+                 tech: 'oil', fluid: true, power: 90,
+                 desc: '원유 광맥 위에 놓는다. 원유를 10/s 뽑아 파이프로 보낸다.' },
+  'refinery':  { name: '정제소', w: 3, h: 3, cost: { 'steel': 10, 'circuit': 10, 'gear': 10, 'pipe-item': 10 },
+                 tech: 'oil', fluid: true, power: 420,
+                 desc: '원유 20/s 를 석유가스 20/s 로 바꾼다. 420 kW 를 먹는다.' },
+  'chemplant': { name: '화학공장', w: 3, h: 3, cost: { 'steel': 5, 'circuit': 5, 'gear': 5, 'pipe-item': 5 },
+                 tech: 'oil', fluid: true, power: 210,
+                 desc: '석유가스 10/s 를 플라스틱 1개/s 로. 고체가 나오므로 인서터로 빼낸다.' },
   'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
                  tech: 'steel', fluid: true,
                  desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
@@ -949,6 +970,12 @@ var SPEC = {
   fluidPerTile: 100,          // 한 칸이 담는 유체 (pipe)
   tankCap: 25000,             // 저장 탱크 하나 (Factorio storage tank)
   xpumpRate: 200,             // 유체/s  (Factorio pump — 망 사이 이송)
+  // 석유 — Factorio 공개값을 이 게임의 배율(초당)로 옮긴 값이다.
+  pumpjackRate: 10,           // 원유/s  (Factorio pumpjack 은 광맥 수율에 비례하지만
+                              //  이 게임은 광맥 수율 개념이 없어 고정값으로 둔다)
+  refineryIn: 20,             // 원유/s → 가스/s (1:1 — 기본 석유 처리의 단순화)
+  chemGasPerPlastic: 10,      // 플라스틱 1개당 석유가스 (Factorio 는 20 가스 → 2 플라스틱)
+  chemPlasticRate: 1,         // 플라스틱/s
   // 기차 — **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
   // 160타일이라 그대로 쓰면 2초에 횡단한다. 8 타일/s 면 횡단에 20초 — 벨트(1.875)보다
   // 4.3배 빠르고, 먼 광맥을 쓸 이유가 되면서 화면에서 눈으로 따라갈 수 있다.
@@ -997,6 +1024,9 @@ var TECHS = {
   'belt-2':     { name: '고속 벨트', cost: { 'sci-red': 80, 'sci-green': 80 }, needs: ['logistics', 'steel'],
                   unlock: ['벨트 속도 x2'],
                   desc: '모든 벨트가 30개/s 로 빨라진다.' },
+  'oil':        { name: '석유 처리', cost: { 'sci-red': 60, 'sci-green': 60 }, needs: ['steel', 'logistics'],
+                  unlock: ['펌프잭', '정제소', '화학공장', '탄창 레시피'],
+                  desc: '원유를 뽑아 플라스틱까지. 플라스틱을 섞으면 탄창이 철판 4개에 2개 나온다 — 철이 절반이다.' },
   'automation-2':{ name: '생산 효율', cost: { 'sci-red': 100, 'sci-green': 100 }, needs: ['steel', 'logic-ctrl'],
                   unlock: ['기계 속도 +50%', '전력 소비 -20%'],
                   desc: '전 기계가 빨라지고 전기를 덜 먹는다.' }
@@ -1041,9 +1071,11 @@ var START_INV = {
 //  픽셀 변환은 렌더러에서만 한다 — 시뮬레이션은 픽셀을 모른다.
 // ===========================================================================
 
-var ORE_NONE = 0, ORE_IRON = 1, ORE_COPPER = 2, ORE_COAL = 3, ORE_STONE = 4;
-var ORE_ITEM = [null, 'iron-ore', 'copper-ore', 'coal', 'stone'];
-var ORE_COLOR = [null, '#8593a0', '#c87941', '#22222a', '#a89880'];
+var ORE_NONE = 0, ORE_IRON = 1, ORE_COPPER = 2, ORE_COAL = 3, ORE_STONE = 4, ORE_OIL = 5;
+// **원유는 캐는 것이 아니라 뽑는 것이다.** 그래서 ORE_ITEM 에 아이템이 없다(null) —
+// 채광기는 아이템을 내는 기계라 원유 위에 서지 못하고, 펌프잭만 설 수 있다.
+var ORE_ITEM = [null, 'iron-ore', 'copper-ore', 'coal', 'stone', null];
+var ORE_COLOR = [null, '#8593a0', '#c87941', '#22222a', '#a89880', '#4a3f5c'];
 
 var PW = Math.ceil(W / SPEC.pollutionPerChunk);   // 오염 격자 가로
 var PH = Math.ceil(H / SPEC.pollutionPerChunk);
@@ -1171,6 +1203,28 @@ function generateWorld(seed) {
       2500 + Math.floor(far * 9000 + RNG.next() * 3000), RNG);
   }
 
+  // 원유는 **맨 마지막에** 심는다. 시작 링이나 바깥 광맥 루프 안에 끼우면 RNG 순서가
+  // 밀려 그 뒤의 모든 광맥이 자리를 옮긴다 — 지도가 통째로 바뀌고, 그 지도에 맞춰
+  // 40분 자력 완주가 맞춰 놓은 균형이 무너진다(실측: 열차가 종료 직전에야 서서
+  // 노선을 못 돌았다). 뒤에 붙이면 기존 지도는 한 칸도 안 움직인다.
+  //
+  // 자리는 고정값이다 — 스폰에서 30타일(초반 공장이 원유 위에 지어지지 않게 멀리)에
+  // 하나, 그리고 사방으로 셋. 원유는 캐는 자원이 아니라 뽑는 자원이라 광맥 수가
+  // 적어도 되고, 대신 매장량이 크다.
+  var oilRing = [
+    { ang: 0.7,  d: 30, r: 3, rich: 60000 },
+    { ang: 2.6,  d: 44, r: 3, rich: 90000 },
+    { ang: 4.2,  d: 52, r: 4, rich: 120000 },
+    { ang: 5.7,  d: 38, r: 3, rich: 75000 }
+  ];
+  for (var oi = 0; oi < oilRing.length; oi++) {
+    var oo = oilRing[oi];
+    var oox = Math.round(cx + Math.cos(oo.ang) * oo.d);
+    var ooy = Math.round(cy + Math.sin(oo.ang) * oo.d);
+    if (!inBounds(oox, ooy)) continue;
+    plantOre(oox, ooy, ORE_OIL, oo.r, oo.rich, RNG);
+  }
+
   // 스폰 반경은 평평하게 — 첫 공장을 지을 자리
   for (var yy = cy - 8; yy <= cy + 8; yy++) {
     for (var xx = cx - 8; xx <= cx + 8; xx++) {
@@ -1240,6 +1294,34 @@ function mineFrom(tx, ty, w, h) {
   if (world.oreAmt[best] === 0) world.ore[best] = ORE_NONE;
   return ORE_ITEM[bestType];
 }
+// --- 원유 뽑기 ----------------------------------------------------------------
+// 원유는 아이템이 아니라 유체라 mineFrom 을 쓸 수 없다(그쪽은 한 번에 한 개, 아이템을
+// 돌려준다). 펌프잭은 **실수 단위로** 뽑고 파이프로 보낸다. 광맥이 유한한 것은 같다.
+function oreLeftUnder(e) {
+  var left = 0;
+  for (var y = e.ty; y < e.ty + e.h; y++) {
+    for (var x = e.tx; x < e.tx + e.w; x++) {
+      if (!inBounds(x, y)) continue;
+      var i = idx(x, y);
+      if (world.ore[i] === ORE_OIL) left += world.oreAmt[i];
+    }
+  }
+  return left;
+}
+function consumeOreUnder(e, amt) {
+  for (var y = e.ty; y < e.ty + e.h && amt > 0; y++) {
+    for (var x = e.tx; x < e.tx + e.w && amt > 0; x++) {
+      if (!inBounds(x, y)) continue;
+      var i = idx(x, y);
+      if (world.ore[i] !== ORE_OIL) continue;
+      var take = Math.min(amt, world.oreAmt[i]);
+      world.oreAmt[i] -= take;
+      amt -= take;
+      if (world.oreAmt[i] <= 0) world.ore[i] = ORE_NONE;
+    }
+  }
+}
+
 // 배치 미리보기용 — 캐지 않고 어떤 광종이 얼마나 깔려 있는지만 본다.
 function surveyOre(tx, ty, w, h) {
   var total = 0, type = 0;
@@ -1618,6 +1700,13 @@ function canPlace(type, tx, ty, dir, restore) {
   if (!restore && type === 'miner') {
     var sv = surveyOre(tx, ty, w, h);
     if (!sv.total) return { ok: false, why: '광맥이 없다' };
+    // **채광기는 원유 위에 못 선다.** 원유는 아이템이 아니라 유체라 캘 수가 없다 —
+    // 세워지면 아무것도 안 내는 기계가 되어 "왜 안 도나" 를 묻게 만든다.
+    if (sv.type === ORE_OIL) return { ok: false, why: '원유는 펌프잭으로 뽑는다' };
+  }
+  if (!restore && type === 'pumpjack') {
+    var svo = surveyOre(tx, ty, w, h);
+    if (svo.type !== ORE_OIL || !svo.total) return { ok: false, why: '원유 광맥 위에만 선다' };
   }
   if (!restore) {
     var cost = B.cost;
@@ -2477,7 +2566,9 @@ function rebuildFluid() {
     var r = find(q);
     if (rootNet[r] === undefined) {
       rootNet[r] = fluidNets.length;
-      fluidNets.push({ members: [], cap: 0, water: 0, steam: 0 });
+      var fresh = { members: [], cap: 0 };
+      for (var fk = 0; fk < FLUID_KINDS.length; fk++) fresh[FLUID_KINDS[fk].key] = 0;
+      fluidNets.push(fresh);
     }
     var nid = rootNet[r];
     list[q].fnet = nid;
@@ -2487,18 +2578,25 @@ function rebuildFluid() {
   // 직후(파이프 한 칸을 잇거나 저장을 불러온 순간) 회원은 증기를 들고 있는데
   // 망은 0 이라고 답한다 — 그 한 틱에 증기기관이 멎는다.
   for (var n = 0; n < fluidNets.length; n++) {
-    var net = fluidNets[n], cap = 0, w0 = 0, s0 = 0;
+    var net = fluidNets[n], cap = 0, sum = {};
+    for (var fj = 0; fj < FLUID_KINDS.length; fj++) sum[FLUID_KINDS[fj].key] = 0;
     for (var mm = 0; mm < net.members.length; mm++) {
       var mem = net.members[mm];
       cap += fluidCapOf(mem);
-      w0 += mem.fw || 0;
-      s0 += mem.fs || 0;
+      for (var fq = 0; fq < FLUID_KINDS.length; fq++) {
+        sum[FLUID_KINDS[fq].key] += mem[FLUID_KINDS[fq].f] || 0;
+      }
     }
     net.cap = cap;
     // 망이 쪼개지거나 합쳐지면 용량이 줄 수 있다 — 넘치는 몫은 버린다.
-    net.water = Math.min(w0, cap);
-    net.steam = Math.min(s0, cap);
-    spreadFluid(net, net.water, net.steam);
+    // **종류마다 따로 자른다.** 총량으로 자르는 쪽이 물리적으로는 맞아 보여서 그렇게
+    // 바꿔 봤다가 저장 복원 게이트가 걸렸다(증기 120 → 110.9) — 이 게임의 유체는
+    // 종류별로 용량을 따로 쓴다. 취수 펌프는 물을 늘 용량까지 채우므로 '물=용량 +
+    // 증기 얼마' 가 **정상 상태**이고, 총량으로 자르면 그 증기를 매번 깎아 낸다.
+    for (var fs2 = 0; fs2 < FLUID_KINDS.length; fs2++) {
+      net[FLUID_KINDS[fs2].key] = Math.min(sum[FLUID_KINDS[fs2].key], cap);
+    }
+    spreadFluid(net);
   }
   fluidDirty = false;
 }
@@ -2553,8 +2651,56 @@ function stepFluids(dt) {
       m.working = true;
     }
 
+    // --- 석유 계통 ---------------------------------------------------------
+    // 펌프잭이 원유를 붓고, 정제소가 원유를 가스로 바꾸고, 화학공장이 가스를 먹어
+    // 플라스틱을 뱉는다. 보일러와 같은 자리(같은 망 루프)에 두는 이유는 순서 때문이다:
+    // **넣는 쪽 → 바꾸는 쪽 → 빼는 쪽** 이어야 한 틱 안에서 사슬이 이어진다.
+    var oil = net.oil || 0, gas = net.gas || 0;
+    for (i = 0; i < net.members.length; i++) {
+      m = net.members[i];
+      if (m.type !== 'pumpjack') continue;
+      if (!m.enabled || m.powerSat <= 0) { m.working = false; continue; }
+      // 광맥을 실제로 판다 — 원유도 유한하다(다 뽑으면 마른다).
+      var pull = SPEC.pumpjackRate * dt * m.powerSat;
+      var room0 = net.cap - oil;
+      var take = Math.min(pull, room0, oreLeftUnder(m));
+      if (take <= 0) { m.working = false; continue; }
+      consumeOreUnder(m, take);
+      oil += take;
+      m.working = true;
+      emitPollution(m, 6 * dt);          // 발전기 20/s 를 기준으로 한 눈금
+    }
+    for (i = 0; i < net.members.length; i++) {
+      m = net.members[i];
+      if (m.type !== 'refinery') continue;
+      if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }
+      var wantOil = SPEC.refineryIn * dt * m.powerSat;
+      var lim2 = Math.min(wantOil, oil, net.cap - gas);
+      if (lim2 <= 0) { m.working = false; m.load = 0; continue; }
+      oil -= lim2; gas += lim2;          // 1:1 (기본 석유 처리의 단순화)
+      m.load = wantOil > 0 ? lim2 / wantOil : 0;
+      m.working = true;
+      emitPollution(m, 10 * m.load * dt);
+    }
+    for (i = 0; i < net.members.length; i++) {
+      m = net.members[i];
+      if (m.type !== 'chemplant') continue;
+      if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }
+      if (invTotal(m.out) >= SPEC.machineBufOut) { m.working = false; m.load = 0; continue; }
+      var wantGas = SPEC.chemGasPerPlastic * SPEC.chemPlasticRate * dt * m.powerSat;
+      var lim3 = Math.min(wantGas, gas);
+      if (lim3 <= 0) { m.working = false; m.load = 0; continue; }
+      gas -= lim3;
+      m.progress = (m.progress || 0) + lim3 / SPEC.chemGasPerPlastic;
+      while (m.progress >= 1) { m.progress -= 1; invAdd(m.out, 'plastic', 1); }
+      m.load = wantGas > 0 ? lim3 / wantGas : 0;
+      m.working = true;
+      emitPollution(m, 8 * m.load * dt);
+    }
+    net.oil = oil; net.gas = gas;
+
     net.water = w; net.steam = s;
-    spreadFluid(net, w, s);
+    spreadFluid(net);
   }
   stepXferPumps(dt);
 }
@@ -2576,16 +2722,19 @@ function stepXferPumps(dt) {
     var back = fluidNetAt(e.tx - DIR_DX[e.dir], e.ty - DIR_DY[e.dir]);
     var front = fluidNetAt(e.tx + DIR_DX[e.dir], e.ty + DIR_DY[e.dir]);
     if (!back || !front || back === front) { e.working = false; return; }
-    var have = back.water + back.steam;
-    var room = front.cap - (front.water + front.steam);
+    var have = netTotal(back);
+    var room = front.cap - netTotal(front);
     var move = Math.min(SPEC.xpumpRate * dt * e.powerSat, have, room);
     if (move <= 0) { e.working = false; return; }
-    var fw = have > 0 ? (back.water / have) * move : 0;
-    var fs = move - fw;
-    back.water -= fw; back.steam -= fs;
-    front.water += fw; front.steam += fs;
-    spreadFluid(back, back.water, back.steam);
-    spreadFluid(front, front.water, front.steam);
+    // 종류를 가리지 않고 **있는 비율 그대로** 옮긴다 (이 게임의 유체는 잘 섞인 탱크다)
+    for (var xk = 0; xk < FLUID_KINDS.length; xk++) {
+      var key = FLUID_KINDS[xk].key;
+      var part = (back[key] || 0) / have * move;
+      back[key] = (back[key] || 0) - part;
+      front[key] = (front[key] || 0) + part;
+    }
+    spreadFluid(back);
+    spreadFluid(front);
     e.working = true;
   });
 }
@@ -2608,13 +2757,31 @@ function fluidNetAt(tx, ty) {
 // 망의 총량을 회원에게 **용량 비례**로 나눈다. 균등하게 나누면 파이프 한 칸과
 // 증기기관(6칸)이 같은 양을 들게 되어, 큰 건물만 있는 망에서 용량이 남는데도
 // 못 채우는 일이 생긴다.
-function spreadFluid(net, w, s) {
+// **유체 종류는 여기 한 줄로 정한다.** 예전에는 물·증기 두 가지가 곳곳에 이름으로
+// 박혀 있어(net.water/net.steam · m.fw/m.fs) 종류를 하나 늘리려면 스무 군데를 고쳐야
+// 했다. 석유 계통을 넣으면서 목록 하나로 몰았다 — 새 유체는 이 배열에 한 줄이다.
+//   key = 망이 들고 있는 이름 · f = 회원(건물)이 제 몫을 들고 있는 필드 이름
+var FLUID_KINDS = [
+  { key: 'water', f: 'fw' },
+  { key: 'steam', f: 'fs' },
+  { key: 'oil',   f: 'fo' },      // 원유 — 펌프잭이 뽑는다
+  { key: 'gas',   f: 'fg' }       // 석유가스 — 정제소가 만든다
+];
+
+function netTotal(net) {
+  var t = 0;
+  for (var k = 0; k < FLUID_KINDS.length; k++) t += net[FLUID_KINDS[k].key] || 0;
+  return t;
+}
+
+function spreadFluid(net) {
   var cap = net.cap;
   for (var i = 0; i < net.members.length; i++) {
     var m = net.members[i];
     var share = cap > 0 ? fluidCapOf(m) / cap : 0;
-    m.fw = w * share;
-    m.fs = s * share;
+    for (var k = 0; k < FLUID_KINDS.length; k++) {
+      m[FLUID_KINDS[k].f] = (net[FLUID_KINDS[k].key] || 0) * share;
+    }
   }
 }
 
@@ -2626,7 +2793,7 @@ function drawSteam(e, amt) {
   var got = Math.min(amt, net.steam);
   if (got <= 0) return 0;
   net.steam -= got;
-  spreadFluid(net, net.water, net.steam);
+  spreadFluid(net);
   return got;
 }
 
@@ -2641,7 +2808,8 @@ function fluidOf(e) {
     return { connected: 0, water: 0, steam: 0, cap: 0, steamPct: 0 };
   }
   var net = fluidNets[e.fnet];
-  return { connected: 1, water: net.water, steam: net.steam, cap: net.cap,
+  return { connected: 1, water: net.water, steam: net.steam,
+           oil: net.oil || 0, gas: net.gas || 0, cap: net.cap,
            steamPct: net.cap > 0 ? (net.steam / net.cap) * 100 : 0 };
 }
 function engineHasSteam(e) {
@@ -5082,6 +5250,38 @@ function drawEntity(e) {
     ctx.fillStyle = ff > 0.15 ? COL.amber : '#c0392b';
     ctx.fillRect(x + 0.32, y + h - 0.40, (w - 0.64) * ff, 0.16);
     if (e.fuel <= 0) drawWarn(x, y, w, '연료 없음');
+  } else if (e.type === 'pumpjack') {
+    // 시소처럼 오르내리는 빔 — 유전의 그 실루엣이다. 한눈에 다른 셋과 갈린다.
+    body(x, y, w, h, '#4a3f5c');
+    var pj = Math.sin(gameTime * 2 + e.tx) * 0.25;
+    ctx.strokeStyle = '#cfc7bd'; ctx.lineWidth = 0.16; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, y + h * 0.55 - pj);
+    ctx.lineTo(x + w - 0.5, y + h * 0.55 + pj);
+    ctx.stroke();
+    ctx.fillStyle = '#2b2530';
+    ctx.fillRect(x + w * 0.5 - 0.12, y + h * 0.5, 0.24, h * 0.42);
+    hazard(x + 0.2, y + h - 0.34, w - 0.4, 0.16);
+  } else if (e.type === 'refinery') {
+    // 세워 놓은 증류탑 셋 — 정제소의 정체는 '높은 탑' 이다
+    body(x, y, w, h, '#5a6a72');
+    for (var rt = 0; rt < 3; rt++) {
+      ctx.fillStyle = rt === 1 ? '#b9c3c8' : '#93a0a6';
+      rr(x + 0.35 + rt * (w - 0.9) / 2.6, y + 0.28, 0.5, h - 0.9, 0.22); ctx.fill();
+      ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.04; ctx.stroke();
+    }
+    ctx.fillStyle = '#2b3238'; ctx.fillRect(x + 0.25, y + h - 0.5, w - 0.5, 0.24);
+  } else if (e.type === 'chemplant') {
+    // 둥근 반응조 둘 + 이어 주는 관 — 화학공장은 '통' 이다
+    body(x, y, w, h, '#4f6357');
+    ctx.fillStyle = '#a8c0ae';
+    ctx.beginPath(); ctx.arc(x + w * 0.34, y + h * 0.42, w * 0.20, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + w * 0.68, y + h * 0.42, w * 0.16, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#2f3d34'; ctx.lineWidth = 0.09;
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.34, y + h * 0.68); ctx.lineTo(x + w * 0.68, y + h * 0.68);
+    ctx.stroke();
+    hazard(x + 0.2, y + h - 0.34, w - 0.4, 0.16);
   } else if (e.type === 'boiler') {
     body(x, y, w, h, '#6b5a52');
     // 가로로 누운 드럼 — 발전기의 플라이휠과 한눈에 갈리게 형태를 다르게 둔다
@@ -6493,7 +6693,23 @@ function refreshInsp() {
       s.push('<div class="frow"><label>증기</label><span class="num" style="color:' +
         (fi.steamPct > 25 ? 'var(--run)' : (fi.steamPct > 0 ? 'var(--warn)' : 'var(--stop)')) + '">' +
         fmt(fi.steam, 0) + ' / ' + fi.cap + ' · ' + fmt(fi.steamPct, 0) + '%</span></div>');
+      // 석유 계열은 원유·가스를 봐야 한다. 안 보이면 정제소가 공급이 없어 노는 건지
+      // 하류가 막힌 건지 구분할 방법이 없다. 물·증기만 띄우던 판이라 따로 붙인다.
+      var isOil = (e.type === 'pumpjack' || e.type === 'refinery' || e.type === 'chemplant');
+      if (isOil || fi.oil > 0 || fi.gas > 0) {
+        s.push('<div class="frow"><label>원유</label><span class="num" style="color:' +
+          (fi.oil > 0 ? 'var(--run)' : 'var(--stop)') + '">' + fmt(fi.oil, 0) + ' / ' + fi.cap +
+          '</span></div>');
+        s.push('<div class="frow"><label>석유가스</label><span class="num" style="color:' +
+          (fi.gas > 0 ? 'var(--run)' : 'var(--stop)') + '">' + fmt(fi.gas, 0) + ' / ' + fi.cap +
+          '</span></div>');
+      }
     }
+  }
+  if (e.type === 'pumpjack') {
+    var left = oreLeftUnder(e);
+    s.push('<div class="frow"><label>광맥</label><span class="num">원유 ' + fmtShort(left) +
+      (left <= 0 ? ' · <b class="bad">고갈</b>' : '') + '</span></div>');
   }
   if (e.type === 'turret') {
     s.push('<div class="frow"><label>탄약</label><span class="num">' + e.ammo + ' 발' +
@@ -6693,6 +6909,13 @@ function fillHelp() {
     '예: <b>도착지 상자가 빌 때까지 붙잡았다가 보낸다.</b></p>',
     '<p class="dim">아직 없는 것: 신호기·다중 편성·교차 통제·대각선 곡선. 그래서 <b>한 노선에',
     '열차 한 대</b>를 전제한다. 두 대를 같은 레일에 놓으면 서로를 통과한다 — 넣을 때는 신호기부터다.</p>',
+    '<h4>석유 — 캘 수 없는 자원</h4>',
+    '<p><b>원유는 채광기로 못 캔다.</b> 시도하면 거절당한다 — 아이템이 아니라 <b>유체</b>라',
+    '벨트에 실을 수가 없다. <b>펌프잭</b>을 광맥 위에 세우고, 파이프로 <b>정제소</b>까지,',
+    '다시 <b>화학공장</b>까지 잇는다. 나오는 <b>플라스틱</b>은 고체라 인서터로 빼낸다.</p>',
+    '<p>숫자는 한 줄기로 맞아떨어진다 — 펌프잭 <b>원유 10/s</b> → 정제소가 그만큼 <b>가스</b>로',
+    '바꾸고 → 화학공장이 <b>가스 10 당 플라스틱 1개</b>. 즉 펌프잭 1대가 화학공장 1대를 꽉 채운다.',
+    '대신 셋을 합치면 <b>720 kW</b> — 증기기관 한 대를 거의 다 먹는다. 발전을 먼저 늘려 두는 편이 낫다.</p>',
     '<h4>청사진 — 잘 도는 라인을 통째로 늘린다</h4>',
     '<p><code>B</code> (폰은 아래 [청사진] 버튼) 를 누르고 <b>영역을 끌어서</b> 담는다.',
     '담으면 곧바로 붙여넣기 모드가 되고, <b>좌클릭</b> 한 번으로 그 자리에 지어진다.',
@@ -9505,6 +9728,36 @@ window.__GAME = {
   nestList: function () {
     return nests.map(function (n) { return { x: Math.round(n.x), y: Math.round(n.y), hp: Math.round(n.hp) }; });
   },
+  // 광맥 잔량을 그대로 내준다 — 고갈을 재려면 관측 창구가 있어야 한다.
+  oreAmtAt: function (x, y) {
+    if (!inBounds(x, y)) return null;
+    var i = idx(x, y);
+    return { type: world.ore[i], amt: world.oreAmt[i] };
+  },
+  // 원유는 아이템이 아니라 oreSpot(아이템 이름) 으로 못 찾는다 — 따로 연다.
+  // **가까운 것을 준다.** 좌상단부터 훑어 첫 자리를 주면 지도 끝의 광맥이 나와서
+  // 전주를 20칸 넘게 이어야 한다. 기준점을 안 주면 지도 중앙에서 잰다.
+  oilSpot: function (cx, cy) {
+    var best = null, bestD = Infinity;
+    for (var y = 0; y < H - 2; y++) {
+      for (var x = 0; x < W - 2; x++) {
+        var ok = true;
+        for (var dy = 0; dy < 3 && ok; dy++) {
+          for (var dx = 0; dx < 3 && ok; dx++) {
+            var i = idx(x + dx, y + dy);
+            if (world.ore[i] !== ORE_OIL || world.oreAmt[i] <= 0) ok = false;
+            if (world.occ[i]) ok = false;
+          }
+        }
+        if (ok) {
+          var d2 = (x - (cx === undefined ? (W >> 1) : cx)) * (x - (cx === undefined ? (W >> 1) : cx)) +
+                   (y - (cy === undefined ? (H >> 1) : cy)) * (y - (cy === undefined ? (H >> 1) : cy));
+          if (best === null || d2 < bestD) { best = { x: x, y: y }; bestD = d2; }
+        }
+      }
+    }
+    return best;
+  },
   oreSpot: function (itemId) {
     var want = ORE_ITEM.indexOf(itemId);
     if (want <= 0) return null;
@@ -9834,7 +10087,9 @@ function fixManifestUrls() {
   // data: URI 에는 출처가 없다(불투명 출처). 그래서 절대 주소로 써 넣어도 크롬이 조용히
   // 버린다 — 실측: 오류 0건, start_url undefined.
   //
-  // blob: 은 다르다. `blob:https://호스트/uuid` 로 **문서의 출처를 물려받는다.** 그래서
+  // blob: 은 다르다. `blob:` 뒤에 **문서의 출처가 그대로 붙어** 같은 출처가 된다.
+  // (주석에도 절대 주소를 예시로 적으면 안 된다 — 오프라인 검사가 파일 전체를 보므로
+  //  주석 한 줄 때문에 '외부 참조 1건' 으로 걸린다. 실제로 걸렸다.) 그래서
   // 같은 내용을 blob 으로 바꿔 달면 같은 파일 한 장을 유지하면서 start_url 이 산다.
   // (파일을 그냥 연 경우 file:// 는 출처가 null 이라 여전히 안 될 수 있다 — 설치는
   //  웹에 올렸을 때의 이야기이므로 그 경우는 손해가 없다.)

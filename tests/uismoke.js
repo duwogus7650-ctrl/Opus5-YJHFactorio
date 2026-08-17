@@ -946,6 +946,41 @@
         '빈 땅 클릭 → 열차 ' + afterBad + '대(0이어야 · 조건 발생 확인) · ' +
         '레일 위 클릭 → ' + afterGood + '대 (1이어야)');
 
+      // --- 석유 설비 인스펙터 ------------------------------------------
+      // 유체 칸은 물·증기만 보여주고 있었다. 펌프잭을 눌러도 뽑은 원유가 안 보이면
+      // 정제소가 노는 이유(공급이 없다 / 하류가 막혔다)를 구분할 길이 없다.
+      var cam0 = G.camera();
+      G.research('steel'); G.research('logistics'); G.research('oil');
+      G.clearTrees();
+      var oil = G.oilSpot();
+      var pjId = oil ? G.build('pumpjack', oil.x, oil.y, 0) : null;
+      if (pjId) {
+        G.center(oil.x + 1, oil.y + 1);
+        G.powerCheat(true);
+        G.run(3);
+        G.ui.select(pjId);
+        G.ui.refresh();
+        var panel = document.getElementById('insp').textContent;
+        var oilShown = /원유/.test(panel) && /광맥/.test(panel);
+        // 라벨만 있고 값이 안 움직이면 죽은 표시다 — 3초 더 돌려 문구가 변하는지 본다.
+        G.run(3); G.ui.refresh();
+        var panel2 = document.getElementById('insp').textContent;
+        chk('ui.pumpjackInspectorShowsOil', oilShown && panel2 !== panel,
+          '펌프잭 인스펙터에 원유·광맥 표시=' + oilShown + ' · 3초 뒤 내용이 변함=' +
+          (panel2 !== panel) + ' (안 변하면 죽은 라벨이다)');
+        // 재고 뒤 남겨 두면 이 판의 rAF 루프가 계속 무거워진다(실측: 이 줄이 없으면
+        // uismoke 전체가 3초에서 10분으로 늘었다). 검사만 하고 치운다.
+        G.remove(pjId);
+      } else {
+        chk('ui.pumpjackInspectorShowsOil', false, '펌프잭을 세우지 못했다 — 원유 광맥 ' +
+          JSON.stringify(oil));
+      }
+
+      // **판을 비우고 멈춘다.** 드라이버가 끝나도 헤드리스 브라우저는 가상시간
+      // 120초를 마저 돌린다 — 살아 있는 공장을 남겨 두면 그 시간을 전부 시뮬·렌더에
+      // 쓰느라 실행이 3초에서 10분으로 늘었다(실측). 재는 일은 여기서 끝났다.
+      G.clearEntities(); G.clearEnemies(); G.pause(true);
+      G.setCamera(cam0.x, cam0.y, cam0.z);
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', G.ui.nodeCount() < 0, '노드 수가 음수일 리 없다', true);

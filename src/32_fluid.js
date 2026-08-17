@@ -75,7 +75,9 @@ function rebuildFluid() {
     var r = find(q);
     if (rootNet[r] === undefined) {
       rootNet[r] = fluidNets.length;
-      fluidNets.push({ members: [], cap: 0, water: 0, steam: 0 });
+      var fresh = { members: [], cap: 0 };
+      for (var fk = 0; fk < FLUID_KINDS.length; fk++) fresh[FLUID_KINDS[fk].key] = 0;
+      fluidNets.push(fresh);
     }
     var nid = rootNet[r];
     list[q].fnet = nid;
@@ -85,18 +87,25 @@ function rebuildFluid() {
   // 직후(파이프 한 칸을 잇거나 저장을 불러온 순간) 회원은 증기를 들고 있는데
   // 망은 0 이라고 답한다 — 그 한 틱에 증기기관이 멎는다.
   for (var n = 0; n < fluidNets.length; n++) {
-    var net = fluidNets[n], cap = 0, w0 = 0, s0 = 0;
+    var net = fluidNets[n], cap = 0, sum = {};
+    for (var fj = 0; fj < FLUID_KINDS.length; fj++) sum[FLUID_KINDS[fj].key] = 0;
     for (var mm = 0; mm < net.members.length; mm++) {
       var mem = net.members[mm];
       cap += fluidCapOf(mem);
-      w0 += mem.fw || 0;
-      s0 += mem.fs || 0;
+      for (var fq = 0; fq < FLUID_KINDS.length; fq++) {
+        sum[FLUID_KINDS[fq].key] += mem[FLUID_KINDS[fq].f] || 0;
+      }
     }
     net.cap = cap;
     // 망이 쪼개지거나 합쳐지면 용량이 줄 수 있다 — 넘치는 몫은 버린다.
-    net.water = Math.min(w0, cap);
-    net.steam = Math.min(s0, cap);
-    spreadFluid(net, net.water, net.steam);
+    // **종류마다 따로 자른다.** 총량으로 자르는 쪽이 물리적으로는 맞아 보여서 그렇게
+    // 바꿔 봤다가 저장 복원 게이트가 걸렸다(증기 120 → 110.9) — 이 게임의 유체는
+    // 종류별로 용량을 따로 쓴다. 취수 펌프는 물을 늘 용량까지 채우므로 '물=용량 +
+    // 증기 얼마' 가 **정상 상태**이고, 총량으로 자르면 그 증기를 매번 깎아 낸다.
+    for (var fs2 = 0; fs2 < FLUID_KINDS.length; fs2++) {
+      net[FLUID_KINDS[fs2].key] = Math.min(sum[FLUID_KINDS[fs2].key], cap);
+    }
+    spreadFluid(net);
   }
   fluidDirty = false;
 }
@@ -151,8 +160,56 @@ function stepFluids(dt) {
       m.working = true;
     }
 
+    // --- 석유 계통 ---------------------------------------------------------
+    // 펌프잭이 원유를 붓고, 정제소가 원유를 가스로 바꾸고, 화학공장이 가스를 먹어
+    // 플라스틱을 뱉는다. 보일러와 같은 자리(같은 망 루프)에 두는 이유는 순서 때문이다:
+    // **넣는 쪽 → 바꾸는 쪽 → 빼는 쪽** 이어야 한 틱 안에서 사슬이 이어진다.
+    var oil = net.oil || 0, gas = net.gas || 0;
+    for (i = 0; i < net.members.length; i++) {
+      m = net.members[i];
+      if (m.type !== 'pumpjack') continue;
+      if (!m.enabled || m.powerSat <= 0) { m.working = false; continue; }
+      // 광맥을 실제로 판다 — 원유도 유한하다(다 뽑으면 마른다).
+      var pull = SPEC.pumpjackRate * dt * m.powerSat;
+      var room0 = net.cap - oil;
+      var take = Math.min(pull, room0, oreLeftUnder(m));
+      if (take <= 0) { m.working = false; continue; }
+      consumeOreUnder(m, take);
+      oil += take;
+      m.working = true;
+      emitPollution(m, 6 * dt);          // 발전기 20/s 를 기준으로 한 눈금
+    }
+    for (i = 0; i < net.members.length; i++) {
+      m = net.members[i];
+      if (m.type !== 'refinery') continue;
+      if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }
+      var wantOil = SPEC.refineryIn * dt * m.powerSat;
+      var lim2 = Math.min(wantOil, oil, net.cap - gas);
+      if (lim2 <= 0) { m.working = false; m.load = 0; continue; }
+      oil -= lim2; gas += lim2;          // 1:1 (기본 석유 처리의 단순화)
+      m.load = wantOil > 0 ? lim2 / wantOil : 0;
+      m.working = true;
+      emitPollution(m, 10 * m.load * dt);
+    }
+    for (i = 0; i < net.members.length; i++) {
+      m = net.members[i];
+      if (m.type !== 'chemplant') continue;
+      if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }
+      if (invTotal(m.out) >= SPEC.machineBufOut) { m.working = false; m.load = 0; continue; }
+      var wantGas = SPEC.chemGasPerPlastic * SPEC.chemPlasticRate * dt * m.powerSat;
+      var lim3 = Math.min(wantGas, gas);
+      if (lim3 <= 0) { m.working = false; m.load = 0; continue; }
+      gas -= lim3;
+      m.progress = (m.progress || 0) + lim3 / SPEC.chemGasPerPlastic;
+      while (m.progress >= 1) { m.progress -= 1; invAdd(m.out, 'plastic', 1); }
+      m.load = wantGas > 0 ? lim3 / wantGas : 0;
+      m.working = true;
+      emitPollution(m, 8 * m.load * dt);
+    }
+    net.oil = oil; net.gas = gas;
+
     net.water = w; net.steam = s;
-    spreadFluid(net, w, s);
+    spreadFluid(net);
   }
   stepXferPumps(dt);
 }
@@ -174,16 +231,19 @@ function stepXferPumps(dt) {
     var back = fluidNetAt(e.tx - DIR_DX[e.dir], e.ty - DIR_DY[e.dir]);
     var front = fluidNetAt(e.tx + DIR_DX[e.dir], e.ty + DIR_DY[e.dir]);
     if (!back || !front || back === front) { e.working = false; return; }
-    var have = back.water + back.steam;
-    var room = front.cap - (front.water + front.steam);
+    var have = netTotal(back);
+    var room = front.cap - netTotal(front);
     var move = Math.min(SPEC.xpumpRate * dt * e.powerSat, have, room);
     if (move <= 0) { e.working = false; return; }
-    var fw = have > 0 ? (back.water / have) * move : 0;
-    var fs = move - fw;
-    back.water -= fw; back.steam -= fs;
-    front.water += fw; front.steam += fs;
-    spreadFluid(back, back.water, back.steam);
-    spreadFluid(front, front.water, front.steam);
+    // 종류를 가리지 않고 **있는 비율 그대로** 옮긴다 (이 게임의 유체는 잘 섞인 탱크다)
+    for (var xk = 0; xk < FLUID_KINDS.length; xk++) {
+      var key = FLUID_KINDS[xk].key;
+      var part = (back[key] || 0) / have * move;
+      back[key] = (back[key] || 0) - part;
+      front[key] = (front[key] || 0) + part;
+    }
+    spreadFluid(back);
+    spreadFluid(front);
     e.working = true;
   });
 }
@@ -206,13 +266,31 @@ function fluidNetAt(tx, ty) {
 // 망의 총량을 회원에게 **용량 비례**로 나눈다. 균등하게 나누면 파이프 한 칸과
 // 증기기관(6칸)이 같은 양을 들게 되어, 큰 건물만 있는 망에서 용량이 남는데도
 // 못 채우는 일이 생긴다.
-function spreadFluid(net, w, s) {
+// **유체 종류는 여기 한 줄로 정한다.** 예전에는 물·증기 두 가지가 곳곳에 이름으로
+// 박혀 있어(net.water/net.steam · m.fw/m.fs) 종류를 하나 늘리려면 스무 군데를 고쳐야
+// 했다. 석유 계통을 넣으면서 목록 하나로 몰았다 — 새 유체는 이 배열에 한 줄이다.
+//   key = 망이 들고 있는 이름 · f = 회원(건물)이 제 몫을 들고 있는 필드 이름
+var FLUID_KINDS = [
+  { key: 'water', f: 'fw' },
+  { key: 'steam', f: 'fs' },
+  { key: 'oil',   f: 'fo' },      // 원유 — 펌프잭이 뽑는다
+  { key: 'gas',   f: 'fg' }       // 석유가스 — 정제소가 만든다
+];
+
+function netTotal(net) {
+  var t = 0;
+  for (var k = 0; k < FLUID_KINDS.length; k++) t += net[FLUID_KINDS[k].key] || 0;
+  return t;
+}
+
+function spreadFluid(net) {
   var cap = net.cap;
   for (var i = 0; i < net.members.length; i++) {
     var m = net.members[i];
     var share = cap > 0 ? fluidCapOf(m) / cap : 0;
-    m.fw = w * share;
-    m.fs = s * share;
+    for (var k = 0; k < FLUID_KINDS.length; k++) {
+      m[FLUID_KINDS[k].f] = (net[FLUID_KINDS[k].key] || 0) * share;
+    }
   }
 }
 
@@ -224,7 +302,7 @@ function drawSteam(e, amt) {
   var got = Math.min(amt, net.steam);
   if (got <= 0) return 0;
   net.steam -= got;
-  spreadFluid(net, net.water, net.steam);
+  spreadFluid(net);
   return got;
 }
 
@@ -239,7 +317,8 @@ function fluidOf(e) {
     return { connected: 0, water: 0, steam: 0, cap: 0, steamPct: 0 };
   }
   var net = fluidNets[e.fnet];
-  return { connected: 1, water: net.water, steam: net.steam, cap: net.cap,
+  return { connected: 1, water: net.water, steam: net.steam,
+           oil: net.oil || 0, gas: net.gas || 0, cap: net.cap,
            steamPct: net.cap > 0 ? (net.steam / net.cap) * 100 : 0 };
 }
 function engineHasSteam(e) {

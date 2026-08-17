@@ -43,6 +43,13 @@ function canPlace(type, tx, ty, dir, restore) {
   if (!restore && type === 'miner') {
     var sv = surveyOre(tx, ty, w, h);
     if (!sv.total) return { ok: false, why: '광맥이 없다' };
+    // **채광기는 원유 위에 못 선다.** 원유는 아이템이 아니라 유체라 캘 수가 없다 —
+    // 세워지면 아무것도 안 내는 기계가 되어 "왜 안 도나" 를 묻게 만든다.
+    if (sv.type === ORE_OIL) return { ok: false, why: '원유는 펌프잭으로 뽑는다' };
+  }
+  if (!restore && type === 'pumpjack') {
+    var svo = surveyOre(tx, ty, w, h);
+    if (svo.type !== ORE_OIL || !svo.total) return { ok: false, why: '원유 광맥 위에만 선다' };
   }
   if (!restore) {
     var cost = B.cost;

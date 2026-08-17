@@ -87,6 +87,32 @@ ENV['PYTHONIOENCODING'] = 'utf-8'
 # (이름, 파일, 찾을 바이트, 바꿀 바이트, 반드시 FAIL 이 되어야 하는 게이트들 [, 드라이버])
 # 드라이버를 생략하면 모델 게이트(driver.js). UI 결함은 uismoke.js 로 지목한다.
 MUTATIONS = [
+    # --- 석유·화학 사슬 ------------------------------------------------
+    ('oil: 펌프잭이 절반만 뽑는다', '05_data.js',
+     b'  pumpjackRate: 10,',
+     b'  pumpjackRate: 5,',
+     ['oil.pumpjackRateMatchesSpec', 'spec.matchesPublishedValues']),
+
+    ('oil: 채광기가 원유 위에도 선다', '25_entity.js',
+     b'    if (sv.type === ORE_OIL) return { ok: false, why:',
+     b'    if (false) return { ok: false, why:',
+     ['oil.pumpjackNeedsOilPatch']),
+
+    ('oil: 플라스틱이 가스를 절반만 먹는다', '05_data.js',
+     b'  chemGasPerPlastic: 10,',
+     b'  chemGasPerPlastic: 5,',
+     ['oil.chemGasPerPlasticMatchesSpec', 'spec.matchesPublishedValues']),
+
+    ('oil: 정제소가 꺼도 계속 돈다', '32_fluid.js',
+     b'      if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }\n      var wantOil = SPEC.refineryIn * dt * m.powerSat;',
+     b'      if (m.powerSat <= 0) { m.working = false; m.load = 0; continue; }\n      var wantOil = SPEC.refineryIn * dt * m.powerSat;',
+     ['oil.refineryOffStopsChain']),
+
+    ('oil: 원유 광맥이 마르지 않는다', '10_world.js',
+     b'function consumeOreUnder(e, amt) {',
+     b'function consumeOreUnder(e, amt) { if (amt >= 0) return;',
+     ['oil.patchDepletes']),
+
     # 주의: 후속 아이템 쪽 한 줄만 늦추면 선두는 그대로라 라인 속도가 안 변한다
     #       (처음에 그렇게 골랐다가 belt.transport 를 못 뒤집었다). 이동량 자체를 늦춘다.
     ('벨트가 30% 느려진다', '20_belt.js',
@@ -1223,8 +1249,8 @@ MUTATIONS = [
      ['fluid.survivesSave']),
 
     ('유체 센서가 망 밖과 빈 망을 같은 값으로 뭉갠다', '32_fluid.js',
-     b'  return { connected: 1, water: net.water, steam: net.steam, cap: net.cap,',
-     b'  return { connected: 0, water: net.water, steam: net.steam, cap: net.cap,',
+     b'  return { connected: 1, water: net.water, steam: net.steam,',
+     b'  return { connected: 0, water: net.water, steam: net.steam,',
      ['fluid.sensorReadsTheNet']),
 
     # ---- 청사진 ----

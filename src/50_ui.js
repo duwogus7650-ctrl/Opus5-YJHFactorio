@@ -977,7 +977,23 @@ function refreshInsp() {
       s.push('<div class="frow"><label>증기</label><span class="num" style="color:' +
         (fi.steamPct > 25 ? 'var(--run)' : (fi.steamPct > 0 ? 'var(--warn)' : 'var(--stop)')) + '">' +
         fmt(fi.steam, 0) + ' / ' + fi.cap + ' · ' + fmt(fi.steamPct, 0) + '%</span></div>');
+      // 석유 계열은 원유·가스를 봐야 한다. 안 보이면 정제소가 공급이 없어 노는 건지
+      // 하류가 막힌 건지 구분할 방법이 없다. 물·증기만 띄우던 판이라 따로 붙인다.
+      var isOil = (e.type === 'pumpjack' || e.type === 'refinery' || e.type === 'chemplant');
+      if (isOil || fi.oil > 0 || fi.gas > 0) {
+        s.push('<div class="frow"><label>원유</label><span class="num" style="color:' +
+          (fi.oil > 0 ? 'var(--run)' : 'var(--stop)') + '">' + fmt(fi.oil, 0) + ' / ' + fi.cap +
+          '</span></div>');
+        s.push('<div class="frow"><label>석유가스</label><span class="num" style="color:' +
+          (fi.gas > 0 ? 'var(--run)' : 'var(--stop)') + '">' + fmt(fi.gas, 0) + ' / ' + fi.cap +
+          '</span></div>');
+      }
     }
+  }
+  if (e.type === 'pumpjack') {
+    var left = oreLeftUnder(e);
+    s.push('<div class="frow"><label>광맥</label><span class="num">원유 ' + fmtShort(left) +
+      (left <= 0 ? ' · <b class="bad">고갈</b>' : '') + '</span></div>');
   }
   if (e.type === 'turret') {
     s.push('<div class="frow"><label>탄약</label><span class="num">' + e.ammo + ' 발' +
@@ -1177,6 +1193,13 @@ function fillHelp() {
     '예: <b>도착지 상자가 빌 때까지 붙잡았다가 보낸다.</b></p>',
     '<p class="dim">아직 없는 것: 신호기·다중 편성·교차 통제·대각선 곡선. 그래서 <b>한 노선에',
     '열차 한 대</b>를 전제한다. 두 대를 같은 레일에 놓으면 서로를 통과한다 — 넣을 때는 신호기부터다.</p>',
+    '<h4>석유 — 캘 수 없는 자원</h4>',
+    '<p><b>원유는 채광기로 못 캔다.</b> 시도하면 거절당한다 — 아이템이 아니라 <b>유체</b>라',
+    '벨트에 실을 수가 없다. <b>펌프잭</b>을 광맥 위에 세우고, 파이프로 <b>정제소</b>까지,',
+    '다시 <b>화학공장</b>까지 잇는다. 나오는 <b>플라스틱</b>은 고체라 인서터로 빼낸다.</p>',
+    '<p>숫자는 한 줄기로 맞아떨어진다 — 펌프잭 <b>원유 10/s</b> → 정제소가 그만큼 <b>가스</b>로',
+    '바꾸고 → 화학공장이 <b>가스 10 당 플라스틱 1개</b>. 즉 펌프잭 1대가 화학공장 1대를 꽉 채운다.',
+    '대신 셋을 합치면 <b>720 kW</b> — 증기기관 한 대를 거의 다 먹는다. 발전을 먼저 늘려 두는 편이 낫다.</p>',
     '<h4>청사진 — 잘 도는 라인을 통째로 늘린다</h4>',
     '<p><code>B</code> (폰은 아래 [청사진] 버튼) 를 누르고 <b>영역을 끌어서</b> 담는다.',
     '담으면 곧바로 붙여넣기 모드가 되고, <b>좌클릭</b> 한 번으로 그 자리에 지어진다.',

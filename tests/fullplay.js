@@ -564,24 +564,28 @@
       var craftFail = [];
       for (var ri = 0; ri < recipes.length; ri++) {
         var rid = recipes[ri], info = G.recipeInfo(rid);
+        // **레시피 id 와 산출 품목 id 는 다를 수 있다.** 여기서 rid 를 품목으로 쓰고
+        // 있었는데, ammo-plastic(플라스틱 탄창)처럼 이름이 다른 레시피가 들어오자
+        // "만들어도 안 늘었다"는 거짓 RED 가 났다. 산출 품목을 레시피에서 읽는다.
+        var outId = Object.keys(info.out)[0] || rid;
         if (info.cat === 'craft' && info.handOk) {
           for (var k in info.inp) G.setInv(k, 999);
-          var before = G.state().inventory[rid] || 0;
+          var before = G.state().inventory[outId] || 0;
           G.handCraft(rid);
           // 손 조립은 **시간이 든다**. 넣자마자 나오면 그건 고장이다 — 즉시 완성이면
           // 조립기를 세울 이유가 없어져 이 장르의 전제가 무너진다. 음성 대조군으로
           // "레시피 시간의 절반이 지난 시점엔 아직 안 나왔다"를 함께 잰다.
           G.run(info.time * 0.5);
-          if ((G.state().inventory[rid] || 0) > before) craftFail.push(rid + '(손조립이 즉시 완성됨)');
+          if ((G.state().inventory[outId] || 0) > before) craftFail.push(rid + '(손조립이 즉시 완성됨)');
           G.run(info.time * 0.6 + 0.2);
-          if ((G.state().inventory[rid] || 0) <= before) craftFail.push(rid + '(손조립)');
+          if ((G.state().inventory[outId] || 0) <= before) craftFail.push(rid + '(손조립)');
         } else if (info.cat === 'smelt') {
           var fz = G.place('furnace', 44 + ri * 3, 70, 0);
           if (!fz) { craftFail.push(rid + '(용광로 배치 실패)'); continue; }
           G.setRecipe(fz, rid);
           for (var k2 in info.inp) G.fillChest(fz, k2, 50);
           G.run(info.time * 3 + 2);
-          if ((G.ent(fz).out[rid] || 0) < 1) craftFail.push(rid + '(제련)');
+          if ((G.ent(fz).out[outId] || 0) < 1) craftFail.push(rid + '(제련)');
         }
       }
       // 만들 수 있는 것에는 **쓸 데가 있어야 한다.** 강철은 레시피와 아이템만 있고

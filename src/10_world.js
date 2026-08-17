@@ -5,9 +5,11 @@
 //  픽셀 변환은 렌더러에서만 한다 — 시뮬레이션은 픽셀을 모른다.
 // ===========================================================================
 
-var ORE_NONE = 0, ORE_IRON = 1, ORE_COPPER = 2, ORE_COAL = 3, ORE_STONE = 4;
-var ORE_ITEM = [null, 'iron-ore', 'copper-ore', 'coal', 'stone'];
-var ORE_COLOR = [null, '#8593a0', '#c87941', '#22222a', '#a89880'];
+var ORE_NONE = 0, ORE_IRON = 1, ORE_COPPER = 2, ORE_COAL = 3, ORE_STONE = 4, ORE_OIL = 5;
+// **원유는 캐는 것이 아니라 뽑는 것이다.** 그래서 ORE_ITEM 에 아이템이 없다(null) —
+// 채광기는 아이템을 내는 기계라 원유 위에 서지 못하고, 펌프잭만 설 수 있다.
+var ORE_ITEM = [null, 'iron-ore', 'copper-ore', 'coal', 'stone', null];
+var ORE_COLOR = [null, '#8593a0', '#c87941', '#22222a', '#a89880', '#4a3f5c'];
 
 var PW = Math.ceil(W / SPEC.pollutionPerChunk);   // 오염 격자 가로
 var PH = Math.ceil(H / SPEC.pollutionPerChunk);
@@ -135,6 +137,28 @@ function generateWorld(seed) {
       2500 + Math.floor(far * 9000 + RNG.next() * 3000), RNG);
   }
 
+  // 원유는 **맨 마지막에** 심는다. 시작 링이나 바깥 광맥 루프 안에 끼우면 RNG 순서가
+  // 밀려 그 뒤의 모든 광맥이 자리를 옮긴다 — 지도가 통째로 바뀌고, 그 지도에 맞춰
+  // 40분 자력 완주가 맞춰 놓은 균형이 무너진다(실측: 열차가 종료 직전에야 서서
+  // 노선을 못 돌았다). 뒤에 붙이면 기존 지도는 한 칸도 안 움직인다.
+  //
+  // 자리는 고정값이다 — 스폰에서 30타일(초반 공장이 원유 위에 지어지지 않게 멀리)에
+  // 하나, 그리고 사방으로 셋. 원유는 캐는 자원이 아니라 뽑는 자원이라 광맥 수가
+  // 적어도 되고, 대신 매장량이 크다.
+  var oilRing = [
+    { ang: 0.7,  d: 30, r: 3, rich: 60000 },
+    { ang: 2.6,  d: 44, r: 3, rich: 90000 },
+    { ang: 4.2,  d: 52, r: 4, rich: 120000 },
+    { ang: 5.7,  d: 38, r: 3, rich: 75000 }
+  ];
+  for (var oi = 0; oi < oilRing.length; oi++) {
+    var oo = oilRing[oi];
+    var oox = Math.round(cx + Math.cos(oo.ang) * oo.d);
+    var ooy = Math.round(cy + Math.sin(oo.ang) * oo.d);
+    if (!inBounds(oox, ooy)) continue;
+    plantOre(oox, ooy, ORE_OIL, oo.r, oo.rich, RNG);
+  }
+
   // 스폰 반경은 평평하게 — 첫 공장을 지을 자리
   for (var yy = cy - 8; yy <= cy + 8; yy++) {
     for (var xx = cx - 8; xx <= cx + 8; xx++) {
@@ -204,6 +228,34 @@ function mineFrom(tx, ty, w, h) {
   if (world.oreAmt[best] === 0) world.ore[best] = ORE_NONE;
   return ORE_ITEM[bestType];
 }
+// --- 원유 뽑기 ----------------------------------------------------------------
+// 원유는 아이템이 아니라 유체라 mineFrom 을 쓸 수 없다(그쪽은 한 번에 한 개, 아이템을
+// 돌려준다). 펌프잭은 **실수 단위로** 뽑고 파이프로 보낸다. 광맥이 유한한 것은 같다.
+function oreLeftUnder(e) {
+  var left = 0;
+  for (var y = e.ty; y < e.ty + e.h; y++) {
+    for (var x = e.tx; x < e.tx + e.w; x++) {
+      if (!inBounds(x, y)) continue;
+      var i = idx(x, y);
+      if (world.ore[i] === ORE_OIL) left += world.oreAmt[i];
+    }
+  }
+  return left;
+}
+function consumeOreUnder(e, amt) {
+  for (var y = e.ty; y < e.ty + e.h && amt > 0; y++) {
+    for (var x = e.tx; x < e.tx + e.w && amt > 0; x++) {
+      if (!inBounds(x, y)) continue;
+      var i = idx(x, y);
+      if (world.ore[i] !== ORE_OIL) continue;
+      var take = Math.min(amt, world.oreAmt[i]);
+      world.oreAmt[i] -= take;
+      amt -= take;
+      if (world.oreAmt[i] <= 0) world.ore[i] = ORE_NONE;
+    }
+  }
+}
+
 // 배치 미리보기용 — 캐지 않고 어떤 광종이 얼마나 깔려 있는지만 본다.
 function surveyOre(tx, ty, w, h) {
   var total = 0, type = 0;

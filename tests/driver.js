@@ -3429,6 +3429,122 @@
         '저장 전 화물 ' + beforeCargo + ' → 복원 후 열차 ' + afterList.length + '대 · 화물 ' +
         (afterList[0] ? afterList[0].cargo : '없음') + ' (같아야)');
 
+      // ================= 11.85 석유·화학 ==================================
+      // 사슬: 원유 광맥 → 펌프잭(원유) → 정제소(가스) → 화학공장(플라스틱).
+      // **각 칸을 따로 재고, 마지막에 사슬 전체가 이어지는지 본다** — 한 칸씩만 재면
+      // "각자 도는데 이어지지 않는" 상태를 통과시킨다.
+      labSetup();
+      G.clearTrees();            // 나무가 서 있으면 3x3 이 안 들어간다
+      G.research('steel'); G.research('logistics'); G.research('oil');
+      // 문헌값은 SPEC 에서 읽어오지 않고 여기 직접 적는다(11.9 와 같은 규율).
+      var OIL_PUB = {
+        pumpjackRate: 10,        // 설계값 — 채광기 0.5/s 의 20배, 파이프 한 칸(100)을 10초에 채운다
+        refineryIn: 20,          // 설계값 — 펌프잭 2대분을 한 대가 받는다
+        chemGasPerPlastic: 10    // 설계값 — 가스 10 → 플라스틱 1개
+      };
+      var oilAt = G.oilSpot ? G.oilSpot() : null;
+      chk('oil.patchExists', !!oilAt, '원유 광맥 위치 ' + JSON.stringify(oilAt));
+      if (oilAt) {
+        // **G.place 는 규칙을 건너뛰는 치트 경로다**(restore=true). 거절을 재려면
+        // 플레이어와 같은 길인 G.build 로 해야 한다 — place 로 쟀다가 채광기가
+        // 원유 위에 서 버려 게이트가 거짓 RED 를 냈다.
+        var minerOnOil = G.build('miner', oilAt.x, oilAt.y, 0);
+        var pjOnGrass = G.build('pumpjack', 40, 40, 0);
+        var pj = G.build('pumpjack', oilAt.x, oilAt.y, 0);
+        chk('oil.pumpjackNeedsOilPatch', !!pj && !minerOnOil && !pjOnGrass,
+          '원유 위 채광기=' + minerOnOil + ' (실패해야) · 맨땅 펌프잭=' + pjOnGrass +
+          ' (실패해야) · 원유 위 펌프잭 id=' + pj + ' (서야)');
+
+        // 펌프잭이 못 서면 이 아래 측정은 전부 null 접근이 된다 — 드라이버가
+        // 통째로 죽으면 돌연변이 시험이 '게이트가 실행조차 안 됐다'(INVALID)로
+        // 나와 검출을 확인할 수 없다. 그래서 아래를 통째로 감싼다.
+        if (pj) {
+        // 1) 펌프잭만 놓고 잰다. **하류를 붙인 채 재면 안 된다** — 정제소가 뽑는 족족
+        // 먹어서 재고 변화가 0 이 되고, 도는 사슬이 "안 돈다"로 보인다(첫 시도가 그랬다).
+        var oil0 = G.fluid(pj).oil;
+        G.run(1);
+        var oilRate = G.fluid(pj).oil - oil0;
+        chk('oil.pumpjackRateMatchesSpec', near(oilRate, OIL_PUB.pumpjackRate, 0.15, 1),
+          '펌프잭 단독 1초 산출 ' + r2(oilRate) + ' (오라클 ' + OIL_PUB.pumpjackRate + '/s)');
+
+        // 2) 정제소를 붙인다 — 화학공장은 아직 없다. 원유 공급이 10/s 라 정제소는
+        // 공급 한계로 돌고, 가스도 10/s 로 는다.
+        for (var op = 0; op < 3; op++) G.build('pipe', oilAt.x + 3, oilAt.y + op, 0);
+        var refId = G.build('refinery', oilAt.x + 4, oilAt.y, 0);
+        // 붙이자마자 재면 안 된다 — 1)에서 망에 쌓인 원유를 정제소가 20/s 로 퍼가는
+        // 배수 구간이라 가스가 14/s 로 나온다. 재고가 마를 때까지 기다린 뒤 잰다.
+        G.run(5);
+        var gas0 = G.fluid(pj).gas;
+        G.run(4);
+        var gasRate = (G.fluid(pj).gas - gas0) / 4;
+        chk('oil.refineryConvertsAtSupplyRate',
+          !!refId && near(gasRate, OIL_PUB.pumpjackRate, 0.2, 1),
+          '정제소 가스 산출 ' + r2(gasRate) + '/s (원유 공급이 ' + OIL_PUB.pumpjackRate +
+          '/s 니 그만큼 나와야) · 정제소 id=' + refId);
+
+        // 3) 화학공장을 붙인다 — 가스 10/s ÷ 10가스/개 = 1개/s 가 오라클.
+        for (var oq = 0; oq < 3; oq++) G.build('pipe', oilAt.x + 7, oilAt.y + oq, 0);
+        var chemId = G.build('chemplant', oilAt.x + 8, oilAt.y, 0);
+        G.run(2);
+        var p0 = G.ent(chemId).out['plastic'] || 0;
+        G.run(10);
+        var plasticRate = ((G.ent(chemId).out['plastic'] || 0) - p0) / 10;
+        var expPlastic = OIL_PUB.pumpjackRate / OIL_PUB.chemGasPerPlastic;
+        chk('oil.chemPlasticRateMatchesSpec',
+          !!chemId && near(plasticRate, expPlastic, 0.2, 0.2),
+          '플라스틱 ' + r2(plasticRate) + '개/s (가스 ' + OIL_PUB.pumpjackRate + '/s ÷ ' +
+          OIL_PUB.chemGasPerPlastic + '가스/개 = ' + expPlastic + '개/s 여야)');
+
+        // 3.5) 가스 1개당 플라스틱 몇 개인가 — 위 3)은 화학공장의 생산 **속도**
+        // 상한(chemPlasticRate)이 지배해서, 가스 단가를 반으로 줄여도 속도가 그대로라
+        // 안 걸린다(돌연변이 '가스를 절반만 먹는다'가 이걸 드러냈다). 단가는 따로
+        // 잰다 — 가스를 모아 두고, 공급을 끊고, 그 가스로 몇 개가 나오는지 센다.
+        G.setEnabled(chemId, false);
+        G.run(20);                                   // 가스를 모은다
+        G.setEnabled(pj, false); G.setEnabled(refId, false);
+        var gStock = G.fluid(pj).gas;
+        var pStock = G.ent(chemId).out['plastic'] || 0;
+        G.setEnabled(chemId, true);
+        for (var gd = 0; gd < 20 && G.fluid(pj).gas > 0.5; gd++) G.run(3);
+        var gUsed = gStock - G.fluid(pj).gas;
+        var pMade = (G.ent(chemId).out['plastic'] || 0) - pStock;
+        var perPlastic = pMade > 0 ? gUsed / pMade : 0;
+        chk('oil.chemGasPerPlasticMatchesSpec',
+          pMade > 0 && near(perPlastic, OIL_PUB.chemGasPerPlastic, 0.15, 0.5),
+          '가스 ' + r2(gUsed) + ' 로 플라스틱 ' + pMade + '개 → 개당 ' + r2(perPlastic) +
+          ' (오라클 ' + OIL_PUB.chemGasPerPlastic + ')');
+        G.setEnabled(pj, true); G.setEnabled(refId, true);
+        G.run(10);
+
+        // 4) 음성 대조군 — 정제소를 끄면 가스가 끊기고 플라스틱도 멎는다.
+        // 2) 구간에서 화학공장 없이 9초를 돌린 탓에 망에 가스가 ~90 쌓여 있다.
+        // 6초 배수로는 모자라 "꺼도 돈다"는 거짓 RED 가 났다. **다 마를 때까지**
+        // 기다리고, 실제로 말랐음을 함께 단언한다(안 마르면 대조군이 공허해진다).
+        G.setEnabled(refId, false);
+        for (var dr = 0; dr < 12 && G.fluid(pj).gas > 0.5; dr++) G.run(5);
+        var drained = G.fluid(pj).gas;
+        var q0 = G.ent(chemId).out['plastic'] || 0;
+        G.run(6);
+        var q1 = G.ent(chemId).out['plastic'] || 0;
+        chk('oil.refineryOffStopsChain', drained <= 0.5 && q1 === q0,
+          '정제소를 끈 뒤 남은 가스 ' + r2(drained) + ' · 플라스틱 ' + q0 + ' → ' + q1 +
+          ' (늘면 꺼도 도는 것)');
+        G.setEnabled(refId, true);
+
+        // 5) 광맥은 마른다 — 무한 자원이면 후반 압박이 사라진다.
+        // 처음엔 G.ent(pj).oreLeft 로 쟀는데 그런 필드가 없어 undefined 였고,
+        // "undefined 면 통과" 로 짜 둔 탓에 아무것도 안 재고 PASS 했다. 관측 창구를
+        // 게임 쪽에 내고(oreAmtAt) 실제 잔량으로 다시 잰다.
+        var amt0 = G.oreAmtAt(oilAt.x, oilAt.y);
+        G.run(5);
+        var amt1 = G.oreAmtAt(oilAt.x, oilAt.y);
+        chk('oil.patchDepletes',
+          !!amt0 && !!amt1 && amt0.type === 5 && amt0.amt > 0 && amt1.amt < amt0.amt,
+          '광맥 잔량 ' + (amt0 ? amt0.amt : '?') + ' → ' + (amt1 ? amt1.amt : '?') +
+          ' (안 줄면 무한 자원)');
+        }
+      }
+
       // ================= 11.9 공개 숫자 대조 ==============================
       // **여기까지의 처리량 게이트는 SPEC 을 검정하지 않는다.** belt.throughput ·
       // inserter.rate · miner.rate 는 기대값을 G.spec() 에서 받아 쓰는데 그 값이
@@ -3469,7 +3585,10 @@
         ['machineBufOut', 100, '설계값 — 기계 출력 버퍼 100'],
         ['wallHp', 350, '설계값 — 벽만 따로 (동작 게이트는 wall.hpMatchesSpec)'],
         ['buildingHpPerTile', 150, '설계값 — 건물은 타일당 150'],
-        ['pollutionPerChunk', 8, '설계값 — 오염 격자 한 칸 = 8x8 타일']
+        ['pollutionPerChunk', 8, '설계값 — 오염 격자 한 칸 = 8x8 타일'],
+        ['pumpjackRate', 10, '설계값 — 펌프잭 원유 10/s'],
+        ['refineryIn', 20, '설계값 — 정제소 원유 흡입 20/s'],
+        ['chemGasPerPlastic', 10, '설계값 — 플라스틱 1개당 석유가스 10']
       ];
       var raw = G.specRaw ? G.specRaw() : null;
       chk('spec.rawIsExposed', !!raw && typeof raw.minerRate === 'number',
@@ -3772,17 +3891,23 @@
       var nameTech = {};
       for (var bj = 0; bj < btypes.length; bj++) {
         var bq = G.buildingInfo(btypes[bj]);
-        if (bq) nameTech[squash(bq.name)] = bq.tech || null;
+        if (bq) nameTech[squash(bq.name)] = [bq.tech || null];
       }
+      // **같은 산출물을 내는 레시피가 둘일 수 있다.** 석유 계통이 '플라스틱 탄창' 을
+      // 들여오면서 '탄창 레시피' 라는 이름이 군수와 석유 처리 양쪽에 걸렸다 —
+      // 이름 하나에 기술 하나를 넣어 두면 뒤엣것이 앞엣것을 덮어써 거짓 실패가 난다.
+      // 이름 → **기술 목록** 으로 둔다.
       for (var rj = 0; rj < rids.length; rj++) {
         var rq = G.recipeInfo(rids[rj]);
         if (!rq) continue;
         var oid = Object.keys(rq.out)[0];
-        nameTech[squash((G.itemName(oid) || oid) + ' 레시피')] = rq.tech || null;
+        var rkey = squash((G.itemName(oid) || oid) + ' 레시피');
+        if (!nameTech[rkey]) nameTech[rkey] = [];
+        nameTech[rkey].push(rq.tech || null);
       }
       for (var kj = 0; kj < kinds.length; kj++) {
         var kq = G.nodeInfo(kinds[kj]);
-        if (kq) nameTech[squash(kq.label)] = kq.tech || null;
+        if (kq) nameTech[squash(kq.label)] = [kq.tech || null];
       }
       var phantom = [], resolved = 0;
       for (var pj2 = 0; pj2 < techIdsAll.length; pj2++) {
@@ -3793,9 +3918,10 @@
           var key3 = squash(lst3[lj]);
           if (!(key3 in nameTech)) continue;      // 효과 문구 — 실체가 없다
           resolved++;
-          if (nameTech[key3] !== tid3) {
+          if (nameTech[key3].indexOf(tid3) < 0) {
             phantom.push(tid3 + ' 목록의 "' + lst3[lj] + '" 는 실제로 ' +
-              (nameTech[key3] === null ? '처음부터 열려 있다' : nameTech[key3] + ' 뒤에 있다'));
+              nameTech[key3].map(function (z) { return z === null ? '처음부터 열려 있다' : z + ' 뒤'; })
+                .join('/') + ' 에 있다');
           }
         }
       }

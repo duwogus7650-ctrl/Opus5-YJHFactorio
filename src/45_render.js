@@ -461,6 +461,38 @@ function drawEntity(e) {
     ctx.fillStyle = ff > 0.15 ? COL.amber : '#c0392b';
     ctx.fillRect(x + 0.32, y + h - 0.40, (w - 0.64) * ff, 0.16);
     if (e.fuel <= 0) drawWarn(x, y, w, '연료 없음');
+  } else if (e.type === 'pumpjack') {
+    // 시소처럼 오르내리는 빔 — 유전의 그 실루엣이다. 한눈에 다른 셋과 갈린다.
+    body(x, y, w, h, '#4a3f5c');
+    var pj = Math.sin(gameTime * 2 + e.tx) * 0.25;
+    ctx.strokeStyle = '#cfc7bd'; ctx.lineWidth = 0.16; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, y + h * 0.55 - pj);
+    ctx.lineTo(x + w - 0.5, y + h * 0.55 + pj);
+    ctx.stroke();
+    ctx.fillStyle = '#2b2530';
+    ctx.fillRect(x + w * 0.5 - 0.12, y + h * 0.5, 0.24, h * 0.42);
+    hazard(x + 0.2, y + h - 0.34, w - 0.4, 0.16);
+  } else if (e.type === 'refinery') {
+    // 세워 놓은 증류탑 셋 — 정제소의 정체는 '높은 탑' 이다
+    body(x, y, w, h, '#5a6a72');
+    for (var rt = 0; rt < 3; rt++) {
+      ctx.fillStyle = rt === 1 ? '#b9c3c8' : '#93a0a6';
+      rr(x + 0.35 + rt * (w - 0.9) / 2.6, y + 0.28, 0.5, h - 0.9, 0.22); ctx.fill();
+      ctx.strokeStyle = COL.outline; ctx.lineWidth = 0.04; ctx.stroke();
+    }
+    ctx.fillStyle = '#2b3238'; ctx.fillRect(x + 0.25, y + h - 0.5, w - 0.5, 0.24);
+  } else if (e.type === 'chemplant') {
+    // 둥근 반응조 둘 + 이어 주는 관 — 화학공장은 '통' 이다
+    body(x, y, w, h, '#4f6357');
+    ctx.fillStyle = '#a8c0ae';
+    ctx.beginPath(); ctx.arc(x + w * 0.34, y + h * 0.42, w * 0.20, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + w * 0.68, y + h * 0.42, w * 0.16, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#2f3d34'; ctx.lineWidth = 0.09;
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.34, y + h * 0.68); ctx.lineTo(x + w * 0.68, y + h * 0.68);
+    ctx.stroke();
+    hazard(x + 0.2, y + h - 0.34, w - 0.4, 0.16);
   } else if (e.type === 'boiler') {
     body(x, y, w, h, '#6b5a52');
     // 가로로 누운 드럼 — 발전기의 플라이휠과 한눈에 갈리게 형태를 다르게 둔다
