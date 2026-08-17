@@ -462,7 +462,11 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
        overflow-x:auto;overflow-y:hidden;white-space:nowrap}
   #pal .pitem{display:inline-block;min-height:44px}
   #graphWrap{left:0;top:146px}
-  #toast{bottom:120px}
+  /* 안내는 **튜토리얼 판 위**에 뜬다. 예전엔 고정 120px 이라 튜토리얼이 열려 있으면
+     그 위에 겹쳐 판을 덮었다(실기 스크린샷). 판 높이를 알고 있으니 그만큼 올린다. */
+  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px));left:8px;right:8px;
+         transform:none;width:auto;max-width:100%}
+  #toast .tmsg{max-width:100%}
 }
 
 /* 조작 수단은 **폭이 아니라 포인터 종류**로 갈린다. 768px 태블릿은 넓지만 손가락으로

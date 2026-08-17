@@ -1091,6 +1091,8 @@ window.__GAME = {
     // 녹화·시연용 — 튜토리얼 패널이 공장을 가린다
     closeTutor: function () { tutorial.on = false; renderTutorial(); return true; },
     closeHelp: function () { closeHelp(); },
+    // 안내(토스트)는 화면 한복판을 차지한다 — 쌓임·합치기를 시험이 직접 재게 연다
+    toast: function (msg, kind) { toast(msg, kind); return true; },
     openHelp: function () { document.getElementById('help').style.display = 'block'; },
     openLogic: function (id) { var e = entities[id]; if (!e) return false; openLogic(e); return true; },
     // 제어기는 문장 화면이 먼저 열린다. 회로 DOM 을 보는 시험은 이걸로 전환한다.

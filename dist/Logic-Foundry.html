@@ -462,7 +462,11 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
        overflow-x:auto;overflow-y:hidden;white-space:nowrap}
   #pal .pitem{display:inline-block;min-height:44px}
   #graphWrap{left:0;top:146px}
-  #toast{bottom:120px}
+  /* 안내는 **튜토리얼 판 위**에 뜬다. 예전엔 고정 120px 이라 튜토리얼이 열려 있으면
+     그 위에 겹쳐 판을 덮었다(실기 스크린샷). 판 높이를 알고 있으니 그만큼 올린다. */
+  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px));left:8px;right:8px;
+         transform:none;width:auto;max-width:100%}
+  #toast .tmsg{max-width:100%}
 }
 
 /* 조작 수단은 **폭이 아니라 포인터 종류**로 갈린다. 768px 태블릿은 넓지만 손가락으로
@@ -5608,15 +5612,37 @@ function stepHandCraft(dt) {
 }
 
 // --- 토스트 ------------------------------------------------------------------
+// 같은 말이 여러 번 나오면 **겹쳐 쌓지 않고 하나로 합친다.** 예전에는 자동화가
+// 자재 부족을 만날 때마다 한 줄씩 쌓여 다섯 줄이 화면을 덮었다(실기 스크린샷 ·
+// 녹화 프레임 둘 다에서 나왔다). 폰에서는 그 다섯 줄이 튜토리얼 판을 통째로 가린다.
+// 반복은 정보가 아니라 소음이다 — 몇 번째인지만 알면 된다.
 function toast(msg, kind) {
   var host = document.getElementById('toast');
   if (!host) return;
+  var last = host.lastElementChild;
+  if (last && last.getAttribute('data-msg') === msg) {
+    var n = (+last.getAttribute('data-n') || 1) + 1;
+    last.setAttribute('data-n', String(n));
+    last.textContent = msg + '  ×' + n;
+    // 되풀이되는 동안은 사라지지 않게 시계를 다시 건다
+    clearTimeout(+last.getAttribute('data-timer') || 0);
+    last.setAttribute('data-timer', String(setTimeout(function () {
+      if (last.parentNode) last.parentNode.removeChild(last);
+    }, 3600)));
+    return;
+  }
   var d = document.createElement('div');
   d.className = 'tmsg' + (kind ? ' ' + kind : '');
   d.textContent = msg;
+  d.setAttribute('data-msg', msg);
+  d.setAttribute('data-n', '1');
   host.appendChild(d);
-  setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 3600);
-  while (host.children.length > 5) host.removeChild(host.firstChild);
+  d.setAttribute('data-timer', String(setTimeout(function () {
+    if (d.parentNode) d.parentNode.removeChild(d);
+  }, 3600)));
+  // 폰에서는 세 줄만 남긴다 — 그 이상은 판을 덮는다
+  var cap = (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) ? 3 : 5;
+  while (host.children.length > cap) host.removeChild(host.firstChild);
 }
 
 // --- 건설 도구 ---------------------------------------------------------------
@@ -9629,6 +9655,8 @@ window.__GAME = {
     // 녹화·시연용 — 튜토리얼 패널이 공장을 가린다
     closeTutor: function () { tutorial.on = false; renderTutorial(); return true; },
     closeHelp: function () { closeHelp(); },
+    // 안내(토스트)는 화면 한복판을 차지한다 — 쌓임·합치기를 시험이 직접 재게 연다
+    toast: function (msg, kind) { toast(msg, kind); return true; },
     openHelp: function () { document.getElementById('help').style.display = 'block'; },
     openLogic: function (id) { var e = entities[id]; if (!e) return false; openLogic(e); return true; },
     // 제어기는 문장 화면이 먼저 열린다. 회로 DOM 을 보는 시험은 이걸로 전환한다.

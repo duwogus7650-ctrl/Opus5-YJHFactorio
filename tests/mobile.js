@@ -595,6 +595,35 @@
         '빈 자리를 눌러 붙여넣기 → 새로 생긴 건물 ' + pastedN + '개 (담은 ' + capt.length + '개)');
       if (bpBtn) tap(bpBtn, 10, 10);          // 모드 해제하고 넘긴다
 
+      // ---------- 2.8 같은 안내가 쌓여 판을 덮지 않는가 ---------------------
+      // 자동화가 자재 부족을 만날 때마다 한 줄씩 쌓여 다섯 줄이 화면을 덮었다
+      // (실기 스크린샷 · 녹화 프레임 둘 다). 폰에서는 그게 튜토리얼 판을 통째로 가린다.
+      // 반복은 정보가 아니라 소음이다 — 몇 번째인지만 알면 된다.
+      var tHost = document.getElementById('toast');
+      tHost.innerHTML = '';
+      for (var ti2 = 0; ti2 < 5; ti2++) G.ui.toast('재료가 부족하다', 'bad');
+      var rows = tHost.children.length;
+      var txt = tHost.lastElementChild ? tHost.lastElementChild.textContent : '';
+      chk('mobile.repeatedToastsCoalesce',
+        rows === 1 && txt.indexOf('×5') >= 0,
+        '같은 말을 5번 → 줄 ' + rows + '개 · 마지막 줄 "' + txt + '" (한 줄로 합치고 횟수를 적어야)');
+
+      // 다른 말은 따로 뜬다 — 합치기가 **아무것이나** 합쳐 버리면 안 된다(음성 대조군)
+      G.ui.toast('다른 안내', 'good');
+      chk('mobile.differentToastsStaySeparate', tHost.children.length === 2,
+        '다른 말을 하나 더 → 줄 ' + tHost.children.length + '개 (2개여야)');
+
+      // 그리고 튜토리얼 판을 덮지 않아야 한다
+      var tRect = tHost.getBoundingClientRect();
+      var tutRect = panelBox('tutor');
+      chk('mobile.toastsDoNotCoverTutorial',
+        !NARROW || !tutRect || tRect.bottom <= tutRect.t + 1,
+        (NARROW
+          ? ('안내 줄 아래끝 ' + Math.round(tRect.bottom) + 'px · 튜토리얼 판 윗끝 ' +
+             (tutRect ? Math.round(tutRect.t) : '없음') + 'px (안내가 판 위에 떠야 한다)')
+          : '(넓은 레이아웃 — 해당 없음)'));
+      tHost.innerHTML = '';
+
       // ---------- 3. 키보드 없이 되는가 ------------------------------------
       // 폰에는 키보드가 없다. R(회전)·T(연구)·H(도움말)이 단축키뿐이면
       // 그 기능은 폰에서 **존재하지 않는 기능**이다.

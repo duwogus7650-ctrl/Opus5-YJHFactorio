@@ -775,6 +775,22 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 같은 안내가 쌓여 판을 덮었다 (실기 스크린샷 · 녹화 프레임 둘 다)
+    ("같은 안내를 합치지 않고 계속 쌓는다", "50_ui.js",
+     "  if (last && last.getAttribute('data-msg') === msg) {".encode("utf-8"),
+     "  if (false) {".encode("utf-8"),
+     ["mobile.repeatedToastsCoalesce"], "mobile.js"),
+
+    ("다른 안내까지 한 줄로 합쳐 버린다", "50_ui.js",
+     "  if (last && last.getAttribute('data-msg') === msg) {".encode("utf-8"),
+     "  if (last) {".encode("utf-8"),
+     ["mobile.differentToastsStaySeparate"], "mobile.js"),
+
+    ("안내를 튜토리얼 판 위로 안 올린다", "shell.html",
+     "  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px));left:8px;right:8px;".encode("utf-8"),
+     "  #toast{bottom:120px;left:8px;right:8px;".encode("utf-8"),
+     ["mobile.toastsDoNotCoverTutorial"], "mobile.js"),
+
     # 청사진은 마우스 경로에만 있었다 — 폰에서는 담기도 붙여넣기도 안 됐다
     ("청사진 담기를 손가락으로 못 한다", "50_ui.js",
      "    if (bpMode === 'sel') { tch.mode = 'bpsel'; bpSelStart = { x: hoverT.x, y: hoverT.y }; return; }".encode("utf-8"),

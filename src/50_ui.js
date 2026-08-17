@@ -103,15 +103,37 @@ function stepHandCraft(dt) {
 }
 
 // --- 토스트 ------------------------------------------------------------------
+// 같은 말이 여러 번 나오면 **겹쳐 쌓지 않고 하나로 합친다.** 예전에는 자동화가
+// 자재 부족을 만날 때마다 한 줄씩 쌓여 다섯 줄이 화면을 덮었다(실기 스크린샷 ·
+// 녹화 프레임 둘 다에서 나왔다). 폰에서는 그 다섯 줄이 튜토리얼 판을 통째로 가린다.
+// 반복은 정보가 아니라 소음이다 — 몇 번째인지만 알면 된다.
 function toast(msg, kind) {
   var host = document.getElementById('toast');
   if (!host) return;
+  var last = host.lastElementChild;
+  if (last && last.getAttribute('data-msg') === msg) {
+    var n = (+last.getAttribute('data-n') || 1) + 1;
+    last.setAttribute('data-n', String(n));
+    last.textContent = msg + '  ×' + n;
+    // 되풀이되는 동안은 사라지지 않게 시계를 다시 건다
+    clearTimeout(+last.getAttribute('data-timer') || 0);
+    last.setAttribute('data-timer', String(setTimeout(function () {
+      if (last.parentNode) last.parentNode.removeChild(last);
+    }, 3600)));
+    return;
+  }
   var d = document.createElement('div');
   d.className = 'tmsg' + (kind ? ' ' + kind : '');
   d.textContent = msg;
+  d.setAttribute('data-msg', msg);
+  d.setAttribute('data-n', '1');
   host.appendChild(d);
-  setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 3600);
-  while (host.children.length > 5) host.removeChild(host.firstChild);
+  d.setAttribute('data-timer', String(setTimeout(function () {
+    if (d.parentNode) d.parentNode.removeChild(d);
+  }, 3600)));
+  // 폰에서는 세 줄만 남긴다 — 그 이상은 판을 덮는다
+  var cap = (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) ? 3 : 5;
+  while (host.children.length > cap) host.removeChild(host.firstChild);
 }
 
 // --- 건설 도구 ---------------------------------------------------------------
