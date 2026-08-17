@@ -775,6 +775,12 @@ MUTATIONS = [
      ['ui.editorViewKeptOnSameCtrl'], 'uismoke.js'),
 
     # ---- 모바일·터치 (mobile.js 로 판정, chromium+mobile 기기) ----
+    # 계기 칸을 다시 넓히면 마지막 칸([프레임])이 화면 밖으로 밀린다
+    ("상단 계기 칸을 다시 넓혀 마지막 칸을 밀어낸다", "shell.html",
+     "  #top .stat{min-width:0;padding:3px 4px 4px;flex:1 1 0}".encode("utf-8"),
+     "  #top .stat{min-width:56px;padding:4px 6px 5px}".encode("utf-8"),
+     ["mobile.allGaugesVisibleWithoutScrolling"], "mobile.js"),
+
     # 성능 — 화면 밖까지 그리기 시작하면 폰에서 프레임이 무너진다
     ("보이는 범위를 지도 전체로 넓힌다 (화면 밖까지 그린다)", "45_render.js",
      "    x0: Math.max(0, Math.floor(cam.x - halfW) - 1), x1: Math.min(W - 1, Math.ceil(cam.x + halfW) + 1),".encode("utf-8"),

@@ -414,6 +414,24 @@
                 : '넓은 레이아웃 — 도크라 처음부터 보여야 한다: ' + onScreen(firstBuild)) +
         (firstBuild ? ' · 위치 ' + JSON.stringify(firstBuild.getBoundingClientRect()) : ' · 항목 없음'));
 
+      // ---------- 2.3 상단 계기가 밀지 않고 다 보이는가 ----------------------
+      // [프레임] 계기를 맨 끝에 붙였더니 화면 밖으로 밀려 사용자가 "어디를 열어?" 라고
+      // 물었다. 밀어야 보이는 계기는 사실상 없는 계기다. 여덟 칸이 폰 폭 안에 다
+      // 들어가야 한다(더 좁은 기기를 위해 스크롤은 보루로 남긴다).
+      var topEl = document.getElementById('top');
+      var stats = topEl.querySelectorAll('.stat');
+      var lastStat = stats[stats.length - 1];
+      var lastR = lastStat ? lastStat.getBoundingClientRect() : null;
+      var lastLabel = lastStat ? lastStat.querySelector('.k').textContent : '';
+      chk('mobile.allGaugesVisibleWithoutScrolling',
+        !NARROW || (stats.length >= 8 && topEl.scrollWidth <= topEl.clientWidth + 2 &&
+                    lastR.right <= VW + 1 && lastLabel === '프레임'),
+        (NARROW
+          ? ('계기 ' + stats.length + '칸 · 줄 내용 폭 ' + topEl.scrollWidth + ' vs 보이는 폭 ' +
+             topEl.clientWidth + ' · 마지막 칸 "' + lastLabel + '" 오른쪽 끝 ' +
+             Math.round(lastR.right) + ' (화면 ' + VW + ')')
+          : '(넓은 레이아웃 — 해당 없음)'));
+
       // ---------- 2.35 제어기 계기 줄이 화면 안에 있는가 --------------------
       // 제어기가 값을 화면 위에 띄우는 줄이다. 가운데 정렬 + 폭 제한이 없어서 값이
       // 서너 개만 넘어도 양옆이 잘렸다 — **녹화 영상에서 처음 드러났다.** 게이트는

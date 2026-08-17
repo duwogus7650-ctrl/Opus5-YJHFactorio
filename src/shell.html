@@ -370,7 +370,11 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
        border-radius:0;border-left:none;border-right:none;
        padding-top:var(--safe-t);
        overflow-x:auto;-webkit-overflow-scrolling:touch;justify-content:flex-start}
-  #top .stat{min-width:56px;padding:4px 6px 5px}
+  /* 계기 8칸이 390px 안에 다 들어가야 한다 — [프레임] 이 맨 끝이라, 넘치면 밀어야
+     보이고 그러면 사실상 없는 계기가 된다(사용자가 '어디를 열어?' 라고 물었다).
+     스크롤은 더 좁은 기기를 위한 보루로 남겨 둔다. */
+  #top .stat{min-width:0;padding:3px 4px 4px;flex:1 1 0}
+  #top .k{font-size:8px;letter-spacing:.06em;margin-bottom:2px}
   /* 제어기 계기 줄. 가운데 정렬 + 폭 제한이 없어서 값이 서너 개만 넘어도 양옆이
      화면 밖으로 잘렸다(녹화 프레임에서 드러났다 — 왼쪽 값이 반쯤 잘린 채였다).
      폰에서는 화면 폭에 맞추고, 넘치면 옆으로 밀어 볼 수 있게 한다. */
@@ -379,7 +383,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
            justify-content:flex-start;scrollbar-width:none}
   #dispRow::-webkit-scrollbar{display:none}
   #dispRow .disp{flex:0 0 auto}
-  #top .v{font-size:13px}
+  #top .v{font-size:12px;padding:2px 3px}
 
   /* 패널은 전부 바닥 시트로. 기본은 숨김이고 조작 바가 하나씩 연다. */
   /* 시트는 조작 바 위에, 그리고 **튜토리얼 판 위에** 앉는다. --tutor-h 는 튜토리얼이
