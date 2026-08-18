@@ -454,6 +454,7 @@ window.loadGame = loadGame;
 // 판정은 전부 이 계약(반환 JSON 필드)으로만 한다. 화면 문자열 눈대중 금지.
 window.__GAME = {
   version: VERSION,
+  buildId: function () { return BUILD_ID; },
   gfx: function () {
     // 오염 표시는 화면 상태다 — 켜졌는지 밖에서 물을 창구가 없으면 폰의 [오염 보기]
     // 버튼이 실제로 뭘 켰는지 검정할 수 없다.

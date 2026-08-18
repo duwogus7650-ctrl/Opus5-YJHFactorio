@@ -969,6 +969,27 @@
         '[오염 보기] 화면 안=' + pollSeen + ' · ' + pollOn0 + ' → ' + pollOn1 +
         ' → ' + G.gfx().pollution + ' (P 키는 폰에 없다)');
 
+      // **버튼이 지금 상태를 말하는가.** 실기기에서 "눌러도 반응이 없다"는 보고가 왔다.
+      // 상태는 실제로 뒤집히고 있었지만(위 게이트가 그것만 봤다), 기본값이 켜짐인데
+      // 버튼은 꺼진 모양이라 첫 탭이 끄는 것이었고, 초반 판은 오염이 거의 없어 화면도
+      // 그대로였다. **뒤집혔는가와 뒤집힌 것이 보이는가는 다른 질문이다.**
+      var pollLabel0 = null, pollLabel1 = null, pollToast = '';
+      if (pollBtn) {
+        openRightSheet(true);
+        pollLabel0 = pollBtn.textContent.trim() + '|' + pollBtn.className;
+        var pr2 = pollBtn.getBoundingClientRect();
+        tap(pollBtn, pr2.left + pr2.width / 2, pr2.top + pr2.height / 2);
+        pollLabel1 = pollBtn.textContent.trim() + '|' + pollBtn.className;
+        var tEl = document.querySelector('#toast .tmsg');
+        pollToast = tEl ? tEl.textContent.trim() : '';
+        tap(pollBtn, pr2.left + pr2.width / 2, pr2.top + pr2.height / 2);
+        openRightSheet(false);
+      }
+      chk('mobile.pollutionButtonSaysItsState',
+        !!pollLabel0 && pollLabel0 !== pollLabel1 && /오염/.test(pollToast),
+        '버튼 ' + pollLabel0 + ' → ' + pollLabel1 + ' · 안내 "' + pollToast +
+        '" (라벨도 안 바뀌고 안내도 없으면 폰에서는 아무 일도 안 일어난 것과 같다)');
+
       // ---------- 8.97 안드로이드 주소창 (100vh 함정) -------------------------
       // 안드로이드 크롬·삼성 인터넷은 주소창이 스크롤에 따라 들락거린다. 100vh 는
       // **주소창이 숨은 큰 높이**라, 주소창이 보이는 동안 판이 그만큼 화면 밖으로

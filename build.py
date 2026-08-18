@@ -104,6 +104,16 @@ def main():
         print('FATAL: 소스에 </script 문자열이 있다 — 인라인하면 스크립트가 잘린다')
         return 2
 
+    # 빌드 도장 — 소스 전체의 해시 앞 8자리. 시각이 아니라 내용으로 정한다
+    # (같은 소스는 같은 도장이라 배포본 바이트가 재현된다).
+    import hashlib
+    build_id = hashlib.sha1(game.encode('utf-8')).hexdigest()[:8]
+    stamp_mark = "var BUILD_ID = 'dev';"
+    if stamp_mark not in game:
+        print('FATAL: BUILD_ID 자리표시자를 못 찾았다 — 도장 없이 나가면 폰이 어느 사본인지 알 수 없다')
+        return 2
+    game = splice(game, stamp_mark, "var BUILD_ID = '" + build_id + "';")
+
     block = '<script>\n(function(){\n"use strict";\n' + game + '\n})();\n</' + 'script>'
     out = splice(shell, MARK, block)
 

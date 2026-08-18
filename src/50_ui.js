@@ -536,10 +536,22 @@ function rightClickAction() {
   }
 }
 // 오염 표시 토글 — **키와 버튼이 같은 코드를 쓴다.** 두 곳에 나눠 쓰면 갈린다.
+//
+// **눌러도 아무 일도 안 일어난 것처럼 보였다**(실기기). 이유가 둘이다:
+//  (1) 기본값이 '켜짐' 인데 버튼은 꺼진 모양이라, 첫 탭이 오히려 끄는 것이었다.
+//  (2) 초반 판에는 오염이 거의 없어 켜도 꺼도 화면이 똑같다.
+// 그래서 버튼이 지금 상태를 이름으로 말하게 하고, 누르면 안내 줄을 띄운다.
+function syncPollBtn() {
+  var b = document.getElementById('pollBtn');
+  if (!b) return;
+  b.className = showPollution ? 'on' : '';
+  b.textContent = showPollution ? '오염 보기 켬' : '오염 보기 끔';
+}
 function togglePollution() {
   showPollution = !showPollution;
-  var b = document.getElementById('pollBtn');
-  if (b) b.className = showPollution ? 'on' : '';
+  syncPollBtn();
+  toast(showPollution ? '오염 표시 켬 — 오염이 퍼진 자리가 붉게 보인다'
+                      : '오염 표시 끔');
   return showPollution;
 }
 function pipetteTool() {
@@ -1154,6 +1166,8 @@ function closeHelp() { document.getElementById('help').style.display = 'none'; }
 
 function fillHelp() {
   document.getElementById('helpBody').innerHTML = [
+    '<p class="dim" style="font-size:11px;margin:0 0 8px">빌드 <b id="buildStamp">' + BUILD_ID + '</b> · v' + VERSION +
+    ' — 폰이 예전 사본을 열고 있는지 여기서 갈린다.</p>',
     '<p>여기서 당신은 공장을 <b>짓는 사람</b>이 아니라 <b>공장의 제어계를 설계하는 사람</b>이다.',
     '벨트와 조립기는 다른 게임에도 있다. 이 게임에만 있는 것은 <b>제어기</b>다 —',
     '노드를 끌어다 배선해서 공장이 스스로 판단하게 만든다. 정답 배선은 없다.</p>',
@@ -1350,6 +1364,7 @@ function bindSaveButtons() {
   if (lb) lb.onclick = function () { loadGame(); };
   var pb = document.getElementById('pollBtn');
   if (pb) pb.onclick = function () { togglePollution(); };
+  syncPollBtn();          // 처음 그릴 때부터 상태를 말하게 한다
 }
 
 function bindMini() {

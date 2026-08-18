@@ -100,6 +100,20 @@ MUTATIONS = [
      b'#build{max-height:calc(100vh - 16px)}',
      ['mobile.viewportHeightUsesDvh'], 'mobile.js'),
 
+    # 빌드가 도장을 안 박으면 폰이 어느 사본을 열었는지 알 수 없다.
+    ('stamp: 빌드가 도장을 안 박는다', 'build.py',
+     b"    game = splice(game, stamp_mark, \"var BUILD_ID = '\" + build_id + \"';\")",
+     b'    pass',
+     ['ui.buildStampIsShown'], 'uismoke.js'),
+
+    # 오염 버튼이 상태를 말하지 않으면 폰에서는 '반응이 없다' 로 보인다(실기기 보고).
+    # 라벨만 지우는 돌연변이는 안 걸린다 — 강조(class)가 남아 여전히 상태를 말하기
+    # 때문이다. 버튼 쪽 표시를 통째로 죽여야 이 게이트가 무엇을 보는지 드러난다.
+    ('phone: 오염 버튼이 상태를 말하지 않는다', '50_ui.js',
+     b'function syncPollBtn() {',
+     b'function syncPollBtn() { return;',
+     ['mobile.pollutionButtonSaysItsState'], 'mobile.js'),
+
     # --- 폰 조작 ---------------------------------------------------------
     ('phone: 오염 보기 버튼이 아무 일도 안 한다', '50_ui.js',
      b'  if (pb) pb.onclick = function () { togglePollution(); };',
@@ -914,8 +928,11 @@ MUTATIONS = [
 
     # 실기 3차 제보 — 연구 판이 상단 계기를 덮었고, 튜토리얼을 닫으면 못 돌아왔다.
     ("시트 높이를 다시 62vh 로 (상단 계기를 덮는다)", "shell.html",
-     "    max-height:calc(100vh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));".encode("utf-8"),
-     "    max-height:62vh;".encode("utf-8"),
+     # dvh 짝이 뒤에 오므로 **두 줄을 함께** 바꿔야 실제 높이가 바뀐다.
+     # 앞줄만 62vh 로 돌렸더니 뒤의 dvh 가 덮어써서 아무 일도 안 일어났다(MISS).
+     ("    max-height:calc(100vh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));" + chr(10) +
+      "    max-height:calc(100dvh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));").encode("utf-8"),
+     ("    max-height:62vh;" + chr(10) + "    max-height:62dvh;").encode("utf-8"),
      ["mobile.sheetsKeepTopBarVisible"], "mobile.js"),
 
     ("튜토리얼을 닫아도 되돌아올 손잡이를 안 띄운다", "52_tutorial.js",
@@ -951,8 +968,9 @@ MUTATIONS = [
      ["mobile.helpFitsOnScreenWhenOpen", "mobile.techPanelFitsOnScreen"], "mobile.js"),
 
     ("손가락 화면 규칙이 좁은 화면 시트 높이까지 덮는다", "shell.html",
-     ("  @media (min-width: 721px){" + chr(10) + "    #build,#right{max-height:calc(100vh - 72px)}" + chr(10) + "  }").encode("utf-8"),
-     "  #build,#right{max-height:calc(100vh - 72px)}".encode("utf-8"),
+     ("  @media (min-width: 721px){" + chr(10) +
+      "    #build,#right{max-height:calc(100vh - 72px);max-height:calc(100dvh - 72px)}" + chr(10) + "  }").encode("utf-8"),
+     "  #build,#right{max-height:calc(100vh - 72px);max-height:calc(100dvh - 72px)}".encode("utf-8"),
      ["mobile.openSheetKeepsTopBarVisible"], "mobile.js"),
 
     # 앵커는 **유일해야 한다.** 처음엔 bottom:calc(...) 한 줄만 잡았다가 #build 무리와

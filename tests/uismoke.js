@@ -946,6 +946,19 @@
         '빈 땅 클릭 → 열차 ' + afterBad + '대(0이어야 · 조건 발생 확인) · ' +
         '레일 위 클릭 → ' + afterGood + '대 (1이어야)');
 
+      // --- 빌드 도장 -----------------------------------------------------
+      // 폰이 캐시된 예전 사본을 열고 있어도 화면만 봐서는 알 수 없다. 도움말에 찍힌
+      // 도장이 그 자리를 가른다 — 실기기 보고("복제 버튼이 안 보인다")가 코드 문제인지
+      // 사본 문제인지 확인하는 데 반나절을 쓴 뒤에 넣었다.
+      G.ui.openHelp ? G.ui.openHelp() : (document.getElementById('help').style.display = 'block');
+      var stampEl = document.getElementById('buildStamp');
+      var stampTxt = stampEl ? stampEl.textContent.trim() : '';
+      chk('ui.buildStampIsShown',
+        !!stampEl && stampTxt === G.buildId() && /^[0-9a-f]{8}$/.test(stampTxt),
+        '도움말의 빌드 도장 "' + stampTxt + '" · G.buildId() "' + G.buildId() +
+        '" (dev 이거나 비어 있으면 빌드가 도장을 안 박은 것이다)');
+      G.ui.closeHelp();
+
       // --- 석유 설비 인스펙터 ------------------------------------------
       // 유체 칸은 물·증기만 보여주고 있었다. 펌프잭을 눌러도 뽑은 원유가 안 보이면
       // 정제소가 노는 이유(공급이 없다 / 하류가 막혔다)를 구분할 길이 없다.
