@@ -1163,7 +1163,15 @@ window.__GAME = {
     closeHelp: function () { closeHelp(); },
     // 안내(토스트)는 화면 한복판을 차지한다 — 쌓임·합치기를 시험이 직접 재게 연다
     toast: function (msg, kind) { toast(msg, kind); return true; },
-    openHelp: function () { document.getElementById('help').style.display = 'block'; },
+    openHelp: function () {
+      document.getElementById('help').style.display = 'block';
+      refreshOfflineStatus();          // 사람이 여는 길과 같은 것을 보여준다
+    },
+    // 오프라인 준비 상태를 글자 그대로 내준다 — 시험이 '무엇이 보이는가' 를 물을 창구
+    offlineStatusText: function () {
+      var el = document.getElementById('swStat');
+      return el ? el.textContent.trim() : null;
+    },
     openLogic: function (id) { var e = entities[id]; if (!e) return false; openLogic(e); return true; },
     // 제어기는 문장 화면이 먼저 열린다. 회로 DOM 을 보는 시험은 이걸로 전환한다.
     showGraph: function () { showRules(false); return true; },

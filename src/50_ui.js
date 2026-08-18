@@ -535,6 +535,29 @@ function rightClickAction() {
     treeCensusDone = false;
   }
 }
+// 이 기기가 오프라인으로 열 준비가 됐는가 — **기기가 스스로 답하게 한다.**
+// 실기기에서 비행기 모드에 '오프라인 상태입니다' 가 떴는데, 화면만 봐서는 원인이
+// (1) 아직 저장이 안 된 것인지 (2) 저장은 됐는데 서비스워커가 안 맡은 것인지
+// 알 수 없었다. 저장 여부는 캐시를 직접 뒤져 보면 되고, 맡았는지는 controller 가 답한다.
+function refreshOfflineStatus() {
+  var el = document.getElementById('swStat');
+  if (!el) return;
+  function say(t, c) { el.textContent = t; el.style.color = c; }
+  if (location.protocol === 'file:') { say('필요 없음 — 파일로 열었다', 'var(--run)'); return; }
+  if (!('serviceWorker' in navigator) || !window.caches) { say('이 브라우저는 지원 안 함', 'var(--warn)'); return; }
+  var ctrl = !!navigator.serviceWorker.controller;
+  caches.keys().then(function (ks) {
+    return Promise.all(ks.map(function (k) {
+      return caches.open(k).then(function (c) { return c.match(location.href, { ignoreSearch: true }); });
+    }));
+  }).then(function (hits) {
+    var saved = hits.some(function (h) { return !!h; });
+    if (saved && ctrl) say('준비됨 — 비행기 모드에서도 열린다', 'var(--run)');
+    else if (ctrl) say('저장 중… 잠시 뒤 이 창을 다시 열어 보라', 'var(--warn)');
+    else say('아직 아니다 — 온라인에서 한 번 더 열면 저장된다', 'var(--warn)');
+  }).catch(function () { say('알 수 없음', 'var(--warn)'); });
+}
+
 // 오염 표시 토글 — **키와 버튼이 같은 코드를 쓴다.** 두 곳에 나눠 쓰면 갈린다.
 //
 // **눌러도 아무 일도 안 일어난 것처럼 보였다**(실기기). 이유가 둘이다:
@@ -1161,13 +1184,15 @@ function toggleHelp() {
   var opening = t.style.display !== 'block';
   if (opening) closeSheets();
   t.style.display = opening ? 'block' : 'none';
+  // 열 때마다 새로 묻는다 — 저장은 백그라운드에서 끝나므로 한 번 그려 둔 값은 곧 낡는다
+  if (opening) refreshOfflineStatus();
 }
 function closeHelp() { document.getElementById('help').style.display = 'none'; }
 
 function fillHelp() {
   document.getElementById('helpBody').innerHTML = [
     '<p class="dim" style="font-size:11px;margin:0 0 8px">빌드 <b id="buildStamp">' + BUILD_ID + '</b> · v' + VERSION +
-    ' — 폰이 예전 사본을 열고 있는지 여기서 갈린다.</p>',
+    ' — 폰이 예전 사본을 열고 있는지 여기서 갈린다.<br>오프라인 준비: <b id="swStat">확인 중…</b></p>',
     '<p>여기서 당신은 공장을 <b>짓는 사람</b>이 아니라 <b>공장의 제어계를 설계하는 사람</b>이다.',
     '벨트와 조립기는 다른 게임에도 있다. 이 게임에만 있는 것은 <b>제어기</b>다 —',
     '노드를 끌어다 배선해서 공장이 스스로 판단하게 만든다. 정답 배선은 없다.</p>',

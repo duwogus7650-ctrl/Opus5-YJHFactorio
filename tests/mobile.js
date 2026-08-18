@@ -977,6 +977,10 @@
       if (pollBtn) {
         openRightSheet(true);
         pollLabel0 = pollBtn.textContent.trim() + '|' + pollBtn.className;
+        // **앞선 검사의 안내 줄이 아직 떠 있다.** 태블릿에서 '청사진 회전 — 3x5' 를
+        // 읽고 실패했다 — 첫 줄을 읽으면 남의 말을 읽는다. 비우고 나서 누른다.
+        var toastBox = document.getElementById('toast');
+        if (toastBox) toastBox.innerHTML = '';
         var pr2 = pollBtn.getBoundingClientRect();
         tap(pollBtn, pr2.left + pr2.width / 2, pr2.top + pr2.height / 2);
         pollLabel1 = pollBtn.textContent.trim() + '|' + pollBtn.className;
@@ -1202,6 +1206,22 @@
       // (3회 측정 ±1%). 10ms 는 그 위 약 1.5배이고, "폰이 이 기계보다 1.5배쯤 느려도
       // 한 프레임 안에 든다" 는 가정이다. **가정이라는 것을 여기 적어 둔다** — 실기
       // 프레임률은 화면 위 [프레임] 계기로 그 폰에서 직접 봐야 한다.
+      // **재기 전에 판을 정리한다.** 이 게이트는 드라이버 끝에 있어서 앞선 검사들이
+      // 열어 둔 것(인스펙터·시트·미니맵)을 그대로 물려받는다. 그것들이 0.2초마다
+      // 다시 그려지는 동안 60프레임을 재면 그 비용이 섞여 들어간다 — 같은 장면이
+      // 격리 측정에서는 5.5 ms/Mpx, 드라이버 끝에서는 7.9 ms/Mpx 로 나왔다.
+      // 벤치마크는 자기 조건을 스스로 세워야 한다.
+      G.ui.closeHelp(); G.ui.closeTech(); G.ui.closeLogic(); G.ui.clearTool();
+      G.ui.select(-1);                       // 인스펙터를 닫는다(없는 id 로 선택 해제)
+      var sheetB = document.getElementById('btnSheetBuild');
+      var sheetR = document.getElementById('btnSheetRight');
+      function closeSheet(btn, panelId) {
+        var el = document.getElementById(panelId);
+        if (!btn || !el || getComputedStyle(el).display === 'none') return;
+        var rb = btn.getBoundingClientRect();
+        tap(btn, rb.left + rb.width / 2, rb.top + rb.height / 2);
+      }
+      closeSheet(sheetB, 'build'); closeSheet(sheetR, 'right');
       G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(999999); G.powerCheat(true);
       G.research('steel');
       var perfN = 0;

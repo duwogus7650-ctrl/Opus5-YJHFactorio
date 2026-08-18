@@ -45,6 +45,18 @@ function line(ok, name, detail) {
     chk(controlled, 'offline.swTakesControl',
         '서비스워커가 이 판을 맡았는가 = ' + controlled + ' (안 붙으면 오프라인은 없다)');
 
+    // ---- 1.5) 게임이 스스로 "준비됐다"고 말하는가 --------------------------
+    // 실기기에서 비행기 모드에 '오프라인 상태입니다'가 떴는데, 화면만으로는 저장이
+    // 안 된 것인지 워커가 안 맡은 것인지 알 수 없었다. 이제 도움말이 그 답을 적는다.
+    // **그 문구가 실제 상태와 맞는지**를 여기서 검정한다(틀린 안내가 더 나쁘다).
+    await p.evaluate(() => window.__GAME.ui.openHelp());
+    await p.waitForTimeout(600);
+    const statTxt = await p.evaluate(() => window.__GAME.ui.offlineStatusText());
+    chk(!!statTxt && /준비됨/.test(statTxt), 'offline.gameSaysItIsReady',
+        '도움말의 오프라인 준비 = "' + statTxt + '" (여기서 준비됨이라고 적으면 ' +
+        '아래 비행기 모드 검사도 통과해야 한다 — 안 그러면 이 안내가 거짓말이다)');
+    await p.evaluate(() => window.__GAME.ui.closeHelp());
+
     // ---- 2) 네트워크를 끊고 새로고침 ---------------------------------------
     await ctx.setOffline(true);
     let booted = false, why = '';
