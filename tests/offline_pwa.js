@@ -155,6 +155,30 @@ function line(ok, name, detail) {
         ' · 도움말 문구 "' + (shown || '') + '"' +
         ' (안 뜨면 사용자는 옛 화면을 보며 안 고쳐졌다고 생각한다)');
 
+    // ---- 2.8) 탈출문 — 예전 사본에 갇힌 기기를 꺼내는가 --------------------
+    // 갱신 장치는 갱신되어야 할 물건 안에 있다. 예전 사본을 열고 있는 기기에는
+    // [지금 갱신] 버튼 자체가 없다(실기기가 정확히 그 상태였다). update.html 은
+    // 캐시에 없는 새 주소라 늘 네트워크에서 받아지고, 받자마자 캐시와 서비스워커를
+    // 걷어낸다. **저장은 건드리면 안 된다** — 만들던 공장이 날아가면 최악이다.
+    await p.evaluate(() => localStorage.setItem('lf-probe', 'keep-me'));
+    const beforeCaches = await p.evaluate(() => caches.keys().then(k => k.length));
+    await p.goto('http://127.0.0.1:' + PORT + '/update.html', { waitUntil: 'load' });
+    await p.waitForTimeout(1500);
+    const afterCaches = await p.evaluate(() => caches.keys().then(k => k.length));
+    const regsLeft = await p.evaluate(() =>
+      navigator.serviceWorker.getRegistrations().then(r => r.length));
+    const saveKept = await p.evaluate(() => localStorage.getItem('lf-probe'));
+    chk(beforeCaches > 0 && afterCaches === 0 && regsLeft === 0 && saveKept === 'keep-me',
+        'offline.escapeHatchClearsOldCopy',
+        '캐시 ' + beforeCaches + '개 → ' + afterCaches + '개 · 남은 서비스워커 ' + regsLeft +
+        ' · 게임 저장 보존=' + (saveKept === 'keep-me') +
+        ' (저장까지 지우면 만들던 공장이 날아간다)');
+    // 탈출문이 게임으로 데려가는지도 본다 — 지우기만 하고 못 열면 반쪽이다
+    await p.waitForFunction(() => !!window.__GAME, null, { timeout: 25000 }).catch(() => {});
+    const landed = await p.evaluate(() => (window.__GAME ? window.__GAME.buildId() : null));
+    chk(!!landed, 'offline.escapeHatchLandsInGame',
+        '탈출문에서 게임까지 도착 = ' + !!landed + ' · 도장 ' + landed);
+
     // ---- 3) 음성 대조군 — 서비스워커 없는 새 프로필 ------------------------
     const ctx2 = await b.newContext({ viewport: { width: 412, height: 883 } });
     await ctx2.setOffline(true);

@@ -66,6 +66,8 @@ self.addEventListener('fetch', function (e) {
   // 버전 표는 **캐시하지 않는다.** 캐시된 도장을 보고 '최신이다' 라고 답하면
   // 그 확인은 아무 일도 안 하는 것이다.
   if (url.pathname.indexOf('build.txt') >= 0) return;
+  // 탈출문도 캐시하지 않는다 — 캐시된 탈출문은 탈출문이 아니다.
+  if (url.pathname.indexOf('update.html') >= 0) return;
 
   e.respondWith(
     caches.open(CACHE).then(function (c) {
