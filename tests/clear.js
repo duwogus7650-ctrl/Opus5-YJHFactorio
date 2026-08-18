@@ -1837,8 +1837,37 @@
     return true;
   }
 
-  var STAGES = [stageCtrl1, stageCtrl2, stageCtrl3, stageCtrl4, stageSplitter, stageCtrl5],
-      stageDone = [0, 0, 0, 0, 0, 0];
+  // --- 제어기6 : 석유 라인을 다스린다 ----------------------------------------
+  // 심화 튜토리얼의 마지막 단계(oil-control)가 요구하는 배선이다 — 유체 잔량을
+  // 읽어 앞단(정제소)을 세운다. **이 주행이 그걸 안 밟으면 그 단계는 아무도 안 밟는
+  // 기능이 된다**(커버리지 게이트가 그래서 있다).
+  var ctrl6 = null, ctrl6Wired = false;
+  function stageCtrl6() {
+    if (ctrl6Wired) return true;
+    // **제어기를 새로 사지 않는다.** 두 번 헛디뎠다: 라인이 생긴 뒤에 사려 했더니
+    // 종료 100초 전이라 철판 재고 0 에 걸려 못 샀고(이 공장은 흐름은 넉넉해도 재고가
+    // 상시 0 이다), 미리 사 뒀더니 회로·철판을 먼저 가져가 **앞의 제어기 넷이 배선을
+    // 못 끝냈다**(심화 10/11 → 5/11). 이 계획은 한 줄을 당기면 그 아래가 굶는다.
+    // 배선은 재료를 안 먹으므로 이미 서 있는 제어기5에 얹는다 — 사람도 그렇게 한다.
+    if (!ctrl5 || !oilParts.ref || !oilParts.pj) return false;
+    ctrl6 = ctrl5;
+    var c = ctrl5;
+    // 가스가 남아돌면 정제소를 쉬게 한다. 광맥은 유한하고, 셋을 합치면 720kW 다.
+    var fl6 = nd(c, 'fluid', 20, 620); G.gCfg(c, fl6, 'ent', oilParts.pj);
+    var lim6 = nd(c, 'const', 20, 760); G.gCfg(c, lim6, 'value', 2000);
+    var cmp6 = nd(c, 'cmp', 260, 620); G.gCfg(c, cmp6, 'op', '<');
+    G.gLink(c, fl6, 0, cmp6, 0); G.gLink(c, lim6, 0, cmp6, 1);
+    var en6 = nd(c, 'enable', 520, 620); G.gCfg(c, en6, 'ent', oilParts.ref);
+    G.gLink(c, cmp6, 0, en6, 0);
+    var d61 = nd(c, 'display', 520, 760); G.gCfg(c, d61, 'label', '가스');
+    G.gLink(c, fl6, 0, d61, 0);
+    note('제어기6: 가스가 넘치면 정제소 정지');
+    ctrl6Wired = true;
+    return true;
+  }
+
+  var STAGES = [stageCtrl1, stageCtrl2, stageCtrl3, stageCtrl4, stageSplitter, stageCtrl5, stageCtrl6],
+      stageDone = [0, 0, 0, 0, 0, 0, 0];
 
   // 증기 발전소와 철도는 **사이클의 앞에서** 산다. 한 사이클 안의 순서가 곧
   // 우선순위인데(logistics 의 주석), 뒤에 두었더니 앞의 feed 가 재고를 기계
@@ -2273,7 +2302,12 @@
     out.measured.advMissing = advFail;
     chk('clear.advancedTutorialDone', advIds.length > 0 && advFail.length === 0,
       '심화 ' + (advIds.length - advFail.length) + '/' + advIds.length + '단계 통과' +
-      (advFail.length ? ' · 못 넘은 것: ' + advFail.join(',') : ''));
+      (advFail.length ? ' · 못 넘은 것: ' + advFail.join(',') : '') +
+      // **못 넘었을 때 무엇이 없었는지 같이 말한다.** 단계 이름만으로는 그 단계를
+      // 밟을 설비가 없었던 것인지, 있는데 배선이 아닌 것인지 구별할 수 없다.
+      ' · 제어기6(석유) ' + (ctrl6 ? '세움' : '못 세움') +
+      ' · 정제소 ' + (oilParts.ref ? 'O' : 'X') + ' · 회로 ' + (invNow()['circuit'] || 0) +
+      ' · 석유 단계 사유: ' + oilWhy);
 
     // **뚫린 자리를 같이 말한다.** 게임은 파괴 목록(무엇을·언제·어디서)을 이미
     // 들고 있는데 게이트는 개수만 보고했다. "손실 1" 로는 터렛을 더 세울지, 다른

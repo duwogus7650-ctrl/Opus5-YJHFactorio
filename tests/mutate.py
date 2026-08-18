@@ -120,6 +120,19 @@ MUTATIONS = [
      b'#mobBar button{padding:0 8px}',
      ['mobile.barLabelsDoNotWrap'], 'mobile.js'),
 
+    # 새 튜토리얼 단계가 실제로 무언가를 요구하는가 — 판정을 헐겁게 쓰면
+    # 빈 판에서 이미 참이 되어 그 단계는 아무것도 안 가르친다.
+    ('tutorial: 석유 단계가 아무 조건 없이 통과한다', '52_tutorial.js',
+     b"      if ((inventory['plastic'] || 0) >= 1) return true;",
+     b'      if (true) return true;',
+     ['tut.noStepIsAlreadyDone']),
+
+    # 석유 제어 단계는 40분 주행이 실제로 밟는지로 지킨다(커버리지).
+    ('tutorial: 석유 제어 단계 판정이 늘 거짓', '52_tutorial.js',
+     b"    check: function () { return ctrlFeeds('fluid', ['enable']); }",
+     b'    check: function () { return false; }',
+     ['clear.advancedTutorialDone'], 'clear.js'),
+
     # --- 폰 조작 ---------------------------------------------------------
     ('phone: 오염 보기 버튼이 아무 일도 안 한다', '50_ui.js',
      b'  if (pb) pb.onclick = function () { togglePollution(); };',

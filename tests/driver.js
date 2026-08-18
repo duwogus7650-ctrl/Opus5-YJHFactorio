@@ -1111,6 +1111,20 @@
         '손 조립 전 판정=' + gearBefore + '(false여야) → 톱니 1개 손 조립 후 ' + gearAfter +
         ' (true여야 · false면 안내가 시키는 대로 해도 단계가 안 넘어간다)');
 
+      // --- 어느 단계도 **시작하자마자 통과해서는 안 된다** ------------------
+      // 빈 판에서 이미 참인 판정은 아무것도 안 가르치고, 플레이어에게는 그 단계가
+      // 그냥 사라진 것처럼 보인다. 새 단계를 넣을 때 가장 쉽게 나는 실수라
+      // (판정을 느슨하게 쓰면 바로 이렇게 된다) 전 단계를 한 번에 훑는다.
+      G.reset(5150); G.clearEntities(); G.clearEnemies(); G.tutorialReset(true);
+      var allSteps = G.tutorialSteps(), preSat = [];
+      for (var ts = 0; ts < allSteps.length; ts++) {
+        if (G.tutorialCheckById(allSteps[ts].id)) preSat.push(allSteps[ts].id);
+      }
+      chk('tut.noStepIsAlreadyDone', preSat.length === 0,
+        '빈 판에서 이미 통과인 단계 ' + preSat.length + '개' +
+        (preSat.length ? ': ' + preSat.join(',') : '') + ' (있으면 그 단계는 아무것도 안 가르친다) · ' +
+        '전체 ' + allSteps.length + '단계');
+
       // ================= 8d. 심화 과정 (부하 차단 · 방어) ==================
       // 심화 단계는 "노드를 놓았는가"가 아니라 **신호가 목적지까지 흐르는가**로 판정한다.
       // 놓기만 한 노드는 아무것도 안 하므로, 그걸 통과시키면 게이트가 거짓말을 한다.
