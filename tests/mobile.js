@@ -1012,6 +1012,44 @@
         '100vh ' + vhHits + '곳 · 100dvh ' + dvhHits + '곳 (dvh 짝이 모자라면 안드로이드에서 ' +
         '주소창이 보이는 동안 그만큼 잘린다)');
 
+      // ---------- 8.98 조작 바 글자가 접히는가 --------------------------------
+      // 실기기 스크린샷에서 '청사 진'·'도움 말' 로 두 줄이 됐다. 게이트는 버튼의
+      // **크기와 위치만** 재고 있어서, 그 안의 글자가 접히는 것은 한 번도 안 봤다.
+      // 줄 수는 텍스트 노드에 Range 를 걸어야 정확히 나온다(버튼 높이로는 못 본다 —
+      // min-height 44px 이라 두 줄이어도 높이가 안 변한다).
+      function labelLines(btn) {
+        var tn = btn.firstChild;
+        if (!tn || tn.nodeType !== 3) return -1;
+        var rg = document.createRange();
+        rg.selectNodeContents(tn);
+        return rg.getClientRects().length;
+      }
+      var wrapBad = [], clipBad = [];
+      var barBtns = document.querySelectorAll('#mobBar button');
+      for (var bb = 0; bb < barBtns.length; bb++) {
+        var ln = labelLines(barBtns[bb]);
+        if (ln > 1) wrapBad.push(barBtns[bb].textContent.trim() + ':' + ln + '줄');
+        if (barBtns[bb].scrollWidth > barBtns[bb].clientWidth + 1) {
+          clipBad.push(barBtns[bb].textContent.trim());
+        }
+      }
+      // **글자가 커지는 판도 본다.** 삼성 기기의 '글자 크게' 설정처럼 글자만 부푸는
+      // 상황에서 접히면, 우리가 정한 크기가 아니라 사용자의 설정이 화면을 정한다.
+      var stTest = document.createElement('style');
+      stTest.textContent = '#mobBar button{font-size:16px !important}';
+      document.head.appendChild(stTest);
+      var wrapBig = [];
+      for (var bg = 0; bg < barBtns.length; bg++) {
+        if (labelLines(barBtns[bg]) > 1) wrapBig.push(barBtns[bg].textContent.trim());
+      }
+      stTest.remove();
+      chk('mobile.barLabelsDoNotWrap',
+        wrapBad.length === 0 && clipBad.length === 0 && wrapBig.length === 0,
+        '기본 글자에서 접힌 것 ' + (wrapBad.join(',') || '없음') +
+        ' · 잘린 것 ' + (clipBad.join(',') || '없음') +
+        ' · 글자 1.33배에서 접힌 것 ' + (wrapBig.join(',') || '없음') +
+        ' (접히면 "청사 진" 처럼 보인다 — 실기기에서 그렇게 나왔다)');
+
       // ---------- 9. 탭 표적이 손가락 크기인가 ------------------------------
       // 접근성 지침의 최소 타깃은 44x44 CSS px 다. 그보다 작으면 오탭이 난다.
       // **재기 전에 인스펙터를 열어 둔다.** 이 검사는 화면에 보이는 것만 재는데,

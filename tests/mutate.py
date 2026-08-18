@@ -114,6 +114,12 @@ MUTATIONS = [
      b'function syncPollBtn() { return;',
      ['mobile.pollutionButtonSaysItsState'], 'mobile.js'),
 
+    # 실기기 스크린샷에서 '청사 진'·'도움 말' 로 접혔다 — 그 상태로 되돌린다.
+    ('phone: 조작 바 글자가 다시 접힌다', 'shell.html',
+     b'#mobBar button{white-space:nowrap;padding:0 2px;font-size:min(12px, 3.05vw)}',
+     b'#mobBar button{padding:0 8px}',
+     ['mobile.barLabelsDoNotWrap'], 'mobile.js'),
+
     # --- 폰 조작 ---------------------------------------------------------
     ('phone: 오염 보기 버튼이 아무 일도 안 한다', '50_ui.js',
      b'  if (pb) pb.onclick = function () { togglePollution(); };',

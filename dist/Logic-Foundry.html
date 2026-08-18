@@ -371,6 +371,14 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
    쪼그라들어 아무것도 읽을 수 없다 — 실측에서 기기 폭 390 에 뷰포트 586 이 나왔다.
    그래서 좁은 화면에서는 패널을 **바닥 시트**로 바꾸고 한 번에 하나만 띄운다. */
 #mobBar{display:none}
+/* **조작 바 글자는 접히면 안 된다.** 실기기 스크린샷에서 '청사 진'·'도움 말' 로
+   두 줄이 됐다 — 버튼 폭 50px 에 12px 글자 3자를 넣으면 안 들어간다. 게이트는
+   버튼의 크기·위치만 재고 있어서 글자가 접히는 것은 한 번도 안 봤다.
+   가로 여백을 줄이고, 폭에 맞춰 글자를 줄이고, 접힘 자체를 막는다.
+   text-size-adjust 는 안드로이드 크롬의 글자 자동 확대를 끄는 것이다 — 그게 켜지면
+   우리가 정한 크기와 무관하게 부풀어 다시 접힌다. */
+#mobBar button{white-space:nowrap;padding:0 2px;font-size:min(12px, 3.05vw)}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 
 @media (max-width: 720px){
   /* 어떤 요소도 화면보다 넓어지지 않게 못박는다. 하나라도 넘치면 전체가 축소된다. */
@@ -461,7 +469,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
           background:linear-gradient(180deg,var(--face) 0,#c9c4bb 100%);
           border-top:1px solid var(--edge);align-items:stretch;
           padding-bottom:var(--safe-b);height:calc(56px + var(--safe-b))}
-  #mobBar button{flex:1;min-height:44px;margin:4px 3px;font-size:12px;
+  #mobBar button{flex:1;min-height:44px;margin:4px 3px;font-size:min(12px, 3.05vw);
                  font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 87}
   #mobBar button.on{background:var(--steel);color:#fff}
 
@@ -493,7 +501,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
           background:linear-gradient(180deg,var(--face) 0,#c9c4bb 100%);
           border-top:1px solid var(--edge);align-items:stretch;
           padding-bottom:var(--safe-b);height:calc(56px + var(--safe-b))}
-  #mobBar button{flex:1;min-height:44px;margin:4px 3px;font-size:12px;
+  #mobBar button{flex:1;min-height:44px;margin:4px 3px;font-size:min(12px, 3.05vw);
                  font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 87}
   #mobBar button.on{background:var(--steel);color:#fff}
   #buildList .bitem,#craftList .citem,#invList .irow{min-height:44px;align-items:center}
