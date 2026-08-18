@@ -12,7 +12,11 @@ const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const path = require('path');
 
+const fs = require('fs');
 const ROOT = path.join(__dirname, '..');
+const SW_PATH = path.join(ROOT, 'sw.js');
+const swSrc = fs.readFileSync(SW_PATH, 'utf8');
+const BUMP = 'update-probe';
 const PORT = 8731;
 const URL_GAME = 'http://127.0.0.1:' + PORT + '/dist/Logic-Foundry.html';
 
@@ -97,6 +101,32 @@ function line(ok, name, detail) {
     chk(rootOk && imgOk && playOk, 'offline.landingPageAlsoWorks',
         '오프라인에서 소개 페이지 = ' + rootOk + ' · 그림 전부 그려짐 = ' + imgOk +
         ' · [지금 플레이] 로 게임 부팅 = ' + playOk);
+
+    // ---- 2.7) 새 판을 받으면 알려 주는가 -----------------------------------
+    // 캐시 우선이라 배포 직후 처음 열면 **옛 화면이 뜬다.** 실기기에서 두 판 전
+    // 빌드를 보며 "안 고쳐졌다"고 하게 만든 것이 이것이다. 받아 둔 사실을 말해 주지
+    // 않으면 사용자는 껐다 켜야 한다는 것을 알 수 없다.
+    // 검정은 **실제로 파일을 갈아 끼워서** 한다 — 서버가 주는 내용을 바꾸고
+    // 갱신을 확인시킨 뒤, 게임이 알림 상태로 바뀌는지 본다.
+    await ctx.setOffline(false);
+    await p.goto(URL_GAME, { waitUntil: 'load' });
+    await p.waitForFunction(() => !!window.__GAME, null, { timeout: 30000 });
+    const before = await p.evaluate(() => window.__GAME.ui.swUpdateReady());
+    fs.writeFileSync(SW_PATH, swSrc + String.fromCharCode(10) + '// bump ' + BUMP + String.fromCharCode(10));
+    const noticed = await p.evaluate(async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return 'no-reg';
+      await reg.update();
+      for (let i = 0; i < 40; i++) {
+        if (window.__GAME.ui.swUpdateReady()) return true;
+        await new Promise(r => setTimeout(r, 250));
+      }
+      return false;
+    });
+    fs.writeFileSync(SW_PATH, swSrc);          // 원래대로 되돌린다
+    chk(before === false && noticed === true, 'offline.tellsYouWhenUpdated',
+        '처음엔 알림 없음=' + (before === false) + ' · 서비스워커를 갈아 끼운 뒤 알림=' +
+        noticed + ' (안 뜨면 사용자는 옛 화면을 보며 안 고쳐졌다고 생각한다)');
 
     // ---- 3) 음성 대조군 — 서비스워커 없는 새 프로필 ------------------------
     const ctx2 = await b.newContext({ viewport: { width: 412, height: 883 } });

@@ -1168,7 +1168,8 @@ window.__GAME = {
       refreshOfflineStatus();          // 사람이 여는 길과 같은 것을 보여준다
     },
     // 오프라인 준비 상태를 글자 그대로 내준다 — 시험이 '무엇이 보이는가' 를 물을 창구
-    offlineStatusText: function () {
+    swUpdateReady: function () { return swUpdateReady; },
+  offlineStatusText: function () {
       var el = document.getElementById('swStat');
       return el ? el.textContent.trim() : null;
     },
@@ -1344,6 +1345,28 @@ function fixManifestUrls() {
 // 조건이 둘이다: (1) 안전한 출처(https 또는 localhost)여야 하고, (2) 파일을 직접
 // 연 경우(file://)에는 규격상 등록이 안 된다. 그래서 조용히 건너뛴다 — 그 경우는
 // 이미 파일이 손안에 있으니 오프라인 문제가 애초에 없다.
+// **새 판을 받아 두면 말해 준다.** 캐시 우선이라 열 때는 저장된 것이 즉시 뜨고
+// 새 판은 뒤에서 받는다 — 그래서 배포 직후 처음 열면 **옛 화면이 나온다.** 실기기에서
+// 두 판 전 빌드를 보며 "안 고쳐졌다"고 하게 만든 것이 이것이다. 받아 둔 사실을 알려
+// 주면 "껐다 켜면 된다"를 스스로 알 수 있다.
+var swUpdateReady = false;
+function watchForUpdate(reg) {
+  if (!reg || !reg.addEventListener) return;
+  reg.addEventListener('updatefound', function () {
+    var nw = reg.installing;
+    if (!nw) return;
+    nw.addEventListener('statechange', function () {
+      // controller 가 있다는 것은 이미 옛 판이 이 화면을 맡고 있다는 뜻이다 —
+      // 즉 이건 첫 설치가 아니라 **갱신**이다.
+      if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+        swUpdateReady = true;
+        if (typeof toast === 'function') toast('새 판을 받아 뒀다 — 껐다 켜면 적용된다');
+        refreshOfflineStatus();
+      }
+    });
+  });
+}
+
 function registerSW() {
   if (!('serviceWorker' in navigator)) return 'no-sw';
   if (location.protocol === 'file:') return 'file';
@@ -1364,6 +1387,7 @@ function registerSW() {
   }).catch(function () { /* 못 읽어도 등록은 계속한다 */ });
   navigator.serviceWorker.register('../sw.js', { scope: '../' })
     .catch(function () { return navigator.serviceWorker.register('./sw.js'); })
+    .then(function (reg) { watchForUpdate(reg); })
     .catch(function (e) { ERRORS.push('sw: ' + (e && e.message)); });
   return 'ok';
 }

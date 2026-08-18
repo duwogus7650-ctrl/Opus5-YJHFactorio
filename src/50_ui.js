@@ -561,7 +561,9 @@ function refreshOfflineStatus() {
     }));
   }).then(function (hits) {
     var saved = hits.some(function (h) { return !!h; });
-    if (saved && ctrl) say('준비됨 — 비행기 모드에서도 열린다', 'var(--run)');
+    if (saved && ctrl && swUpdateReady) {
+      say('새 판을 받아 뒀다 — 껐다 켜면 적용된다', 'var(--warn)');
+    } else if (saved && ctrl) say('준비됨 — 비행기 모드에서도 열린다', 'var(--run)');
     else if (ctrl) say('저장 중… 잠시 뒤 이 창을 다시 열어 보라', 'var(--warn)');
     else say('아직 아니다 — 온라인에서 한 번 더 열면 저장된다', 'var(--warn)');
   }).catch(function () { say('알 수 없음', 'var(--warn)'); });
