@@ -12,8 +12,12 @@
 //  캐시 우선이 아니라 네트워크 우선으로 하면, 신호가 나쁜 곳에서 로딩이 몇 초씩
 //  걸린다 — 이미 가진 것을 두고 기다릴 이유가 없다.
 // ===========================================================================
-var CACHE = 'logic-foundry-v1';
-var ASSETS = ['./', './index.html', './dist/Logic-Foundry.html'];
+// 담는 목록이 바뀌면 **이름을 올린다.** 안 올리면 예전 캐시가 그대로 남아
+// 새로 담기로 한 것들이 영영 안 담긴다(설치 단계는 캐시가 이미 있으면 건너뛴다).
+var CACHE = 'logic-foundry-v2';
+var ASSETS = ['./', './index.html', './dist/Logic-Foundry.html',
+              './site/shot-factory.jpg', './site/shot-logic.jpg',
+              './site/shot-phone.jpg', './site/shot-oil.jpg'];
 
 self.addEventListener('install', function (e) {
   // 설치 즉시 게임 한 장을 받아 둔다. 이게 없으면 "설치는 됐는데 오프라인에서 안 뜨는"

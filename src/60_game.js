@@ -1342,7 +1342,19 @@ function registerSW() {
   if (!window.isSecureContext) return 'insecure';
   // 게임은 dist/ 아래에 있고 서비스워커는 저장소 뿌리에 둔다 — 그래야 적용 범위가
   // 뿌리까지 덮어서 짧은 주소(…/Opus5-YJHFactorio/)로 열어도 오프라인이 된다.
-  navigator.serviceWorker.register('../sw.js', { scope: './' })
+  // **적용 범위(scope)는 문서 주소 기준으로 풀린다.** './' 로 뒀더니 게임이 있는
+  // /dist/ 만 맡아서, 소개 페이지(뿌리)는 오프라인에서 안 떴다 — 게임은 캐시에 있는데
+  // 링크를 열면 공룡이 뜨는 상태였다. 뿌리까지 맡기려면 '../' 다(서비스워커 파일이
+  // 뿌리에 있으므로 규격상 여기까지가 최대 범위다).
+  // **먼저 예전 등록을 걷어낸다.** 앞서 /dist/ 범위로 한 번 등록해서 내보냈는데,
+  // 그 상태로 뿌리 범위를 새로 등록하면 둘이 함께 살아남는다. 서로 자기 것이 아닌
+  // 캐시를 지우도록 짜여 있어서(activate) 번갈아 지우는 싸움이 난다.
+  navigator.serviceWorker.getRegistrations().then(function (rs) {
+    for (var i = 0; i < rs.length; i++) {
+      if (/\/dist\/$/.test(rs[i].scope)) rs[i].unregister();
+    }
+  }).catch(function () { /* 못 읽어도 등록은 계속한다 */ });
+  navigator.serviceWorker.register('../sw.js', { scope: '../' })
     .catch(function () { return navigator.serviceWorker.register('./sw.js'); })
     .catch(function (e) { ERRORS.push('sw: ' + (e && e.message)); });
   return 'ok';

@@ -2,30 +2,191 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LOGIC FOUNDRY</title>
-<!-- GitHub Pages 의 뿌리 주소를 짧게 쓰기 위한 안내판이다.
-     게임 본체를 여기로 복사하지 않는다 — 같은 480KB 짜리가 두 벌이 되면 둘이
-     어긋나는 날이 오고, 그때 어느 쪽이 진짜인지 알 수 없다. 진짜는 한 장뿐이다:
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LOGIC FOUNDRY — 공장의 제어계를 설계하는 게임</title>
+<meta name="description" content="벨트와 조립기는 다른 게임에도 있다. 이 게임에만 있는 것은 제어기다. 브라우저에서 바로, 파일 한 장, 오프라인.">
+<meta name="theme-color" content="#1c2024">
+<!-- 소개 페이지. **게임 본체를 여기로 복사하지 않는다** — 같은 430KB 가 두 벌이 되면
+     둘이 어긋나는 날이 오고, 그때 어느 쪽이 진짜인지 알 수 없다. 진짜는 한 장뿐이다:
      dist/Logic-Foundry.html.
-
-     자동 이동이 막히는 경우(스크립트 차단 등)에도 손으로 갈 수 있게 링크를 남긴다. -->
-<meta http-equiv="refresh" content="0; url=dist/Logic-Foundry.html">
+     그림은 site/*.jpg 이고 tools/make_site_shots.js 가 코드로 다시 만든다 —
+     손으로 찍은 그림은 게임이 바뀌어도 옛날 것으로 남는다.
+     바깥 참조는 0건이다(글꼴은 기기에 있는 것만 쓴다). -->
 <style>
-  html,body{margin:0;height:100%;background:#0f1214;color:#eae6dd;
-    font-family:"Noto Sans KR","Malgun Gothic",sans-serif;
-    display:flex;align-items:center;justify-content:center;text-align:center}
-  a{color:#7fb2e0}
-  .box{padding:24px;border:1px solid #6d675e;background:#23282c}
-  h1{font-size:16px;letter-spacing:.18em;margin:0 0 10px;font-weight:700}
-  p{margin:6px 0;font-size:13px;color:#b9bfc6}
+  :root{
+    --face:#d8d4cc; --face-hi:#eae7e0; --edge:#6d675e; --rule:#a9a39a;
+    --ink:#1c2024; --ink-2:#585e65; --ink-3:#63696e;
+    --well:#23282c; --well-ink:#eae6dd; --well-dim:#8b9199;
+    --steel:#2c5470; --hazard:#e2b21c; --run:#1f6b46; --stop:#b23a10;
+    --label:"Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
+    --mono:"Consolas","D2Coding","Menlo",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:#171a1d;color:var(--well-ink);font-family:var(--label);
+       font-size:15px;line-height:1.65;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  .wrap{max-width:900px;margin:0 auto;padding:0 16px 64px}
+  a{color:#8fb8d8}
+  h1,h2,h3{font-family:var(--label);letter-spacing:.14em;margin:0}
+  .num{font-family:var(--mono)}
+
+  /* 머리 — 게임의 계기판 색을 그대로 옮겨 온다 */
+  header{border-bottom:1px solid #2f353a;background:linear-gradient(180deg,#1c2024 0,#171a1d 100%)}
+  .head{max-width:900px;margin:0 auto;padding:34px 16px 30px}
+  h1{font-size:22px;font-weight:700}
+  .sub{color:var(--hazard);font-size:13px;letter-spacing:.08em;margin:8px 0 0}
+  .pitch{font-size:19px;line-height:1.55;margin:18px 0 0;max-width:33em}
+  .pitch b{color:#fff}
+  .cta{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 0}
+  .btn{display:inline-flex;align-items:center;justify-content:center;
+       min-height:52px;padding:0 22px;border:1px solid var(--edge);border-radius:4px;
+       background:var(--face);color:var(--ink);text-decoration:none;
+       font-weight:700;letter-spacing:.06em;font-size:16px}
+  .btn.play{background:var(--hazard);border-color:#a8830c;color:#231d05;min-width:220px}
+  .btn.ghost{background:transparent;color:var(--well-ink)}
+  .meta{color:var(--well-dim);font-size:13px;margin:14px 0 0}
+
+  section{margin:44px 0 0}
+  h2{font-size:13px;color:var(--hazard);margin:0 0 14px;
+     border-bottom:1px solid #2f353a;padding-bottom:8px}
+  p{margin:0 0 12px}
+  .dim{color:var(--well-dim)}
+  figure{margin:0 0 10px}
+  figure img{width:100%;height:auto;display:block;border:1px solid #2f353a;border-radius:4px;background:#0f1214}
+  /* 폰 그림은 세로가 길다 — 그대로 두면 한 칸이 화면 하나를 통째로 먹어서
+     옆 칸이 허공에 뜬다. 높이를 묶고 가운데로 모은다. */
+  figure.tall img{max-height:560px;width:auto;margin:0 auto}
+  figcaption{color:var(--well-dim);font-size:13px;margin-top:8px}
+  .grid{display:grid;gap:22px}
+  @media (min-width:720px){ .grid.two{grid-template-columns:1fr 1fr} }
+
+  table{border-collapse:collapse;width:100%;font-size:14px}
+  th,td{border-bottom:1px solid #2f353a;padding:8px 10px;text-align:left;vertical-align:top}
+  th{color:var(--hazard);font-weight:700;font-size:12px;letter-spacing:.1em}
+  td.k{white-space:nowrap;font-family:var(--mono);color:#cfd4d8}
+  ol{margin:0;padding-left:1.3em} li{margin:0 0 8px}
+  .card{border:1px solid #2f353a;border-radius:4px;background:#1c2024;padding:16px 18px}
+  .stat{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+  .stat span{border:1px solid #2f353a;border-radius:4px;padding:5px 10px;
+             font-family:var(--mono);font-size:13px;color:#cfd4d8;background:#15181b}
+  footer{margin:52px 0 0;padding-top:18px;border-top:1px solid #2f353a;
+         color:var(--well-dim);font-size:13px}
 </style>
 </head>
 <body>
-<div class="box">
-  <h1>LOGIC FOUNDRY</h1>
-  <p>게임으로 이동 중…</p>
-  <p><a href="dist/Logic-Foundry.html">열리지 않으면 여기를 누르세요</a></p>
+
+<header>
+  <div class="head">
+    <h1>LOGIC FOUNDRY</h1>
+    <p class="sub">공장의 제어계를 설계하는 게임</p>
+    <p class="pitch">벨트와 조립기는 다른 게임에도 있다.
+      이 게임에만 있는 것은 <b>제어기</b>다 — 노드를 끌어다 배선해서
+      공장이 <b>스스로 판단하게</b> 만든다. 정답 배선은 없다.</p>
+    <div class="cta">
+      <a class="btn play" href="dist/Logic-Foundry.html">▶ 지금 플레이</a>
+      <a class="btn ghost" href="https://github.com/duwogus7650-ctrl/Opus5-YJHFactorio">소스 보기</a>
+    </div>
+    <p class="meta">브라우저에서 바로 — 설치도 계정도 없다. 파일 <b>한 장</b>(430&nbsp;KB)이고,
+      한 번 열어 두면 <b>비행기 모드에서도</b> 돈다. PC와 폰 둘 다.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section>
+  <h2>이 게임에만 있는 것 — 제어기</h2>
+  <figure>
+    <img src="site/shot-logic.jpg" alt="제어기 노드 편집기 — 상자 재고와 상수를 비교기에 물려 조립기를 켜고 끄는 회로">
+    <figcaption>상자 재고가 50 미만이면 켜고 200을 넘으면 끈다. 값은 매 틱 흐르고,
+      되먹임 배선은 <b>직전 틱</b> 값을 읽는다 — 실제 순차논리의 레지스터 한 단과 같다.</figcaption>
+  </figure>
+  <p>그래서 SR 래치·카운터·PID를 그대로 배선할 수 있다. 전력이 모자랄 때 덜 급한 라인을
+    먼저 끄는 <b>부하 차단</b>을 짜 보면, 순진하게 배선한 회로가 <b>발진한다</b> —
+    끄면 회복되고, 회복되면 켜지고, 켜면 다시 떨어진다. 되먹임 제어를 짤 때 늘 만나는
+    문제이고, 이 게임에서 가장 배울 것이 많은 지점이다.</p>
+  <p class="dim">코딩을 안 해 봤다면 <b>문장</b>으로도 쓸 수 있다 — 드롭다운을 골라
+    “재고가 넘치면 기계 쉬게 하기”를 완성하면 그게 그대로 회로가 된다.</p>
+</section>
+
+<section>
+  <h2>공장</h2>
+  <div class="grid two">
+    <figure>
+      <img src="site/shot-factory.jpg" alt="돌아가는 공장 — 채광기·벨트·인서터·용광로·조립기·연구소·터렛">
+      <figcaption>채광 → 제련 → 조립 → 연구. 수치는 Factorio 공개값을 오라클로 쓴다
+        (벨트 1.875타일/s · 인서터 왕복 1.2초 · 증기기관 900&nbsp;kW).</figcaption>
+    </figure>
+    <figure>
+      <img src="site/shot-oil.jpg" alt="석유 라인 — 펌프잭에서 정제소를 거쳐 화학공장까지, 플라스틱 40개가 쌓여 있다">
+      <figcaption>원유는 <b>캘 수 없는 자원</b>이다. 채광기를 세우면 거절당하고,
+        펌프잭 → 정제소 → 화학공장으로 배관해야 플라스틱이 나온다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2>폰에서도 그대로</h2>
+  <div class="grid two">
+    <figure class="tall">
+      <img src="site/shot-phone.jpg" alt="폰 화면 — 건설 시트가 열린 세로 화면">
+      <figcaption>키보드가 없으니 회전·철거·연구·도움말·청사진·복제·오염 보기가
+        전부 화면에 있다. 손가락 표적은 44&nbsp;px 이상.</figcaption>
+    </figure>
+    <div>
+      <div class="card">
+        <h3 style="font-size:13px;color:var(--hazard);margin:0 0 10px">홈 화면에 얹기</h3>
+        <ol>
+          <li>주소를 <b>온라인에서 한 번</b> 연다 (그때 기기에 저장된다)</li>
+          <li>크롬 ⋮ → <b>홈 화면에 추가</b> · 삼성 인터넷 ☰ → <b>현재 페이지 추가</b></li>
+          <li>비행기 모드에서 아이콘을 눌러 본다 — 떠야 정상이다</li>
+        </ol>
+        <p class="dim" style="margin:10px 0 0">주소창 없이 전체화면으로 뜨고,
+          저장은 기기 안에 남는다. 서버로 아무것도 보내지 않는다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>조작</h2>
+  <table>
+    <tr><th style="width:30%">하는 일</th><th style="width:35%">PC</th><th>폰</th></tr>
+    <tr><td>배치 / 선택</td><td class="k">좌클릭 · 드래그로 벨트 잇기</td><td>탭 · 꾹 눌러 자리 잡고 떼면 설치</td></tr>
+    <tr><td>철거</td><td class="k">우클릭 (전액 환급)</td><td>[철거] 켜고 탭</td></tr>
+    <tr><td>회전</td><td class="k">R</td><td>[회전]</td></tr>
+    <tr><td>같은 건물 하나 더</td><td class="k">Q</td><td>건물을 눌러 뜬 창의 [복제]</td></tr>
+    <tr><td>연구 · 도움말</td><td class="k">T · H</td><td>[연구] · [도움말]</td></tr>
+    <tr><td>청사진</td><td class="k">B — 영역을 끌어 담고 좌클릭으로 붙인다</td><td>[청사진]</td></tr>
+    <tr><td>저장 · 불러오기</td><td class="k">F2 · F3</td><td>[자재] 시트 맨 윗줄</td></tr>
+    <tr><td>오염 보기</td><td class="k">P</td><td>같은 줄의 [오염 보기]</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>어떻게 검증했나</h2>
+  <div class="stat">
+    <span>모델 273</span><span>클릭 81</span><span>전수 40</span><span>부하차단 10</span>
+    <span>재현성 7</span><span>터치 62</span><span>완주 17</span><span>오프라인 5</span>
+    <span>돌연변이 216</span>
+  </div>
+  <p>게이트가 통과하는 것만으로는 모자란다. <b>돌연변이 216건</b>은 소스를 일부러
+    망가뜨려 놓고 <b>그 고장을 실제로 잡는지</b> 확인한다 — 놓친 것 0건.
+    40분짜리 <b>자력 완주 주행</b>은 게임을 처음부터 끝까지 스스로 깨면서
+    연구 9종·건물 25종·노드 35종을 전부 밟는다.</p>
+  <p class="dim">가장 많이 고친 것은 게임이 아니라 <b>재는 방법</b>이었다.
+    실기기 스크린샷이 게이트를 여섯 번 이겼다 —
+    “버튼이 상태를 뒤집는가”는 GREEN인데 사람 눈에는 아무 일도 안 일어나거나,
+    글자가 두 줄로 접혀도 상자 크기는 그대로라 아무도 못 봤다.
+    그 이야기는 <a href="https://github.com/duwogus7650-ctrl/Opus5-YJHFactorio#readme">README</a>에 전부 적어 두었다.</p>
+</section>
+
+<footer>
+  <p>단일 HTML · 외부 의존성 0 · 오프라인 · 데이터를 서버로 보내지 않는다.
+    저장은 브라우저 저장소 한 칸에 남는다.</p>
+  <p><a href="dist/Logic-Foundry.html">게임 열기</a> ·
+     <a href="https://github.com/duwogus7650-ctrl/Opus5-YJHFactorio">GitHub</a></p>
+</footer>
+
 </div>
 </body>
 </html>
