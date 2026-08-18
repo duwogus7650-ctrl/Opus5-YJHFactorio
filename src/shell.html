@@ -77,6 +77,11 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 .panel{position:absolute;background:linear-gradient(180deg,#e3dfd8 0,var(--face) 44%,#cdc8bf 100%);
   border:1px solid var(--edge);border-radius:0;
   box-shadow:inset 0 1px 0 var(--face-hi),inset 0 -1px 0 rgba(0,0,0,.14),0 5px 16px rgba(0,0,0,.5)}
+/* 저장·불러오기. 인라인 style 로 크기를 박아 두면 미디어쿼리가 못 이긴다 —
+   폰에서 손가락 표적으로 키우려면 여기서 갈라야 한다. */
+#sysRow{display:flex;gap:4px}
+#sysRow button{flex:1;padding:2px 6px;font-size:10px}
+#pollBtn.on{background:var(--steel);color:#fff}
 .panel h3{margin:0;padding:6px 10px 5px;font-family:var(--label);
   font-variation-settings:'wght' 700,'wdth' 75;text-transform:uppercase;
   font-size:10.5px;letter-spacing:.15em;color:var(--ink-2);
@@ -486,6 +491,9 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
                  font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 87}
   #mobBar button.on{background:var(--steel);color:#fff}
   #buildList .bitem,#craftList .citem,#invList .irow{min-height:44px;align-items:center}
+  /* **저장·불러오기가 폰에서 폭 37px 였다.** 판 머리에 작은 글씨로 떠 있었고,
+     폰에는 F2/F3 도 없어 이 버튼이 유일한 길이다. 줄을 따로 내려 둘로 채운다. */
+  #sysRow button{min-height:44px;min-width:44px;font-size:13px;padding:4px}
   .panel h3 .close{min-width:44px;min-height:44px;display:inline-flex;
                    align-items:center;justify-content:center}
   .panel button{min-height:44px}
@@ -521,13 +529,16 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
 </div>
 
 <div id="right">
+  <!-- 시스템 조작 한 줄. **저장·불러오기는 판 머리에 10px 글씨로 떠 있었고, 오염 보기는
+       P 키뿐이었다.** 폰에는 F2/F3/P 가 없으니 이 줄이 그 기능들의 유일한 입구다.
+       시트를 열면 바로 보이도록 맨 위에 둔다 — 지도 밑에 두었더니 스크롤해야 보였다. -->
+  <div id="sysRow">
+    <button id="saveBtn" title="F2">저장</button>
+    <button id="loadBtn" title="F3">불러오기</button>
+    <button id="pollBtn" title="P — 오염 표시">오염 보기</button>
+  </div>
   <div class="panel">
-    <h3>Stock 보유 자재
-      <span style="float:right;display:flex;gap:4px">
-        <button id="saveBtn" style="padding:1px 7px;font-size:10px" title="F2">저장</button>
-        <button id="loadBtn" style="padding:1px 7px;font-size:10px" title="F3">불러오기</button>
-      </span>
-    </h3>
+    <h3>Stock 보유 자재</h3>
     <div id="invList"></div>
   </div>
   <div class="panel">
@@ -538,6 +549,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
   <div class="panel" style="flex:1;display:flex;flex-direction:column;min-height:0">
     <h3>Survey 지도 <span style="float:right;color:var(--ink-3)">클릭 = 이동</span></h3>
     <canvas id="mini" width="224" height="178"></canvas>
+
   </div>
 </div>
 

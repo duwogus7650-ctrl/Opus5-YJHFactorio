@@ -449,7 +449,7 @@ function bindInput(canvas) {
     if (k === 'r' || k === 'R') { rotateAction(); return; }
     if (k === 't' || k === 'T') { toggleTech(); return; }
     if (k === 'h' || k === 'H' || k === '?') { toggleHelp(); return; }
-    if (k === 'p' || k === 'P') { showPollution = !showPollution; return; }
+    if (k === 'p' || k === 'P') { togglePollution(); return; }
     if (k === 'q' || k === 'Q') { pipetteTool(); return; }
     if (k === 'b' || k === 'B') { toggleBlueprint(); return; }
     // 단축키는 건물에 **고정**돼 있다 (BUILDINGS[].hotkey).
@@ -534,6 +534,13 @@ function rightClickAction() {
     world.tree[idx(hoverT.x, hoverT.y)] = 0;
     treeCensusDone = false;
   }
+}
+// 오염 표시 토글 — **키와 버튼이 같은 코드를 쓴다.** 두 곳에 나눠 쓰면 갈린다.
+function togglePollution() {
+  showPollution = !showPollution;
+  var b = document.getElementById('pollBtn');
+  if (b) b.className = showPollution ? 'on' : '';
+  return showPollution;
 }
 function pipetteTool() {
   var e = entityAt(hoverT.x, hoverT.y);
@@ -932,6 +939,10 @@ function refreshInsp() {
       // 예전엔 라벨만 뒤집히고 기계는 계속 돌아서 버튼이 거짓말을 했다.
       '<button id="tglBtn"' + (e.fEnable ? ' title="제어기가 지배 중 — 지배가 풀린 뒤에 적용된다"' : '') + '>' +
       (e.playerEnabled === false ? '가동' : '정지') + (e.fEnable ? ' (지배중)' : '') + '</button>' +
+      // **같은 것을 하나 더 짓기.** 데스크톱에는 Q(커서 아래 건물 복제)가 있는데
+      // 폰에는 키보드가 없어 그 기능이 아예 없는 기능이었다. 인스펙터에 길을 낸다 —
+      // 여기서 누르면 그 건물이 손에 들리고, 방향까지 따라온다.
+      '<button id="copyBtn" title="Q — 같은 건물을 손에 든다">복제</button>' +
       '<button class="danger" id="delBtn">철거</button></div>');
     if (e.logicForced) {
       c.push('<div class="ok" style="font-size:11px;margin-top:5px">⛓ 제어기 지배 중 — 수동 조작은 지배가 풀린 뒤 적용된다</div>');
@@ -1070,6 +1081,12 @@ function bindInspControls(e) {
     if (!e.logicForced) e.enabled = e.playerEnabled;
     markPowerDirty(); refreshInsp();
   };
+  document.getElementById('copyBtn').onclick = function () {
+    // 키보드의 Q 와 **같은 코드**를 쓴다 — 두 곳에 나눠 쓰면 반드시 갈린다.
+    selectTool(e.type); toolDir = e.dir;
+    if (typeof toast === 'function') toast(BUILDINGS[e.type].name + ' — 같은 것을 손에 들었다');
+    refreshInsp();
+  };
   document.getElementById('delBtn').onclick = function () {
     removeEntity(e.id, true); selected = null; hideInsp(); renderInv(); renderBuildList();
   };
@@ -1146,6 +1163,8 @@ function fillHelp() {
     '<li><code>우클릭</code> — 철거(자원 전액 환급) &nbsp; <code>R</code> — 회전 &nbsp; <code>Q</code> — 커서 아래 건물 복제</li>',
     '<li><code>1~0</code> — 건설 단축키 &nbsp; <code>T</code> — 연구 &nbsp; <code>P</code> — 오염 표시 &nbsp; <code>H</code> — 이 창</li>',
     '<li><code>F2</code> 저장 &nbsp; <code>F3</code> 불러오기 (창고 패널의 버튼과 같다). 저장 칸은 하나다.</li>',
+    '<li><b>폰에는 키보드가 없다.</b> [자재] 시트 맨 윗줄에 <b>저장·불러오기·오염 보기</b>가 있고,',
+    '건물을 눌러 뜬 창의 <b>[복제]</b> 가 <code>Q</code>(같은 건물을 손에 들기)다.</li>',
     '<li><b>제어기를 좌클릭하면 노드 편집기가 열린다.</b></li>',
     '</ul>',
     '<h4>10분 안에 돌아가는 공장 만들기</h4><ul>',
@@ -1329,6 +1348,8 @@ function bindSaveButtons() {
   var lb = document.getElementById('loadBtn');
   if (sb) sb.onclick = function () { saveGame(); };
   if (lb) lb.onclick = function () { loadGame(); };
+  var pb = document.getElementById('pollBtn');
+  if (pb) pb.onclick = function () { togglePollution(); };
 }
 
 function bindMini() {

@@ -87,6 +87,32 @@ ENV['PYTHONIOENCODING'] = 'utf-8'
 # (이름, 파일, 찾을 바이트, 바꿀 바이트, 반드시 FAIL 이 되어야 하는 게이트들 [, 드라이버])
 # 드라이버를 생략하면 모델 게이트(driver.js). UI 결함은 uismoke.js 로 지목한다.
 MUTATIONS = [
+    # 헤드리스 주행은 그림을 솎아서 돈다(renderThin). 솎기가 지나쳐 한 장도 안
+    # 그리게 되면 40분 주행이 화면 없이 도는 셈이 된다 — 그것을 잡는지 본다.
+    ('render: 프레임 루프가 아무것도 안 그린다', '60_game.js',
+     b"  if (renderThinN <= 1 || renderTick % renderThinN === 0) guard('render', render);",
+     b"  if (false) guard('render', render);",
+     ['clear.stillDrewFrames'], 'clear.js'),
+
+    # --- 폰 조작 ---------------------------------------------------------
+    ('phone: 오염 보기 버튼이 아무 일도 안 한다', '50_ui.js',
+     b'  if (pb) pb.onclick = function () { togglePollution(); };',
+     b'  if (pb) pb.onclick = function () { };',
+     ['mobile.pollutionViewWithoutKeyboard'], 'mobile.js'),
+
+    ('phone: 복제 버튼이 방향을 안 물려준다', '50_ui.js',
+     b'    selectTool(e.type); toolDir = e.dir;',
+     b'    selectTool(e.type);',
+     ['mobile.copyBuildingWithoutKeyboard'], 'mobile.js'),
+
+    # 줄을 내리는 것만 되돌리면 안 걸린다 — 버튼 크기 규칙이 따로 살아 있기 때문이다
+    # (그렇게 만들었다가 MISS 를 봤다). 크기 규칙 자체를 데스크톱 값으로 되돌린다.
+    ('phone: 저장 버튼이 폰에서도 데스크톱 크기를 쓴다', 'shell.html',
+     b'  #sysRow button{min-height:44px;min-width:44px;font-size:13px;padding:4px}',
+     b'  #sysRow button{font-size:10px;padding:1px 7px}',
+     ['mobile.tapTargetsBigEnough'], 'mobile.js'),
+
+
     # --- 석유·화학 사슬 ------------------------------------------------
     ('oil: 펌프잭이 절반만 뽑는다', '05_data.js',
      b'  pumpjackRate: 10,',

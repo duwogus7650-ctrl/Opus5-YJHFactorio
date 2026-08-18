@@ -117,6 +117,7 @@ function advance(elapsed) {
 }
 
 var frameWorkMs = 0;      // 계기창에 띄우는 프레임 작업 시간(ms)
+var renderThinN = 1, renderTick = 0;   // 1 = 매 프레임 그린다(사람이 보는 기본값)
 function frame(now) {
   var elapsed = lastFrame ? Math.min(0.25, (now - lastFrame) / 1000) : 0;
   lastFrame = now;
@@ -128,7 +129,13 @@ function frame(now) {
     // 유지되고, 배속은 "한 프레임에 몇 틱을 미느냐" 만 바꾼다.
     guard('advance', function () { advance(elapsed * gameSpeed); });
   }
-  guard('render', render);
+  // **헤드리스 주행에서는 그림을 솎는다.** 40분 자력 완주는 아무도 안 보는데
+  // 매 프레임 공장을 통째로 그린다 — 시뮬은 21초면 끝나는 일이 렌더 때문에
+  // 수십 분이 됐다(실측: Playwright 21초 vs 헤드리스 Edge 40분 초과).
+  // 다만 완전히 끄지는 않는다 — 렌더러가 40분 중에 터지는 것도 이 주행이
+  // 잡아 주던 것이라, n 프레임에 한 장은 그려 그 감시를 남긴다.
+  renderTick++;
+  if (renderThinN <= 1 || renderTick % renderThinN === 0) guard('render', render);
   // **한 프레임이 실제로 얼마나 걸렸는가.** 폰에서 프레임률을 물으면 답할 방법이
   // 이것뿐이다 — 헤드리스로는 이 기계의 비용만 알 수 있고, 그 사람 폰의 비용은
   // 그 폰에서 재야 한다. 지수평활으로 흔들림을 눌러 계기창에 띄운다.
@@ -448,7 +455,12 @@ window.loadGame = loadGame;
 window.__GAME = {
   version: VERSION,
   gfx: function () {
-    return { canvas: cv ? [cv.width, cv.height] : null, dpr: cam.dpr || 1, zoom: cam.z };
+    // 오염 표시는 화면 상태다 — 켜졌는지 밖에서 물을 창구가 없으면 폰의 [오염 보기]
+    // 버튼이 실제로 뭘 켰는지 검정할 수 없다.
+    // 그린 장수도 내준다 — 헤드리스 주행에서 그림을 솎을 때(renderThin) '한 장도
+    // 안 그렸다' 를 검정할 창구가 없으면 솎기가 조용히 렌더 검사를 없앤다.
+    return { canvas: cv ? [cv.width, cv.height] : null, dpr: cam.dpr || 1, zoom: cam.z,
+             pollution: !!showPollution, renders: frameCount };
   },
   errors: function () { return ERRORS.slice(); },
   reset: function (seed) { newGame(seed); return gameTime; },
@@ -801,6 +813,9 @@ window.__GAME = {
   // 음성 대조군용 — 아무것도 안 그리고 배경만 칠한다. 빈 화면 검출기가 실제로
   // 작동하는지 확인하는 데 쓴다 (검출기가 살아 있지 않으면 render.notBlank 는
   // 아무것도 보증하지 않는다).
+  // 검증 전용 — 그림을 n 프레임에 한 장만 그린다. 시뮬레이션에는 영향이 없다
+  // (렌더는 상태를 안 바꾼다). 사람이 보는 판에서는 절대 켜지 않는다.
+  renderThin: function (n) { renderThinN = Math.max(1, n | 0); renderTick = 0; return renderThinN; },
   renderBlank: function () {
     if (!ctx) return false;
     ctx.setTransform(1, 0, 0, 1, 0, 0);

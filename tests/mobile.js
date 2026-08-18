@@ -914,6 +914,61 @@
       G.ui.closeLogic();
       void n2;
 
+      // ---------- 8.9 같은 건물 하나 더 (폰에는 Q 가 없다) --------------------
+      // 데스크톱은 Q 로 커서 아래 건물을 손에 든다. 폰에 그 길이 없으면 건물 목록을
+      // 열어 이름으로 다시 찾아야 하고, 방향은 손으로 다시 맞춰야 한다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.powerCheat(true);
+      var cpId = G.place('inserter', 80, 80, 2);      // 방향 2 로 세운다 — 방향까지 따라와야 한다
+      G.ui.clearTool();
+      var cpPt = tileToClient(80, 80);
+      tap(cv, cpPt.x, cpPt.y);
+      var copyBtn = document.getElementById('copyBtn');
+      var cpVisible = !!copyBtn && onScreen(copyBtn);
+      if (copyBtn) tap(copyBtn, copyBtn.getBoundingClientRect().left + 20,
+                                copyBtn.getBoundingClientRect().top + 20);
+      // **읽기 전용 창구로 본다.** G.ui.tool() 은 인자를 받는 설정 함수라
+      // 빈 인자로 부르면 오히려 손을 비운다 — 재려다 상태를 바꿔 버린다.
+      var toolNow = G.ui.curTool();
+      var dirNow = G.ui.curDir();
+      chk('mobile.copyBuildingWithoutKeyboard',
+        cpVisible && toolNow === 'inserter' && dirNow === 2,
+        '[복제] 버튼 보임=' + cpVisible + ' · 누른 뒤 손에 든 것=' + toolNow +
+        ' (inserter 여야) · 방향=' + dirNow + ' (2 여야 — 방향까지 안 따라오면 다시 맞춰야 한다)');
+      G.ui.clearTool();
+      void cpId;
+
+      // ---------- 8.95 오염 보기 (P 키뿐이었다) ------------------------------
+      // 적이 오는 이유가 오염인데, 폰에는 P 가 없어 **오염을 볼 방법이 아예 없었다.**
+      var pollBtn = document.getElementById('pollBtn');
+      var pollSeen = false, pollOn0 = null, pollOn1 = null;
+      // **시트가 이미 열려 있을 수 있다.** 무턱대고 버튼을 누르면 오히려 닫힌다
+      // (첫 판이 그래서 '화면 안=false' 였다). 상태를 보고 필요할 때만 누른다.
+      function openRightSheet(want) {
+        var el = document.getElementById('right');
+        var isOpen = !!el && getComputedStyle(el).display !== 'none';
+        if (isOpen === want) return;
+        var b2 = document.getElementById('btnSheetRight');
+        if (!b2) return;
+        var rb = b2.getBoundingClientRect();
+        tap(b2, rb.left + rb.width / 2, rb.top + rb.height / 2);
+      }
+      if (pollBtn) {
+        openRightSheet(true);
+        pollSeen = onScreen(pollBtn);
+        pollOn0 = G.gfx().pollution;
+        var pr = pollBtn.getBoundingClientRect();
+        tap(pollBtn, pr.left + pr.width / 2, pr.top + pr.height / 2);
+        pollOn1 = G.gfx().pollution;
+        tap(pollBtn, pr.left + pr.width / 2, pr.top + pr.height / 2);   // 되돌린다
+        openRightSheet(false);
+      }
+      // 기본값이 켜짐이라 '켜지는가' 로 물으면 안 된다 — **뒤집히는가** 로 묻고,
+      // 되돌린 뒤 처음 값으로 돌아오는지까지 본다.
+      chk('mobile.pollutionViewWithoutKeyboard',
+        pollSeen && pollOn1 === !pollOn0 && G.gfx().pollution === pollOn0,
+        '[오염 보기] 화면 안=' + pollSeen + ' · ' + pollOn0 + ' → ' + pollOn1 +
+        ' → ' + G.gfx().pollution + ' (P 키는 폰에 없다)');
+
       // ---------- 9. 탭 표적이 손가락 크기인가 ------------------------------
       // 접근성 지침의 최소 타깃은 44x44 CSS px 다. 그보다 작으면 오탭이 난다.
       // **재기 전에 인스펙터를 열어 둔다.** 이 검사는 화면에 보이는 것만 재는데,
@@ -927,17 +982,39 @@
       // **드롭다운과 입력칸도 손가락 표적이다.** 여기 목록에 select 가 없어서, 인스펙터의
       // 레시피 드롭다운이 24px 인 채로 오래 남아 있었다(실측). 목록을 손으로 적는 검사는
       // 적어 둔 것까지만 본다 — 이 레포에서 같은 실수를 판 목록에서도 했다.
-      var small = [], all = document.querySelectorAll(
-        '#buildList .bitem, #top button, #side button, .close, ' +
-        '#insp select, #insp button, #insp input, #right select, #right button');
-      for (var q = 0; q < all.length; q++) {
-        if (!onScreen(all[q])) continue;
-        var rr = all[q].getBoundingClientRect();
-        if (rr.height < 44) small.push((all[q].id || all[q].className) + ':' + Math.round(rr.height));
+      // **시트를 하나씩 열어 놓고 잰다.** 셀렉터에 '#right button' 이 들어 있었는데도
+      // [자재] 시트가 닫혀 있어 onScreen 이 전부 걸러 냈다 — 그 안의 저장·불러오기가
+      // 10px 글씨의 20px 짜리 버튼인 채로 남아 있었고 이 게이트는 계속 GREEN 이었다.
+      // 화면에 못 띄운 것을 "표적이 크다"로 셀 수는 없다.
+      var small = [];
+      function measureTargets(where) {
+        var all = document.querySelectorAll(
+          '#buildList .bitem, #top button, #side button, .close, ' +
+          '#insp select, #insp button, #insp input, ' +
+          '#right select, #right button, #right input, #mobBar button');
+        for (var q = 0; q < all.length; q++) {
+          if (!onScreen(all[q])) continue;
+          var rr = all[q].getBoundingClientRect();
+          // **44 는 높이만의 규격이 아니다.** 높이만 보다가 폭 37px 짜리 저장 버튼을
+          // 계속 통과시켰다 — 손가락 접촉면은 원에 가까워서 좁고 긴 표적도 오탭이 난다.
+          // 줄 전체를 차지하는 목록 행(.bitem)은 폭이 이미 화면만 하므로 제외한다.
+          var tooShort = rr.height < 44;
+          var tooNarrow = rr.width < 44 && all[q].className.indexOf('bitem') < 0;
+          if (tooShort || tooNarrow) {
+            small.push(where + '/' + (all[q].id || all[q].className) + ':' +
+                       Math.round(rr.width) + 'x' + Math.round(rr.height));
+          }
+        }
       }
+      measureTargets('인스펙터');
+      var shBuild = document.getElementById('btnSheetBuild');
+      var shRight = document.getElementById('btnSheetRight');
+      function tapBtn(el) { var r = el.getBoundingClientRect(); tap(el, r.left + r.width / 2, r.top + r.height / 2); }
+      if (shRight) { tapBtn(shRight); measureTargets('자재'); tapBtn(shRight); }
+      if (shBuild) { tapBtn(shBuild); measureTargets('건설'); tapBtn(shBuild); }
       out.measured.smallTargets = small;
       chk('mobile.tapTargetsBigEnough', small.length === 0,
-        '높이 44px 미만인 탭 표적 ' + small.length + '개' +
+        '44px(폭·높이) 미만인 탭 표적 ' + small.length + '개' +
         (small.length ? ' — ' + small.slice(0, 6).join(', ') : ''));
 
       // --- 홈화면 설치 (폰에 "앱처럼" 얹기) --------------------------------

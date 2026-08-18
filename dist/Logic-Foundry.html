@@ -77,6 +77,11 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 .panel{position:absolute;background:linear-gradient(180deg,#e3dfd8 0,var(--face) 44%,#cdc8bf 100%);
   border:1px solid var(--edge);border-radius:0;
   box-shadow:inset 0 1px 0 var(--face-hi),inset 0 -1px 0 rgba(0,0,0,.14),0 5px 16px rgba(0,0,0,.5)}
+/* 저장·불러오기. 인라인 style 로 크기를 박아 두면 미디어쿼리가 못 이긴다 —
+   폰에서 손가락 표적으로 키우려면 여기서 갈라야 한다. */
+#sysRow{display:flex;gap:4px}
+#sysRow button{flex:1;padding:2px 6px;font-size:10px}
+#pollBtn.on{background:var(--steel);color:#fff}
 .panel h3{margin:0;padding:6px 10px 5px;font-family:var(--label);
   font-variation-settings:'wght' 700,'wdth' 75;text-transform:uppercase;
   font-size:10.5px;letter-spacing:.15em;color:var(--ink-2);
@@ -486,6 +491,9 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
                  font-family:var(--label);font-variation-settings:'wght' 700,'wdth' 87}
   #mobBar button.on{background:var(--steel);color:#fff}
   #buildList .bitem,#craftList .citem,#invList .irow{min-height:44px;align-items:center}
+  /* **저장·불러오기가 폰에서 폭 37px 였다.** 판 머리에 작은 글씨로 떠 있었고,
+     폰에는 F2/F3 도 없어 이 버튼이 유일한 길이다. 줄을 따로 내려 둘로 채운다. */
+  #sysRow button{min-height:44px;min-width:44px;font-size:13px;padding:4px}
   .panel h3 .close{min-width:44px;min-height:44px;display:inline-flex;
                    align-items:center;justify-content:center}
   .panel button{min-height:44px}
@@ -521,13 +529,16 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
 </div>
 
 <div id="right">
+  <!-- 시스템 조작 한 줄. **저장·불러오기는 판 머리에 10px 글씨로 떠 있었고, 오염 보기는
+       P 키뿐이었다.** 폰에는 F2/F3/P 가 없으니 이 줄이 그 기능들의 유일한 입구다.
+       시트를 열면 바로 보이도록 맨 위에 둔다 — 지도 밑에 두었더니 스크롤해야 보였다. -->
+  <div id="sysRow">
+    <button id="saveBtn" title="F2">저장</button>
+    <button id="loadBtn" title="F3">불러오기</button>
+    <button id="pollBtn" title="P — 오염 표시">오염 보기</button>
+  </div>
   <div class="panel">
-    <h3>Stock 보유 자재
-      <span style="float:right;display:flex;gap:4px">
-        <button id="saveBtn" style="padding:1px 7px;font-size:10px" title="F2">저장</button>
-        <button id="loadBtn" style="padding:1px 7px;font-size:10px" title="F3">불러오기</button>
-      </span>
-    </h3>
+    <h3>Stock 보유 자재</h3>
     <div id="invList"></div>
   </div>
   <div class="panel">
@@ -538,6 +549,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
   <div class="panel" style="flex:1;display:flex;flex-direction:column;min-height:0">
     <h3>Survey 지도 <span style="float:right;color:var(--ink-3)">클릭 = 이동</span></h3>
     <canvas id="mini" width="224" height="178"></canvas>
+
   </div>
 </div>
 
@@ -6165,7 +6177,7 @@ function bindInput(canvas) {
     if (k === 'r' || k === 'R') { rotateAction(); return; }
     if (k === 't' || k === 'T') { toggleTech(); return; }
     if (k === 'h' || k === 'H' || k === '?') { toggleHelp(); return; }
-    if (k === 'p' || k === 'P') { showPollution = !showPollution; return; }
+    if (k === 'p' || k === 'P') { togglePollution(); return; }
     if (k === 'q' || k === 'Q') { pipetteTool(); return; }
     if (k === 'b' || k === 'B') { toggleBlueprint(); return; }
     // 단축키는 건물에 **고정**돼 있다 (BUILDINGS[].hotkey).
@@ -6250,6 +6262,13 @@ function rightClickAction() {
     world.tree[idx(hoverT.x, hoverT.y)] = 0;
     treeCensusDone = false;
   }
+}
+// 오염 표시 토글 — **키와 버튼이 같은 코드를 쓴다.** 두 곳에 나눠 쓰면 갈린다.
+function togglePollution() {
+  showPollution = !showPollution;
+  var b = document.getElementById('pollBtn');
+  if (b) b.className = showPollution ? 'on' : '';
+  return showPollution;
 }
 function pipetteTool() {
   var e = entityAt(hoverT.x, hoverT.y);
@@ -6648,6 +6667,10 @@ function refreshInsp() {
       // 예전엔 라벨만 뒤집히고 기계는 계속 돌아서 버튼이 거짓말을 했다.
       '<button id="tglBtn"' + (e.fEnable ? ' title="제어기가 지배 중 — 지배가 풀린 뒤에 적용된다"' : '') + '>' +
       (e.playerEnabled === false ? '가동' : '정지') + (e.fEnable ? ' (지배중)' : '') + '</button>' +
+      // **같은 것을 하나 더 짓기.** 데스크톱에는 Q(커서 아래 건물 복제)가 있는데
+      // 폰에는 키보드가 없어 그 기능이 아예 없는 기능이었다. 인스펙터에 길을 낸다 —
+      // 여기서 누르면 그 건물이 손에 들리고, 방향까지 따라온다.
+      '<button id="copyBtn" title="Q — 같은 건물을 손에 든다">복제</button>' +
       '<button class="danger" id="delBtn">철거</button></div>');
     if (e.logicForced) {
       c.push('<div class="ok" style="font-size:11px;margin-top:5px">⛓ 제어기 지배 중 — 수동 조작은 지배가 풀린 뒤 적용된다</div>');
@@ -6786,6 +6809,12 @@ function bindInspControls(e) {
     if (!e.logicForced) e.enabled = e.playerEnabled;
     markPowerDirty(); refreshInsp();
   };
+  document.getElementById('copyBtn').onclick = function () {
+    // 키보드의 Q 와 **같은 코드**를 쓴다 — 두 곳에 나눠 쓰면 반드시 갈린다.
+    selectTool(e.type); toolDir = e.dir;
+    if (typeof toast === 'function') toast(BUILDINGS[e.type].name + ' — 같은 것을 손에 들었다');
+    refreshInsp();
+  };
   document.getElementById('delBtn').onclick = function () {
     removeEntity(e.id, true); selected = null; hideInsp(); renderInv(); renderBuildList();
   };
@@ -6862,6 +6891,8 @@ function fillHelp() {
     '<li><code>우클릭</code> — 철거(자원 전액 환급) &nbsp; <code>R</code> — 회전 &nbsp; <code>Q</code> — 커서 아래 건물 복제</li>',
     '<li><code>1~0</code> — 건설 단축키 &nbsp; <code>T</code> — 연구 &nbsp; <code>P</code> — 오염 표시 &nbsp; <code>H</code> — 이 창</li>',
     '<li><code>F2</code> 저장 &nbsp; <code>F3</code> 불러오기 (창고 패널의 버튼과 같다). 저장 칸은 하나다.</li>',
+    '<li><b>폰에는 키보드가 없다.</b> [자재] 시트 맨 윗줄에 <b>저장·불러오기·오염 보기</b>가 있고,',
+    '건물을 눌러 뜬 창의 <b>[복제]</b> 가 <code>Q</code>(같은 건물을 손에 들기)다.</li>',
     '<li><b>제어기를 좌클릭하면 노드 편집기가 열린다.</b></li>',
     '</ul>',
     '<h4>10분 안에 돌아가는 공장 만들기</h4><ul>',
@@ -7045,6 +7076,8 @@ function bindSaveButtons() {
   var lb = document.getElementById('loadBtn');
   if (sb) sb.onclick = function () { saveGame(); };
   if (lb) lb.onclick = function () { loadGame(); };
+  var pb = document.getElementById('pollBtn');
+  if (pb) pb.onclick = function () { togglePollution(); };
 }
 
 function bindMini() {
@@ -8917,6 +8950,7 @@ function advance(elapsed) {
 }
 
 var frameWorkMs = 0;      // 계기창에 띄우는 프레임 작업 시간(ms)
+var renderThinN = 1, renderTick = 0;   // 1 = 매 프레임 그린다(사람이 보는 기본값)
 function frame(now) {
   var elapsed = lastFrame ? Math.min(0.25, (now - lastFrame) / 1000) : 0;
   lastFrame = now;
@@ -8928,7 +8962,13 @@ function frame(now) {
     // 유지되고, 배속은 "한 프레임에 몇 틱을 미느냐" 만 바꾼다.
     guard('advance', function () { advance(elapsed * gameSpeed); });
   }
-  guard('render', render);
+  // **헤드리스 주행에서는 그림을 솎는다.** 40분 자력 완주는 아무도 안 보는데
+  // 매 프레임 공장을 통째로 그린다 — 시뮬은 21초면 끝나는 일이 렌더 때문에
+  // 수십 분이 됐다(실측: Playwright 21초 vs 헤드리스 Edge 40분 초과).
+  // 다만 완전히 끄지는 않는다 — 렌더러가 40분 중에 터지는 것도 이 주행이
+  // 잡아 주던 것이라, n 프레임에 한 장은 그려 그 감시를 남긴다.
+  renderTick++;
+  if (renderThinN <= 1 || renderTick % renderThinN === 0) guard('render', render);
   // **한 프레임이 실제로 얼마나 걸렸는가.** 폰에서 프레임률을 물으면 답할 방법이
   // 이것뿐이다 — 헤드리스로는 이 기계의 비용만 알 수 있고, 그 사람 폰의 비용은
   // 그 폰에서 재야 한다. 지수평활으로 흔들림을 눌러 계기창에 띄운다.
@@ -9248,7 +9288,12 @@ window.loadGame = loadGame;
 window.__GAME = {
   version: VERSION,
   gfx: function () {
-    return { canvas: cv ? [cv.width, cv.height] : null, dpr: cam.dpr || 1, zoom: cam.z };
+    // 오염 표시는 화면 상태다 — 켜졌는지 밖에서 물을 창구가 없으면 폰의 [오염 보기]
+    // 버튼이 실제로 뭘 켰는지 검정할 수 없다.
+    // 그린 장수도 내준다 — 헤드리스 주행에서 그림을 솎을 때(renderThin) '한 장도
+    // 안 그렸다' 를 검정할 창구가 없으면 솎기가 조용히 렌더 검사를 없앤다.
+    return { canvas: cv ? [cv.width, cv.height] : null, dpr: cam.dpr || 1, zoom: cam.z,
+             pollution: !!showPollution, renders: frameCount };
   },
   errors: function () { return ERRORS.slice(); },
   reset: function (seed) { newGame(seed); return gameTime; },
@@ -9601,6 +9646,9 @@ window.__GAME = {
   // 음성 대조군용 — 아무것도 안 그리고 배경만 칠한다. 빈 화면 검출기가 실제로
   // 작동하는지 확인하는 데 쓴다 (검출기가 살아 있지 않으면 render.notBlank 는
   // 아무것도 보증하지 않는다).
+  // 검증 전용 — 그림을 n 프레임에 한 장만 그린다. 시뮬레이션에는 영향이 없다
+  // (렌더는 상태를 안 바꾼다). 사람이 보는 판에서는 절대 켜지 않는다.
+  renderThin: function (n) { renderThinN = Math.max(1, n | 0); renderTick = 0; return renderThinN; },
   renderBlank: function () {
     if (!ctx) return false;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
