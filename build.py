@@ -41,6 +41,29 @@ def read(path):
         return f.read()
 
 
+def stamp_of(shell_text, game_text):
+    """배포본의 내용으로 정하는 빌드 도장. 껍데기와 스크립트를 **둘 다** 넣는다."""
+    import hashlib
+    return hashlib.sha1((shell_text + game_text).encode('utf-8')).hexdigest()[:8]
+
+
+def stamp_selftest():
+    """도장이 실제로 입력을 따라 바뀌는가 — 안 바뀌는 도장은 도장이 아니다.
+    통과 케이스만 보면 '같은 입력 → 같은 값'만 확인하게 되므로, **바꿔 봤을 때
+    달라지는지**를 함께 본다(껍데기 쪽과 스크립트 쪽 각각)."""
+    bad = []
+    base = stamp_of('shell', 'game')
+    if stamp_of('shell', 'game') != base:
+        bad.append('같은 입력인데 값이 흔들린다')
+    if stamp_of('shell!', 'game') == base:
+        bad.append('껍데기를 바꿔도 도장이 그대로다')
+    if stamp_of('shell', 'game!') == base:
+        bad.append('스크립트를 바꿔도 도장이 그대로다')
+    if len(base) != 8:
+        bad.append('길이가 8이 아니다: %d' % len(base))
+    return bad
+
+
 def splice(host, marker, payload):
     i = host.index(marker)
     return host[:i] + payload + host[i + len(marker):]
@@ -106,8 +129,11 @@ def main():
 
     # 빌드 도장 — 소스 전체의 해시 앞 8자리. 시각이 아니라 내용으로 정한다
     # (같은 소스는 같은 도장이라 배포본 바이트가 재현된다).
-    import hashlib
-    build_id = hashlib.sha1(game.encode('utf-8')).hexdigest()[:8]
+    #
+    # **껍데기(shell.html)까지 넣어 해싱한다.** 처음엔 JS 만 해싱했는데, 그러면
+    # CSS 만 고친 판이 같은 도장을 달고 나간다 — 실제로 조작 바 글자 접힘을 CSS 로
+    # 고친 뒤 도장이 그대로여서, "폰이 어느 사본인가"에 틀린 답을 하고 있었다.
+    build_id = stamp_of(shell, game)
     stamp_mark = "var BUILD_ID = 'dev';"
     if stamp_mark not in game:
         print('FATAL: BUILD_ID 자리표시자를 못 찾았다 — 도장 없이 나가면 폰이 어느 사본인지 알 수 없다')
@@ -120,6 +146,11 @@ def main():
     # 폰 설치용 아이콘·매니페스트 — 생성기에서 받아 자리표시자에 끼운다.
     # 생성기의 자기 시험을 **여기서 먼저 돌린다**: 깨진 PNG 를 배포본에 박아 두면
     # 홈화면 아이콘이 빈 사각형으로 뜨고, 그건 아무 게이트도 안 보는 자리다.
+    stamp_bad = stamp_selftest()
+    if stamp_bad:
+        print('FATAL: 빌드 도장이 자기 시험에서 실패했다 — ' + ' · '.join(stamp_bad))
+        return 2
+
     sys.path.insert(0, os.path.join(ROOT, 'tools'))
     import make_icon
     icon_problems = make_icon.selftest()
