@@ -133,6 +133,12 @@ MUTATIONS = [
      b'    check: function () { return false; }',
      ['clear.advancedTutorialDone'], 'clear.js'),
 
+    # 안내 줄이 도구 칩 위로 안 올라가면 '무엇을 들고 있는지'가 가려진다(실기 제보).
+    ('phone: 안내 줄이 도구 칩과 같은 자리에 선다', 'shell.html',
+     b'  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px) + var(--chip-h, 0px))}',
+     b'  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px))}',
+     ['mobile.toastsDoNotCoverToolChip'], 'mobile.js'),
+
     # --- 폰 조작 ---------------------------------------------------------
     ('phone: 오염 보기 버튼이 아무 일도 안 한다', '50_ui.js',
      b'  if (pb) pb.onclick = function () { togglePollution(); };',
@@ -901,8 +907,10 @@ MUTATIONS = [
      ["mobile.differentToastsStaySeparate"], "mobile.js"),
 
     ("안내를 튜토리얼 판 위로 안 올린다", "shell.html",
-     "  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px));left:8px;right:8px;".encode("utf-8"),
-     "  #toast{bottom:120px;left:8px;right:8px;".encode("utf-8"),
+     # 아래쪽 위치를 정하는 규칙은 coarse 블록 한 곳뿐이다(두 곳에 두었다가
+     # 뒤엣것이 덮어 이 돌연변이가 무력화됐다).
+     "  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px) + var(--chip-h, 0px))}".encode("utf-8"),
+     "  #toast{bottom:120px}".encode("utf-8"),
      ["mobile.toastsDoNotCoverTutorial"], "mobile.js"),
 
     # 청사진은 마우스 경로에만 있었다 — 폰에서는 담기도 붙여넣기도 안 됐다

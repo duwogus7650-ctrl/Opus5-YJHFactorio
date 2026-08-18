@@ -487,8 +487,11 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   #graphWrap{left:0;top:146px}
   /* 안내는 **튜토리얼 판 위**에 뜬다. 예전엔 고정 120px 이라 튜토리얼이 열려 있으면
      그 위에 겹쳐 판을 덮었다(실기 스크린샷). 판 높이를 알고 있으니 그만큼 올린다. */
-  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px));left:8px;right:8px;
-         transform:none;width:auto;max-width:100%}
+  /* 좁은 화면에서는 가로로 꽉 채운다. **아래 위치는 여기서 정하지 않는다** —
+     조작 바가 있는지는 폭이 아니라 포인터 종류가 정하므로 아래쪽 쌓기는
+     coarse 블록 한 곳에서만 정한다(두 곳에 두면 뒤엣것이 앞엣것을 덮어
+     돌연변이가 무력화된다 — 실제로 그렇게 놓쳤다). */
+  #toast{left:8px;right:8px;transform:none;width:auto;max-width:100%}
   #toast .tmsg{max-width:100%}
 }
 
@@ -507,6 +510,13 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   #buildList .bitem,#craftList .citem,#invList .irow{min-height:44px;align-items:center}
   /* **저장·불러오기가 폰에서 폭 37px 였다.** 판 머리에 작은 글씨로 떠 있었고,
      폰에는 F2/F3 도 없어 이 버튼이 유일한 길이다. 줄을 따로 내려 둘로 채운다. */
+  /* **조작 바가 있는 판에서는 아래쪽 것들이 그 위에 서야 한다.** 이 규칙을 좁은
+     화면(max-width:720px) 블록에만 뒀더니 태블릿에서는 조작 바만 생기고 튜토리얼
+     판은 데스크톱 자리(bottom:8px)에 남아 바와 정확히 겹쳤다 — 안내 줄도 튜토리얼
+     위에 얹혔다. 겹침 검사를 손으로 적은 짝이 아니라 자동 수집으로 바꾸자마자
+     드러났다. 이 레포에서 '폭으로 갈랐다가 태블릿이 새는' 두 번째 사례다. */
+  #tutor{bottom:calc(56px + var(--safe-b))}
+  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px) + var(--chip-h, 0px))}
   #sysRow button{min-height:44px;min-width:44px;font-size:13px;padding:4px}
   .panel h3 .close{min-width:44px;min-height:44px;display:inline-flex;
                    align-items:center;justify-content:center}

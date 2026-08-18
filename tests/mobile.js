@@ -914,6 +914,61 @@
       G.ui.closeLogic();
       void n2;
 
+      // ---------- 8.85 안내가 도구 칩을 덮지 않는가 --------------------------
+      // 실기 스크린샷: 채광기를 든 채 못 놓는 자리를 눌렀더니 '이미 뭔가 있다' 가
+      // '채광기 놓는 중 — 눌러서 그만두기 ✕' 위에 정확히 얹혔다. 지금 뭘 들고 있는지와
+      // 그만두는 길을 가리는 안내는 도움이 아니라 방해다.
+      // 튜토리얼 판에 대해서는 이미 재고 있었는데(toastsDoNotCoverTutorial) **칩은
+      // 아무도 안 봤다** — 나중에 만든 것이라 검사 목록에 안 들어갔다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999);
+      var chipTool = document.querySelector('#buildList .bitem[data-b="miner"]');
+      if (chipTool) tap(chipTool, chipTool.getBoundingClientRect().left + 30,
+                                  chipTool.getBoundingClientRect().top + 20);
+      var toastBox2 = document.getElementById('toast');
+      if (toastBox2) toastBox2.innerHTML = '';
+      G.ui.toast('이미 뭔가 있다');
+      G.ui.toast('재료가 부족하다');
+      // **짝을 손으로 적지 않는다.** 화면 아래에 고정된 것들은 같은 자리를 두고
+      // 다투는 한 가족이다(조작 바·도구 칩·튜토리얼 손잡이·튜토리얼 판·안내 줄).
+      // 짝을 적어 두는 방식으로는 나중에 만든 것이 늘 빠진다 — 이 레포에서 네 번째다.
+      // 그래서 **아래쪽에 떠 있는 것을 전부 모아** 서로 겹치는지 본다. 새로 만드는
+      // 것은 자동으로 이 검사에 든다.
+      function bottomFloaters() {
+        var out = [];
+        var cand = document.querySelectorAll('#mobBar, #toolChip, #tutorChip, #tutor, #toast .tmsg');
+        for (var ci = 0; ci < cand.length; ci++) {
+          var el = cand[ci];
+          if (getComputedStyle(el).display === 'none' || getComputedStyle(el).visibility === 'hidden') continue;
+          var r = el.getBoundingClientRect();
+          if (r.width <= 0 || r.height <= 0) continue;
+          if (r.top > window.innerHeight || r.bottom < 0) continue;
+          out.push({ name: el.id || (el.className + ':' + el.textContent.trim().slice(0, 12)), r: r });
+        }
+        return out;
+      }
+      var floaters = bottomFloaters(), covered = [];
+      for (var fi = 0; fi < floaters.length; fi++) {
+        for (var fj = fi + 1; fj < floaters.length; fj++) {
+          var A = floaters[fi].r, Bb = floaters[fj].r;
+          if (!(A.bottom <= Bb.top || A.top >= Bb.bottom || A.right <= Bb.left || A.left >= Bb.right)) {
+            covered.push(floaters[fi].name + '↔' + floaters[fj].name);
+          }
+        }
+      }
+      var chipEl = document.getElementById('toolChip');
+      var hasChip = floaters.some(function (f) { return f.name === 'toolChip'; });
+      var hasMsg = floaters.some(function (f) { return f.name.indexOf('tmsg') === 0; });
+      chk('mobile.toastsDoNotCoverToolChip',
+        hasChip && hasMsg && covered.length === 0,
+        '아래에 떠 있는 것 ' + floaters.length + '개(' +
+        floaters.map(function (f) { return f.name.split(':')[0]; }).join(',') + ') · 겹친 짝 ' +
+        covered.length + (covered.length ? ' — ' + covered.join(' · ') : '') +
+        ' · 도구 칩 떠 있음=' + hasChip + ' · 안내 줄 떠 있음=' + hasMsg +
+        ' (둘 중 하나라도 없으면 이 검사는 아무것도 안 본 것이다)');
+      void chipEl;
+      G.ui.clearTool();
+      if (toastBox2) toastBox2.innerHTML = '';
+
       // ---------- 8.9 같은 건물 하나 더 (폰에는 Q 가 없다) --------------------
       // 데스크톱은 Q 로 커서 아래 건물을 손에 든다. 폰에 그 길이 없으면 건물 목록을
       // 열어 이름으로 다시 찾아야 하고, 방향은 손으로 다시 맞춰야 한다.
@@ -1212,6 +1267,11 @@
       // 격리 측정에서는 5.5 ms/Mpx, 드라이버 끝에서는 7.9 ms/Mpx 로 나왔다.
       // 벤치마크는 자기 조건을 스스로 세워야 한다.
       G.ui.closeHelp(); G.ui.closeTech(); G.ui.closeLogic(); G.ui.clearTool();
+      var tutX = document.getElementById('tutorClose');   // 튜토리얼 판도 닫는다
+      if (tutX && getComputedStyle(document.getElementById('tutor')).display !== 'none') {
+        var tr = tutX.getBoundingClientRect();
+        tap(tutX, tr.left + tr.width / 2, tr.top + tr.height / 2);
+      }
       G.ui.select(-1);                       // 인스펙터를 닫는다(없는 id 로 선택 해제)
       var sheetB = document.getElementById('btnSheetBuild');
       var sheetR = document.getElementById('btnSheetRight');
@@ -1238,7 +1298,12 @@
         if (pe && pe.type === 'belt') { for (var pk = 0; pk < 4; pk++) if (G.putOnBelt(pid, 'iron-plate', pk)) onBelt++; }
       }
       G.run(2);
-      var cost = G.frameCost(60);
+      // **한 번 재고 판정하지 않는다.** 같은 판이 5.3~7.6 ms/Mpx 로 흔들렸다 —
+      // 다른 프로그램·다른 시험이 같은 기계를 쓰는 동안 찍힌 값이 섞인다. 세 번 재고
+      // 가운데 값으로 판정하고, 세 값을 전부 적어 흔들림이 보이게 둔다.
+      var runs = [G.frameCost(30), G.frameCost(30), G.frameCost(30)];
+      var sorted = runs.slice().sort(function (a2, b2) { return a2.totalMs - b2.totalMs; });
+      var cost = sorted[1];
       // **절대 시간으로 문턱을 잡으면 안 된다.** 처음엔 10ms 로 뒀다가 태블릿에서
       // 빨개졌다 — 화면이 넓으면 그릴 픽셀이 많아 당연히 오래 걸린다(폰 6.8ms /
       // 1.32Mpx, 태블릿 17.0ms / 3.15Mpx). 둘 다 **5.2~5.4 ms/Mpx** 로 같다.
@@ -1246,6 +1311,7 @@
       var cvPerf = document.getElementById('view');
       var mpx = (cvPerf.width * cvPerf.height) / 1e6;
       var perMpx = cost.totalMs / mpx;
+      var allPer = runs.map(function (r2) { return (r2.totalMs / mpx).toFixed(2); }).join(' / ');
       chk('mobile.frameCostFitsBudget',
         perfN > 250 && onBelt > 100 && mpx > 0.5 && perMpx <= 7,
         '엔티티 ' + perfN + '개 · 벨트 위 물건 ' + onBelt + '개 · 캔버스 ' +
@@ -1253,7 +1319,8 @@
         cost.simMs.toFixed(2) + 'ms + 렌더 ' + cost.drawMs.toFixed(2) + 'ms = ' +
         cost.totalMs.toFixed(2) + 'ms → ' + perMpx.toFixed(2) +
         ' ms/Mpx (문턱 7 · 60fps 예산 16.7ms 는 이 화면에서 ' +
-        (16.7 / mpx).toFixed(1) + ' ms/Mpx 에 해당)');
+        (16.7 / mpx).toFixed(1) + ' ms/Mpx 에 해당)' +
+        ' · 3회 측정 ' + allPer + ' ms/Mpx (가운데 값으로 판정)');
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', VW < 0, '뷰포트 폭이 음수일 리 없다', true);

@@ -204,6 +204,15 @@ function updateToolChip() {
     chip.innerHTML = '<span>' + (B ? B.name : tool) + ' 놓는 중</span>' +
                      '<span style="font-weight:400">— 눌러서 그만두기 ✕</span>';
   }
+  // 칩이 차지한 높이를 CSS 로 넘긴다 — 안내 줄이 이 값을 읽어 그만큼 위로 선다.
+  // **실기 스크린샷에서 안내가 칩을 정확히 덮었다**('이미 뭔가 있다' 가 '채광기 놓는
+  // 중 — 눌러서 그만두기' 위에 얹혔다). 지금 뭘 들고 있는지와 그만두는 길을 가리는
+  // 것은 안내가 아니라 방해다. 튜토리얼 판에 쓰던 방법을 그대로 쓴다.
+  syncChipHeight(chip, on);
+}
+function syncChipHeight(chip, on) {
+  var h = on ? Math.round(chip.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty('--chip-h', h ? (h + 6) + 'px' : '0px');
 }
 
 function selectTool(t) {
