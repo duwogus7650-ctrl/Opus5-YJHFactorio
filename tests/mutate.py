@@ -94,6 +94,12 @@ MUTATIONS = [
      b"  if (false) guard('render', render);",
      ['clear.stillDrewFrames'], 'clear.js'),
 
+    # 안드로이드 주소창 함정 — dvh 짝을 지우면 갤럭시에서 판 아래가 잘린다.
+    ('phone: 판 높이가 dvh 짝 없이 vh 만 쓴다', 'shell.html',
+     b'#build{max-height:calc(100dvh - 16px)}',
+     b'#build{max-height:calc(100vh - 16px)}',
+     ['mobile.viewportHeightUsesDvh'], 'mobile.js'),
+
     # --- 폰 조작 ---------------------------------------------------------
     ('phone: 오염 보기 버튼이 아무 일도 안 한다', '50_ui.js',
      b'  if (pb) pb.onclick = function () { togglePollution(); };',

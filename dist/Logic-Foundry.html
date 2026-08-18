@@ -106,6 +106,11 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 
 /* 건설 판 */
 #build{left:8px;top:8px;width:214px;max-height:calc(100vh - 16px);overflow-y:auto;z-index:5}
+/* **안드로이드는 주소창이 들락거린다.** 100vh 는 주소창이 숨은 '큰' 높이라,
+   주소창이 보이는 동안 그만큼이 화면 밖으로 밀린다(갤럭시에서 판 아래가 잘린다).
+   dvh 는 지금 실제로 보이는 높이다. vh 를 먼저 적어 두면 dvh 를 모르는 브라우저는
+   그대로 쓰고, 아는 브라우저는 뒤엣것으로 덮어쓴다. */
+#build{max-height:calc(100dvh - 16px)}
 .bhint{padding:3px 10px;font-family:var(--label);font-size:9.5px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--rule)}
 .bitem{display:flex;gap:7px;align-items:center;padding:4px 8px;cursor:pointer;
@@ -122,7 +127,7 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 
 /* 우측 열 */
 #right{position:absolute;right:8px;top:8px;width:226px;display:flex;flex-direction:column;
-  gap:8px;max-height:calc(100vh - 16px);z-index:5}
+  gap:8px;max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);z-index:5}
 /* 기본 flex-shrink 가 1 이라 세로가 모자라면 위 판들이 눌려 내용이 잘린다
    (창고 마지막 줄이 반쯤 잘려 있었다). 판은 줄어들지 않게 하고,
    남는 높이는 지도 판(인라인 flex:1)이 가져간다. */
@@ -415,6 +420,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
     position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px));top:auto;
     width:auto;max-width:100%;transform:none;
     max-height:calc(100vh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));
+    max-height:calc(100dvh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));
     overflow-y:auto;border-radius:0;border-left:none;border-right:none;
     z-index:26}
   #help .pad,#tech .pad{padding:10px 12px}
@@ -506,7 +512,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
      폭 조건 없이 두면 좁은 화면의 시트 높이(52vh)까지 덮어써 판 하나가 화면을
      거의 다 가린다 — 실기 스크린샷에서 그렇게 나왔다(772px). */
   @media (min-width: 721px){
-    #build,#right{max-height:calc(100vh - 72px)}
+    #build,#right{max-height:calc(100vh - 72px);max-height:calc(100dvh - 72px)}
   }
 }
 </style>

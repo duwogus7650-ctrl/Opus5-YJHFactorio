@@ -969,6 +969,28 @@
         '[오염 보기] 화면 안=' + pollSeen + ' · ' + pollOn0 + ' → ' + pollOn1 +
         ' → ' + G.gfx().pollution + ' (P 키는 폰에 없다)');
 
+      // ---------- 8.97 안드로이드 주소창 (100vh 함정) -------------------------
+      // 안드로이드 크롬·삼성 인터넷은 주소창이 스크롤에 따라 들락거린다. 100vh 는
+      // **주소창이 숨은 큰 높이**라, 주소창이 보이는 동안 판이 그만큼 화면 밖으로
+      // 밀린다 — 폰에서 "판 아래가 잘린다"의 흔한 원인이다.
+      // 헤드리스에는 주소창이 없어 이 어긋남을 재현할 수 없다. 그래서 재는 것은
+      // **규칙이 짝을 이루는가**다: 높이를 vh 로 정한 자리마다 dvh 짝이 있어야 한다.
+      // (실기기 확인은 여전히 필요하다 — 이 게이트는 그 자리를 빠뜨리지 않았다까지다.)
+      // **적어 둔 CSS 원문을 본다.** 처음엔 CSSOM(styleSheets[].cssRules) 을 훑었는데,
+      // 같은 규칙 안에 max-height 를 두 번 적으면 브라우저가 뒤엣것만 남겨서 vh 짝이
+      // 사라진 것처럼 보인다 — 짝을 지우는 돌연변이가 그 틈으로 빠져나갔다(MISS).
+      var cssText = '';
+      var styleEls = document.querySelectorAll('style');
+      for (var si = 0; si < styleEls.length; si++) cssText += styleEls[si].textContent;
+      // 주석은 규칙이 아니다 — 'dvh 를 왜 쓰는지' 설명하며 100vh 라고 적은 주석까지
+      // 세는 바람에 짝이 하나 모자란 것처럼 보였다.
+      cssText = cssText.replace(/\/\*[\s\S]*?\*\//g, ' ');
+      var vhHits = (cssText.match(/100vh/g) || []).length;
+      var dvhHits = (cssText.match(/100dvh/g) || []).length;
+      chk('mobile.viewportHeightUsesDvh', vhHits === 0 || dvhHits >= vhHits,
+        '100vh ' + vhHits + '곳 · 100dvh ' + dvhHits + '곳 (dvh 짝이 모자라면 안드로이드에서 ' +
+        '주소창이 보이는 동안 그만큼 잘린다)');
+
       // ---------- 9. 탭 표적이 손가락 크기인가 ------------------------------
       // 접근성 지침의 최소 타깃은 44x44 CSS px 다. 그보다 작으면 오탭이 난다.
       // **재기 전에 인스펙터를 열어 둔다.** 이 검사는 화면에 보이는 것만 재는데,

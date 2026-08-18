@@ -29,6 +29,16 @@ const DEVICES = {
                         'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' },
   // 작은 태블릿 세로 — 패널이 두 개 이상 들어갈 수 있는 경계
   tablet:  { viewport: { width: 768, height: 1024 }, deviceScaleFactor: 2,
+             isMobile: true, hasTouch: true },
+  // 갤럭시 S 계열 세로. 폭이 412 로 아이폰(390)보다 넓고 세로가 짧아(915 지만 브라우저
+  // 껍데기를 빼면 더 짧다) **시트와 지도가 나눠 갖는 높이가 달라진다.** 실제로 쓰는
+  // 기기가 이쪽이면 이 비율로도 재야 한다 — 390 에서 GREEN 이라고 412 가 GREEN 은 아니다.
+  galaxy:  { viewport: { width: 412, height: 883 }, deviceScaleFactor: 2.6,
+             isMobile: true, hasTouch: true,
+             userAgent: 'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 ' +
+                        '(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36' },
+  // 갤럭시 폴드 안쪽 화면에 가까운 정사각 비율 — 가장 넓은 폰
+  fold:    { viewport: { width: 673, height: 841 }, deviceScaleFactor: 2.6,
              isMobile: true, hasTouch: true }
 };
 if (!DEVICES[DEVICE]) { console.error('FATAL: 알 수 없는 기기 ' + DEVICE); process.exit(2); }
