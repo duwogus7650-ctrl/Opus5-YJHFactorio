@@ -16,7 +16,9 @@ const fs = require('fs');
 const ROOT = path.join(__dirname, '..');
 const SW_PATH = path.join(ROOT, 'sw.js');
 const swSrc = fs.readFileSync(SW_PATH, 'utf8');
-const BUMP = 'update-probe';
+const VER_PATH = path.join(ROOT, 'build.txt');
+const verSrc = fs.readFileSync(VER_PATH, 'utf8');
+void swSrc; void SW_PATH;
 const PORT = 8731;
 const URL_GAME = 'http://127.0.0.1:' + PORT + '/dist/Logic-Foundry.html';
 
@@ -112,21 +114,46 @@ function line(ok, name, detail) {
     await p.goto(URL_GAME, { waitUntil: 'load' });
     await p.waitForFunction(() => !!window.__GAME, null, { timeout: 30000 });
     const before = await p.evaluate(() => window.__GAME.ui.swUpdateReady());
-    fs.writeFileSync(SW_PATH, swSrc + String.fromCharCode(10) + '// bump ' + BUMP + String.fromCharCode(10));
+    // **게임 파일만 바뀐 배포**를 흉내낸다. 서비스워커 파일이 그대로인 배포에서는
+    // updatefound 가 안 뜨고, 실기기가 두 판 전 빌드를 계속 열고 있어도 아무 알림이
+    // 없었다 — 그래서 도장을 서버에 직접 물어보게 했다(build.txt).
+    fs.writeFileSync(VER_PATH, 'deadbeef');
     const noticed = await p.evaluate(async () => {
-      const reg = await navigator.serviceWorker.getRegistration();
-      if (!reg) return 'no-reg';
-      await reg.update();
+      await window.__GAME.ui.checkForNewerBuild();
       for (let i = 0; i < 40; i++) {
         if (window.__GAME.ui.swUpdateReady()) return true;
         await new Promise(r => setTimeout(r, 250));
       }
       return false;
     });
-    fs.writeFileSync(SW_PATH, swSrc);          // 원래대로 되돌린다
-    chk(before === false && noticed === true, 'offline.tellsYouWhenUpdated',
-        '처음엔 알림 없음=' + (before === false) + ' · 서비스워커를 갈아 끼운 뒤 알림=' +
-        noticed + ' (안 뜨면 사용자는 옛 화면을 보며 안 고쳐졌다고 생각한다)');
+    const shown = await p.evaluate(() => {
+      window.__GAME.ui.openHelp();
+      return window.__GAME.ui.offlineStatusText();
+    });
+    // **[지금 갱신] 이 정말 새 빌드로 데려가는가.** 알림만 뜨고 눌러도 그대로면
+    // 그 버튼은 거짓말이다. 서버가 주는 배포본의 도장을 바꿔 놓고 눌러 본다.
+    const DIST = path.join(ROOT, 'dist', 'Logic-Foundry.html');
+    const distSrc = fs.readFileSync(DIST, 'utf8');
+    const oldStamp = await p.evaluate(() => window.__GAME.buildId());
+    fs.writeFileSync(DIST, distSrc.replace("var BUILD_ID = '" + oldStamp + "'",
+                                           "var BUILD_ID = 'deadbeef'"));
+    let afterStamp = null;
+    try {
+      await p.evaluate(() => window.__GAME.ui.applyUpdateNow());
+      await p.waitForFunction(() => !!window.__GAME, null, { timeout: 30000 });
+      afterStamp = await p.evaluate(() => window.__GAME.buildId());
+    } catch (e) { void e; }
+    fs.writeFileSync(DIST, distSrc);           // 배포본을 되돌린다
+    chk(afterStamp === 'deadbeef', 'offline.updateButtonActuallyUpdates',
+        '[지금 갱신] 누르기 전 도장 ' + oldStamp + ' → 누른 뒤 ' + afterStamp +
+        ' (deadbeef 여야 · 그대로면 버튼이 거짓말이다)');
+
+    fs.writeFileSync(VER_PATH, verSrc);        // 원래대로 되돌린다
+    chk(before === false && noticed === true && /새 판/.test(shown || ''),
+        'offline.tellsYouWhenUpdated',
+        '처음엔 알림 없음=' + (before === false) + ' · 서버 도장을 바꾼 뒤 알림=' + noticed +
+        ' · 도움말 문구 "' + (shown || '') + '"' +
+        ' (안 뜨면 사용자는 옛 화면을 보며 안 고쳐졌다고 생각한다)');
 
     // ---- 3) 음성 대조군 — 서비스워커 없는 새 프로필 ------------------------
     const ctx2 = await b.newContext({ viewport: { width: 412, height: 883 } });

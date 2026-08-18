@@ -42,11 +42,30 @@ self.addEventListener('activate', function (e) {
   );
 });
 
+// 버전 확인은 **여기서** 한다. 배포본(HTML 한 장)은 네트워크를 열지 않는다는 것이
+// 이 프로젝트의 약속이고, offline_check 가 그것을 지킨다 — 게임 안에 fetch 를 넣었다가
+// 그 자리에서 걸렸다. 네트워크를 아는 쪽은 이 껍데기다.
+self.addEventListener('message', function (e) {
+  var msg = e.data || {};
+  if (msg.q !== 'version') return;
+  var src = e.source;
+  fetch(new URL('./build.txt', self.location.href).href, { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.text() : null; })
+    .then(function (t) {
+      var id = t ? t.trim() : null;
+      if (src) src.postMessage({ a: 'version', id: id, mine: msg.id || null });
+    })
+    .catch(function () { if (src) src.postMessage({ a: 'version', id: null }); });
+});
+
 self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET') return;
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;     // 남의 집 것은 손대지 않는다
+  // 버전 표는 **캐시하지 않는다.** 캐시된 도장을 보고 '최신이다' 라고 답하면
+  // 그 확인은 아무 일도 안 하는 것이다.
+  if (url.pathname.indexOf('build.txt') >= 0) return;
 
   e.respondWith(
     caches.open(CACHE).then(function (c) {

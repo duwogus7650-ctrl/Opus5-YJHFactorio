@@ -86,6 +86,9 @@ ENV['PYTHONIOENCODING'] = 'utf-8'
 
 # (이름, 파일, 찾을 바이트, 바꿀 바이트, 반드시 FAIL 이 되어야 하는 게이트들 [, 드라이버])
 # 드라이버를 생략하면 모델 게이트(driver.js). UI 결함은 uismoke.js 로 지목한다.
+# 하네스가 아니라 node 로 직접 도는 판정 드라이버들.
+NODE_DRIVERS = {'offline_pwa.js', 'site_check.js'}
+
 MUTATIONS = [
     # 헤드리스 주행은 그림을 솎아서 돈다(renderThin). 솎기가 지나쳐 한 장도 안
     # 그리게 되면 40분 주행이 화면 없이 도는 셈이 된다 — 그것을 잡는지 본다.
@@ -138,6 +141,15 @@ MUTATIONS = [
      b'  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px) + var(--chip-h, 0px))}',
      b'  #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px))}',
      ['mobile.toastsDoNotCoverToolChip'], 'mobile.js'),
+
+    # 새 판이 나왔는데 아무 말도 안 하면, 사용자는 옛 화면을 보며 '안 고쳐졌다'고 한다
+    # (실기기에서 실제로 두 판을 그렇게 흘려보냈다).
+    ('update: 새 판이 있어도 알리지 않는다', '60_game.js',
+     # 앵커는 유일해야 한다 — 같은 한 줄이 두 곳(워커 갱신 감지 / 도장 비교)에
+     # 있어 처음엔 INVALID 가 났다. 도장 비교 쪽만 겨냥한다.
+     ('  swUpdateReady = true;' + chr(10) + '  latestBuildId = id;').encode('utf-8'),
+     ('  swUpdateReady = false;' + chr(10) + '  latestBuildId = id;').encode('utf-8'),
+     ['offline.tellsYouWhenUpdated'], 'offline_pwa.js'),
 
     # --- 폰 조작 ---------------------------------------------------------
     ('phone: 오염 보기 버튼이 아무 일도 안 한다', '50_ui.js',
@@ -1545,9 +1557,15 @@ def main():
                 continue
             # 터치 드라이버는 기기 에뮬레이션이 켜져야 의미가 있다. 데스크톱으로
             # 돌리면 TouchEvent 가 안 만들어져 게이트가 아니라 도구를 재게 된다.
-            hcmd = [sys.executable, os.path.join('tests', 'harness.py'), drv]
-            if drv == 'mobile.js':
-                hcmd += ['chromium', 'mobile']
+            # 판정 드라이버가 전부 하네스를 타는 것은 아니다 — 오프라인·소개 페이지
+            # 검사는 자기 서버를 띄우고 네트워크를 끊는 node 스크립트다. 같은 형식으로
+            # [PASS]/[FAIL] 를 찍으므로 판정 방식은 같고, **부르는 법만 다르다.**
+            if drv in NODE_DRIVERS:
+                hcmd = ['node', os.path.join('tests', drv)]
+            else:
+                hcmd = [sys.executable, os.path.join('tests', 'harness.py'), drv]
+                if drv == 'mobile.js':
+                    hcmd += ['chromium', 'mobile']
             hrc, hout, herr = run(hcmd)
             if hrc == 'TIMEOUT':
                 # 게이트가 잡은 것이 아니다 — 판정 자체가 성립하지 않았다.

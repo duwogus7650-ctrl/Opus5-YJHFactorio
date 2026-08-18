@@ -171,7 +171,13 @@ def main():
     with io.open(dst, 'w', encoding='utf-8', newline='\n') as f:
         f.write(out)
 
-    print('BUILD OK  ->  %s' % dst)
+    # **버전을 물어볼 수 있는 작은 파일.** 배포본은 430KB 라 '새 판이 있나' 를
+    # 확인하려고 매번 받을 수는 없다. 도장만 담은 8바이트 파일을 같이 내보내면
+    # 게임이 그것만 받아 보고 자기 도장과 비교할 수 있다.
+    with io.open(os.path.join(ROOT, 'build.txt'), 'w', encoding='utf-8', newline=chr(10)) as f:
+        f.write(build_id)
+
+    print('BUILD OK  ->  %s  (도장 %s)' % (dst, build_id))
     for name, b, ln in sizes:
         print('   %-16s %6d bytes  %5d lines' % (name, b, ln))
     print('   %-16s %6d bytes' % ('(shell)', len(shell)))

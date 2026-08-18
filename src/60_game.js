@@ -1169,6 +1169,9 @@ window.__GAME = {
     },
     // 오프라인 준비 상태를 글자 그대로 내준다 — 시험이 '무엇이 보이는가' 를 물을 창구
     swUpdateReady: function () { return swUpdateReady; },
+  latestBuildId: function () { return latestBuildId; },
+  checkForNewerBuild: function () { return checkForNewerBuild(); },
+  applyUpdateNow: function () { return applyUpdateNow(); },
   offlineStatusText: function () {
       var el = document.getElementById('swStat');
       return el ? el.textContent.trim() : null;
@@ -1349,7 +1352,7 @@ function fixManifestUrls() {
 // 새 판은 뒤에서 받는다 — 그래서 배포 직후 처음 열면 **옛 화면이 나온다.** 실기기에서
 // 두 판 전 빌드를 보며 "안 고쳐졌다"고 하게 만든 것이 이것이다. 받아 둔 사실을 알려
 // 주면 "껐다 켜면 된다"를 스스로 알 수 있다.
-var swUpdateReady = false;
+var swUpdateReady = false, latestBuildId = null;
 function watchForUpdate(reg) {
   if (!reg || !reg.addEventListener) return;
   reg.addEventListener('updatefound', function () {
@@ -1365,6 +1368,39 @@ function watchForUpdate(reg) {
       }
     });
   });
+}
+
+// **서버에 도장을 물어본다.** 앞의 방식(서비스워커 파일이 바뀌면 알림)은 게임만
+// 고친 배포에서는 아무 일도 안 한다 — 실기기가 두 판 전 빌드를 계속 열고 있는데도
+// 알림이 없었다. 8바이트짜리 build.txt 를 캐시 없이 받아 자기 도장과 비교한다.
+function checkForNewerBuild() {
+  // **배포본은 네트워크를 열지 않는다.** 여기에 fetch 를 넣었다가 offline_check 에
+  // 걸렸고, 그 규칙이 맞다 — 파일 한 장이 스스로 돈다는 약속이 이 프로젝트의 뼈대다.
+  // 네트워크를 아는 쪽은 서비스워커(껍데기)이므로 거기에 물어보고 답만 받는다.
+  if (!('serviceWorker' in navigator)) return;
+  var ctrl = navigator.serviceWorker.controller;
+  if (!ctrl) return;                       // 아직 아무도 안 맡았다 — 다음 기회에
+  ctrl.postMessage({ q: 'version', id: BUILD_ID });
+}
+function onSWMessage(ev) {
+  var d = ev.data || {};
+  if (d.a !== 'version' || !d.id) return;
+  var id = String(d.id).trim();
+  if (!/^[0-9a-f]{8}$/.test(id) || id === BUILD_ID) return;
+  swUpdateReady = true;
+  latestBuildId = id;
+  if (typeof toast === 'function') toast('새 판(' + id + ')이 있다 — 도움말에서 갱신할 수 있다');
+  refreshOfflineStatus();
+}
+
+// 사용자가 누르는 갱신 — 캐시를 비우고 다시 연다. 서비스워커의 '다음에 열면 적용'을
+// 기다리지 않아도 되는 길을 하나 둔다.
+function applyUpdateNow() {
+  var done = function () { location.reload(); };
+  if (!window.caches) return done();
+  caches.keys().then(function (ks) {
+    return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+  }).then(done, done);
 }
 
 function registerSW() {
@@ -1385,6 +1421,7 @@ function registerSW() {
       if (/\/dist\/$/.test(rs[i].scope)) rs[i].unregister();
     }
   }).catch(function () { /* 못 읽어도 등록은 계속한다 */ });
+  navigator.serviceWorker.addEventListener('message', onSWMessage);
   navigator.serviceWorker.register('../sw.js', { scope: '../' })
     .catch(function () { return navigator.serviceWorker.register('./sw.js'); })
     .then(function (reg) { watchForUpdate(reg); })
@@ -1396,6 +1433,10 @@ if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
       guard('manifest', fixManifestUrls); guard('boot', boot); guard('sw', registerSW);
+      setTimeout(function () { guard('ver', checkForNewerBuild); }, 1500);
     });
-  } else { guard('manifest', fixManifestUrls); guard('boot', boot); guard('sw', registerSW); }
+  } else {
+    guard('manifest', fixManifestUrls); guard('boot', boot); guard('sw', registerSW);
+    setTimeout(function () { guard('ver', checkForNewerBuild); }, 1500);
+  }
 }

@@ -561,9 +561,16 @@ function refreshOfflineStatus() {
     }));
   }).then(function (hits) {
     var saved = hits.some(function (h) { return !!h; });
-    if (saved && ctrl && swUpdateReady) {
-      say('새 판을 받아 뒀다 — 껐다 켜면 적용된다', 'var(--warn)');
-    } else if (saved && ctrl) say('준비됨 — 비행기 모드에서도 열린다', 'var(--run)');
+    if (swUpdateReady) {
+      // 누를 수 있는 길을 준다 — '껐다 켜라'만 적어 두면 그게 언제 되는지 알 수 없다.
+      el.innerHTML = '<span style="color:var(--warn)">새 판' +
+        (latestBuildId ? ' (' + latestBuildId + ')' : '') + ' 이 있다</span> ' +
+        '<button id="updNow" style="min-height:32px;padding:2px 10px;margin-left:6px">지금 갱신</button>';
+      var ub = document.getElementById('updNow');
+      if (ub) ub.onclick = function () { applyUpdateNow(); };
+      return;
+    }
+    if (saved && ctrl) say('준비됨 — 비행기 모드에서도 열린다', 'var(--run)');
     else if (ctrl) say('저장 중… 잠시 뒤 이 창을 다시 열어 보라', 'var(--warn)');
     else say('아직 아니다 — 온라인에서 한 번 더 열면 저장된다', 'var(--warn)');
   }).catch(function () { say('알 수 없음', 'var(--warn)'); });
