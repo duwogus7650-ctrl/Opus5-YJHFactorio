@@ -1049,6 +1049,48 @@
         '버튼 ' + pollLabel0 + ' → ' + pollLabel1 + ' · 안내 "' + pollToast +
         '" (라벨도 안 바뀌고 안내도 없으면 폰에서는 아무 일도 안 일어난 것과 같다)');
 
+      // ---------- 8.955 시트가 한 장의 판인가 --------------------------------
+      // 시트는 판 여러 개를 틈을 두고 쌓는다. 시트 자체가 투명이면 그 틈으로 지도가
+      // 비쳐 글자가 게임 화면 위에 떠 있는 것처럼 보인다(실기 스크린샷).
+      // **문자열이 아니라 손가락이 닿는 것으로 잰다** — 틈 자리를 짚었을 때 잡히는
+      // 요소가 캔버스면 그 자리는 뚫린 것이다.
+      openRightSheet(true);
+      var sheetEl = document.getElementById('right');
+      var kids = sheetEl ? sheetEl.children : [];
+      var holes = [];
+      for (var ki = 0; ki + 1 < kids.length; ki++) {
+        var aR = kids[ki].getBoundingClientRect(), bR = kids[ki + 1].getBoundingClientRect();
+        var midY = (aR.bottom + bR.top) / 2;
+        if (midY <= 0 || midY >= window.innerHeight) continue;
+        var hit = document.elementFromPoint(Math.round(window.innerWidth / 2), Math.round(midY));
+        if (hit && (hit.id === 'view' || hit.tagName === 'CANVAS')) {
+          holes.push(Math.round(midY) + 'px→' + (hit.id || hit.tagName));
+        }
+      }
+      // **덮였는가와 가려지는가는 다른 질문이다.** elementFromPoint 는 투명한 요소도
+      // 잡아 주므로(히트 테스트는 색을 안 본다) 그것만으로는 '비친다'를 못 잡는다 —
+      // 배경을 투명으로 되돌리는 돌연변이가 그 틈으로 빠져나갔다. 불투명도를 함께 본다.
+      var sheetBg = sheetEl ? getComputedStyle(sheetEl).backgroundColor : '';
+      var mAlpha = /rgba?\(([^)]+)\)/.exec(sheetBg);
+      var alpha = 1;
+      if (mAlpha) {
+        var parts = mAlpha[1].split(',');
+        alpha = parts.length > 3 ? parseFloat(parts[3]) : 1;
+      }
+      // **넓은 화면에서는 시트가 아니다.** 태블릿은 판이 지도 위에 떠 있는 배치가
+      // 맞고(데스크톱과 같다), 거기에 '한 장의 판' 을 요구하면 없는 결함을 만든다.
+      // 시트인지 아닌지는 화면 폭을 꽉 채운 고정 배치인가로 가른다.
+      var sheetCS = sheetEl ? getComputedStyle(sheetEl) : null;
+      var isSheet = !!sheetCS && sheetCS.position === 'fixed' &&
+                    sheetEl.getBoundingClientRect().width >= window.innerWidth - 1;
+      chk('mobile.sheetIsOneSurface',
+        !isSheet || (kids.length > 1 && holes.length === 0 && alpha > 0.9),
+        '시트 안 판 ' + kids.length + '개 · 판 사이로 지도가 비친 자리 ' + holes.length +
+        (holes.length ? ' (' + holes.join(', ') + ')' : '') +
+        ' · 시트 바닥 ' + sheetBg + ' · 시트 배치인가=' + isSheet +
+        ' (시트가 아니면 이 검사는 건너뛴다 — 넓은 화면에서는 떠 있는 판이 맞다)');
+      openRightSheet(false);
+
       // ---------- 8.96 신호 버스 계기판이 폰에서도 쓸 만한가 -------------------
       // 이름 칸은 **손가락으로 눌러 고치는 입력칸**이다. 26px 짜리로 두면 폰에서는
       // 없는 기능이 된다(저장 버튼이 폭 37px 로 그랬다).

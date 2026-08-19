@@ -170,6 +170,11 @@ MUTATIONS = [
      ['mobile.tapTargetsBigEnough'], 'mobile.js'),
 
 
+    ('phone: 시트 바닥이 투명해 지도가 비친다', 'shell.html',
+     b'    background:var(--face-lo);',
+     b'    background:transparent;',
+     ['mobile.sheetIsOneSurface'], 'mobile.js'),
+
     # --- 신호 버스 이름 --------------------------------------------------
     ('bus: 채널 이름을 저장에 안 담는다', '60_game.js',
      b'    busN: busNames,',
