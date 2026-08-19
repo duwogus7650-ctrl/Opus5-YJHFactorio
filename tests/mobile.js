@@ -1049,6 +1049,30 @@
         '버튼 ' + pollLabel0 + ' → ' + pollLabel1 + ' · 안내 "' + pollToast +
         '" (라벨도 안 바뀌고 안내도 없으면 폰에서는 아무 일도 안 일어난 것과 같다)');
 
+      // ---------- 8.96 신호 버스 계기판이 폰에서도 쓸 만한가 -------------------
+      // 이름 칸은 **손가락으로 눌러 고치는 입력칸**이다. 26px 짜리로 두면 폰에서는
+      // 없는 기능이 된다(저장 버튼이 폭 37px 로 그랬다).
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.powerCheat(true);
+      openRightSheet(true);
+      var busRowsM = document.querySelectorAll('#busList .brow');
+      var smallBus = [];
+      for (var bi2 = 0; bi2 < busRowsM.length; bi2++) {
+        var rr2 = busRowsM[bi2].getBoundingClientRect();
+        var nameEl = busRowsM[bi2].querySelector('.bname');
+        var nr = nameEl ? nameEl.getBoundingClientRect() : null;
+        if (rr2.height < 40 || !nr || nr.height < 30) {
+          smallBus.push(busRowsM[bi2].getAttribute('data-ch') + ':' +
+                        Math.round(rr2.height) + '/' + (nr ? Math.round(nr.height) : 0));
+        }
+      }
+      var busOnScreen = busRowsM.length > 0 && onScreen(busRowsM[0]);
+      chk('mobile.busPanelUsable',
+        busRowsM.length === 8 && smallBus.length === 0 && busOnScreen,
+        '버스 줄 ' + busRowsM.length + '개 · 작은 줄 ' + smallBus.length +
+        (smallBus.length ? '(' + smallBus.join(',') + ')' : '') +
+        ' · 첫 줄이 화면 안=' + busOnScreen);
+      openRightSheet(false);
+
       // ---------- 8.97 안드로이드 주소창 (100vh 함정) -------------------------
       // 안드로이드 크롬·삼성 인터넷은 주소창이 스크롤에 따라 들락거린다. 100vh 는
       // **주소창이 숨은 큰 높이**라, 주소창이 보이는 동안 판이 그만큼 화면 밖으로

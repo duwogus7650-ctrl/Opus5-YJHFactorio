@@ -28,9 +28,37 @@ function truthy(v) { return v >= TRUE_EPS; }
 //  채널 이름은 자유 입력이 아니라 고정 목록이다 — 오타 하나로 조용히 침묵하는
 //  것이 이 게임에서 가장 나쁜 실패다(대상 필터를 좁힌 것과 같은 이유).
 var BUS_CHANNELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+// **채널에 이름을 붙인다.** 제어기가 둘을 넘어가면 'A' 가 무엇이었는지 아무도 기억
+// 못 한다 — 신호 버스는 공장 전체가 공유하는 유일한 배선이라, 이름이 없으면 그 배선을
+// 읽을 수 없다. 이름은 판마다 다르므로 저장에 담는다.
+var busNames = {};
+function busName(ch) { return busNames[ch] || ''; }
+function busLabel(ch) { var n = busNames[ch]; return n ? (ch + ' — ' + n) : ch; }
+function setBusName(ch, name) {
+  if (BUS_CHANNELS.indexOf(ch) < 0) return false;
+  name = String(name || '').slice(0, 14).trim();
+  if (name) busNames[ch] = name; else delete busNames[ch];
+  return true;
+}
+// 누가 쓰고 누가 읽는가 — 값만 보여 주면 '이 숫자를 만든 회로'를 찾아 헤매게 된다.
+function busUsers() {
+  var use = {};
+  for (var i = 0; i < BUS_CHANNELS.length; i++) use[BUS_CHANNELS[i]] = { w: 0, r: 0 };
+  forEachEntity(function (e) {
+    if (e.type !== 'controller' || !e.graph) return;
+    for (var j = 0; j < e.graph.nodes.length; j++) {
+      var n = e.graph.nodes[j], ch = n.cfg && n.cfg.ch;
+      if (!ch || !use[ch]) continue;
+      if (n.kind === 'bussend') use[ch].w++;
+      else if (n.kind === 'busrecv') use[ch].r++;
+    }
+  });
+  return use;
+}
 var busNow = {};        // 이번 틱에 읽히는 값 = 직전 틱 합계
 var busNext = {};       // 이번 틱에 쌓이는 합계
 function busClear() { busNow = {}; busNext = {}; }
+function busNamesClear() { busNames = {}; }
 function busRead(ch) { var v = busNow[ch]; return (typeof v === 'number' && isFinite(v)) ? v : 0; }
 function busWrite(ch, v) {
   if (!(typeof v === 'number' && isFinite(v))) return;

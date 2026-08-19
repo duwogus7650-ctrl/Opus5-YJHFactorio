@@ -170,6 +170,28 @@ MUTATIONS = [
      ['mobile.tapTargetsBigEnough'], 'mobile.js'),
 
 
+    # --- 신호 버스 이름 --------------------------------------------------
+    ('bus: 채널 이름을 저장에 안 담는다', '60_game.js',
+     b'    busN: busNames,',
+     b'    busN: null,',
+     ['bus.namesSurviveSave']),
+
+    ('bus: 아무 채널 이름이나 받는다', '35_logic.js',
+     b'  if (BUS_CHANNELS.indexOf(ch) < 0) return false;',
+     b'  if (false) return false;',
+     ['bus.rejectsUnknownChannel']),
+
+    ('bus: 쓰는 곳·읽는 곳을 안 센다', '35_logic.js',
+     b"      if (n.kind === 'bussend') use[ch].w++;",
+     b'      if (false) use[ch].w++;',
+     ['bus.countsWritersAndReaders']),
+
+    ('bus: 계기판이 채널을 안 그린다', '50_ui.js',
+     # 이 한 줄은 목록을 그리는 곳마다 있다 — 버스 줄만 겨냥하려면 그 앞줄까지 묶는다.
+     ('  var vals = busSnapshot(), use = busUsers(), html = [];').encode('utf-8'),
+     ('  var vals = {}, use = {}, html = []; return;').encode('utf-8'),
+     ['ui.busPanelShowsChannels'], 'uismoke.js'),
+
     # --- 석유 2단계: 고체 연료 -----------------------------------------
     ('oil2: 고체 연료가 석탄과 같은 에너지', '05_data.js',
      b'  solidFuelEnergy: 12000,',

@@ -190,19 +190,19 @@ npm i -D playwright && npx playwright install chromium firefox webkit
 ```
 syntax_check.js        GREEN — 인라인 스크립트 파싱 통과
 offline_check.py       GREEN — 외부 참조 0건 (규칙 9개 · 자기 시험 포함)
-harness.py             GREEN — 실검사 276건 전부 통과 (고의 실패 1건 정상 검출)
-harness.py uismoke.js  GREEN — 실검사 81건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py             GREEN — 실검사 282건 전부 통과 (고의 실패 1건 정상 검출)
+harness.py uismoke.js  GREEN — 실검사 84건 전부 통과 (고의 실패 1건 정상 검출)
 harness.py fullplay.js GREEN — 노드 35종·건물 25종 전수 41건 (고의 실패 1건 정상 검출)
 harness.py shedding.js GREEN — 부하 차단 10건
 harness.py determinism GREEN — 재현성 7건 (음성 대조군: 다른 씨앗은 t=60s 에서 갈린다)
-mutate.py              GREEN — 돌연변이 223건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
+mutate.py              GREEN — 돌연변이 227건 전부 해당 게이트가 검출 (놓침 0 · 무효 0)
 crossbrowser.py        GREEN — 18조합 (데스크톱 4엔진 × 드라이버 4개 + 터치 2)
 balance.py             런타임 오류 0건 · 페이싱 표는 아래
 harness.py clear.js    GREEN — 실검사 17건 전부 통과 (연구 9/9 · 손실 0 · 여유 170초 · 14초 만에 끝난다)
 offline_pwa.js         GREEN — 오프라인 8건 (네트워크를 실제로 끊고 · 음성 대조군 포함)
 site_check.js          GREEN — 소개 페이지 11건 (폰·데스크톱 · 바깥 요청 0 · 눌러서 게임 부팅까지)
-pwrun.js mobile.js     GREEN — 터치 63건 (390x844 · 진짜 TouchEvent)
-pwrun.js … galaxy      GREEN — 터치 63건 (412x883 갤럭시) · tablet · fold 도 GREEN
+pwrun.js mobile.js     GREEN — 터치 64건 (390x844 · 진짜 TouchEvent)
+pwrun.js … galaxy      GREEN — 터치 64건 (412x883 갤럭시) · tablet · fold 도 GREEN
 ```
 
 | 엔진 | 모델 273 | 클릭 80 | 전수 40 | 부하차단 10 |
@@ -263,6 +263,25 @@ pwrun.js … galaxy      GREEN — 터치 63건 (412x883 갤럭시) · tablet ·
 
 같은 스크린샷이 좋은 소식도 하나 실어 왔다 — 상태바에 비행기 모드가 켜진 채로 게임이
 돌고 있었다. **오프라인이 실기기에서 확인됐다.**
+
+#### 신호 버스에 이름을 붙였다 — 익명 배선은 읽을 수 없다
+
+제어기끼리 값을 주고받는 **신호 버스**는 A~H 여덟 채널인데 전부 익명이었다. 제어기가
+둘을 넘어가는 순간 'A' 가 무엇이었는지 아무도 기억 못 한다 — 공장 전체가 공유하는
+유일한 배선인데 그 배선을 읽을 방법이 없었다.
+
+이제 채널에 **이름**을 붙인다(판마다 다른 것이므로 저장에 실린다). 노드에서 채널을 고를
+때도 `A — 증기%` 로 보인다. 그리고 **계기판**을 하나 냈다: 여덟 줄에 값과
+**쓰는 곳 → 읽는 곳** 개수가 함께 뜬다. 값만 보여 주면 그 숫자를 만든 회로를 찾아
+헤매게 되고, 쓰는 곳이 0 인데 읽고 있는 채널은 그 자체로 버그다.
+
+게이트는 아홉이다 — 이름이 붙는가 · **없는 채널은 거절하는가** · 새 판에서 비는가 ·
+저장을 넘어가는가 · 쓰기/읽기 수가 맞는가 · 계기판 값이 실제 버스 값과 같은가 ·
+화면에 여덟 줄이 뜨는가 · 이름을 **고칠 수 있는가** · 이름칸에서 친 글자가 건설
+단축키로 새지 않는가. 마지막 것은 이 게임에서 이미 한 번 겪은 종류다.
+
+폰 게이트가 곧바로 하나 잡았다: 새로 만든 이름 입력칸이 **36px** 이었다. 44px 규칙은
+버튼만의 것이 아니다 — 입력칸도 손가락이 누르는 표적이다.
 
 #### 석유 2단계 — 같은 가스를 두고 다투게 만든다
 

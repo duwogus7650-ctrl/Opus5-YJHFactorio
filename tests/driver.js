@@ -3448,6 +3448,45 @@
         '저장 전 화물 ' + beforeCargo + ' → 복원 후 열차 ' + afterList.length + '대 · 화물 ' +
         (afterList[0] ? afterList[0].cargo : '없음') + ' (같아야)');
 
+      // ================= 11.8 신호 버스 이름 ==============================
+      // 버스는 공장 전체가 공유하는 유일한 배선인데 채널이 A~H 로 익명이었다.
+      // 이름은 **판마다 다른 것**이라 저장에 실려야 하고, 노드에서 고를 때도 보여야 한다.
+      labSetup();
+      G.busName('A', '증기%');
+      G.busName('B', '탄약 부족');
+      chk('bus.namesAreKept', G.busName('A') === '증기%' && G.busLabel('A') === 'A — 증기%',
+        '이름 붙이기 A="' + G.busName('A') + '" · 라벨 "' + G.busLabel('A') + '"');
+      // 음성 대조군 — 없는 채널에는 안 붙는다
+      var badCh = G.busName('Z', '아무거나');
+      chk('bus.rejectsUnknownChannel', badCh === false && G.busName('Z') === '',
+        '없는 채널 Z 에 붙이기 = ' + badCh + ' (false 여야)');
+
+      var savedBus = G.save();
+      G.reset(4242);
+      chk('bus.namesResetOnNewGame', G.busName('A') === '',
+        '새 판의 A 이름 "' + G.busName('A') + '" (비어야 — 판을 넘기면 안 된다)');
+      G.load(savedBus);
+      chk('bus.namesSurviveSave', G.busName('A') === '증기%' && G.busName('B') === '탄약 부족',
+        '불러온 뒤 A="' + G.busName('A') + '" B="' + G.busName('B') + '"');
+
+      // 누가 쓰고 누가 읽는가 — 값만으로는 그 숫자를 만든 회로를 못 찾는다
+      labSetup();
+      G.research('logic-mem'); G.research('logic-ctrl');
+      var bc1 = G.place('controller', 60, 60, 0);
+      var bc2 = G.place('controller', 64, 60, 0);
+      var bsend = G.gAdd(bc1, 'bussend', 20, 20); G.gCfg(bc1, bsend, 'ch', 'C');
+      var bconst = G.gAdd(bc1, 'const', 20, 200); G.gCfg(bc1, bconst, 'value', 7);
+      G.gLink(bc1, bconst, 0, bsend, 0);
+      var brecv = G.gAdd(bc2, 'busrecv', 20, 20); G.gCfg(bc2, brecv, 'ch', 'C');
+      G.run(0.2);
+      var users = G.busUsers();
+      chk('bus.countsWritersAndReaders',
+        users.C && users.C.w === 1 && users.C.r === 1 && users.A.w === 0 && users.A.r === 0,
+        'C 채널 쓰는 곳 ' + users.C.w + ' · 읽는 곳 ' + users.C.r +
+        ' (1·1 이어야) · 안 쓰는 A 는 ' + users.A.w + '·' + users.A.r + ' (0·0 이어야)');
+      chk('bus.valueMatchesWhatWasSent', near(G.bus('C'), 7, 0.01, 0.01),
+        'C 채널 값 ' + G.bus('C') + ' (보낸 값 7 이어야 · 다르면 계기판이 딴 것을 읽는 것)');
+
       // ================= 11.85 석유·화학 ==================================
       // 사슬: 원유 광맥 → 펌프잭(원유) → 정제소(가스) → 화학공장(플라스틱).
       // **각 칸을 따로 재고, 마지막에 사슬 전체가 이어지는지 본다** — 한 칸씩만 재면

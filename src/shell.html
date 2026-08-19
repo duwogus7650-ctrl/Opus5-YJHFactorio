@@ -82,6 +82,15 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 #sysRow{display:flex;gap:4px}
 #sysRow button{flex:1;padding:2px 6px;font-size:10px}
 #pollBtn.on{background:var(--steel);color:#fff}
+#busList .brow{display:flex;align-items:center;gap:6px;padding:2px 8px;font-size:11px;
+  border-bottom:1px solid var(--rule)}
+#busList .bch{font-family:var(--mono);font-weight:700;width:14px;color:var(--ink)}
+#busList .bname{flex:1;min-width:0;background:transparent;border:1px dashed transparent;
+  color:var(--ink-2);font:inherit;padding:2px 3px}
+#busList .bname:focus{border-color:var(--edge);background:var(--face-hi);outline:none}
+#busList .bval{font-family:var(--mono);min-width:52px;text-align:right;color:var(--ink)}
+#busList .buse{font-family:var(--mono);color:var(--ink-3);min-width:44px;text-align:right}
+#busList .brow.idle .bval,#busList .brow.idle .buse{color:var(--ink-3)}
 .panel h3{margin:0;padding:6px 10px 5px;font-family:var(--label);
   font-variation-settings:'wght' 700,'wdth' 75;text-transform:uppercase;
   font-size:10.5px;letter-spacing:.15em;color:var(--ink-2);
@@ -517,6 +526,10 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
      드러났다. 이 레포에서 '폭으로 갈랐다가 태블릿이 새는' 두 번째 사례다. */
   #tutor{bottom:calc(56px + var(--safe-b))}
   #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px) + var(--chip-h, 0px))}
+  /* 손가락으로 이름을 고쳐야 하므로 줄과 입력칸을 키운다. **입력칸도 표적이다** —
+     36px 로 뒀다가 내 탭 표적 게이트에 그 자리에서 걸렸다. */
+  #busList .brow{padding:5px 8px;font-size:13px;min-height:48px}
+  #busList .bname{min-height:44px}
   #sysRow button{min-height:44px;min-width:44px;font-size:13px;padding:4px}
   .panel h3 .close{min-width:44px;min-height:44px;display:inline-flex;
                    align-items:center;justify-content:center}
@@ -569,6 +582,12 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
     <h3>Handcraft 손 조립 <span style="float:right;color:var(--ink-3)">클릭 = 대기열 1개</span></h3>
     <div id="craftQueue"></div>
     <div id="craftList"></div>
+  </div>
+  <!-- 신호 버스는 공장 전체가 공유하는 **유일한 배선**이다. 값이 어디서 와서 어디로
+       가는지 볼 창이 없으면, 제어기가 둘만 넘어가도 회로를 읽을 수 없다. -->
+  <div class="panel">
+    <h3>Bus 신호 버스 <span style="float:right;color:var(--ink-3)">이름을 눌러 고친다</span></h3>
+    <div id="busList"></div>
   </div>
   <div class="panel" style="flex:1;display:flex;flex-direction:column;min-height:0">
     <h3>Survey 지도 <span style="float:right;color:var(--ink-3)">클릭 = 이동</span></h3>

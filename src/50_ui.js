@@ -767,6 +767,43 @@ function renderBuildList() {
   }
 }
 
+// 사용자가 친 글자를 마크업에 넣기 전에 막는다. 이름에 따옴표 하나만 들어가도
+// 줄이 통째로 깨지고, 그건 화면이 아니라 코드가 깨진 것이다.
+function escAttr(t) {
+  return String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// 신호 버스 계기판 — 값·이름·쓰는 곳/읽는 곳.
+// **이름은 입력칸이다.** 이름을 못 고치면 채널은 여전히 익명이고, 이 판은
+// 숫자만 여덟 줄 늘어놓은 것이 된다.
+function renderBus() {
+  var host = document.getElementById('busList');
+  if (!host) return;
+  var vals = busSnapshot(), use = busUsers(), html = [];
+  for (var i = 0; i < BUS_CHANNELS.length; i++) {
+    var ch = BUS_CHANNELS[i];
+    var v = vals[ch] || 0, u = use[ch] || { w: 0, r: 0 };
+    var idle = (!u.w && !u.r) ? ' idle' : '';
+    html.push('<div class="brow' + idle + '" data-ch="' + ch + '">' +
+      '<span class="bch">' + ch + '</span>' +
+      '<input class="bname" data-ch="' + ch + '" value="' + escAttr(busName(ch)) +
+        '" placeholder="이름 없음" maxlength="14">' +
+      '<span class="bval">' + fmt(v, 2) + '</span>' +
+      '<span class="buse" title="쓰는 곳 / 읽는 곳">' + u.w + '→' + u.r + '</span></div>');
+  }
+  host.innerHTML = html.join('');
+  var ins = host.querySelectorAll('.bname');
+  for (var j = 0; j < ins.length; j++) {
+    ins[j].onchange = (function (el) {
+      return function () { setBusName(el.getAttribute('data-ch'), el.value); renderBus(); };
+    })(ins[j]);
+    // 이름을 치는 동안 게임 단축키가 먹으면 글자마다 건물이 바뀐다
+    ins[j].onkeydown = function (ev) { ev.stopPropagation(); };
+  }
+}
+
 function renderInv() {
   var host = document.getElementById('invList');
   if (!host) return;

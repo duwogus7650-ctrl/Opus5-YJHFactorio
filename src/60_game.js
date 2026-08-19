@@ -30,7 +30,7 @@ function newGame(seed) {
   beltStats.delivered = 0;
   ERRORS.length = 0;
   alarms.length = 0; displays.length = 0;
-  busClear();                // 신호 버스도 판을 넘기지 않는다 — 결정성이 깨진다
+  busClear(); busNamesClear();                // 신호 버스도 판을 넘기지 않는다 — 결정성이 깨진다
   trains.length = 0;         // 열차도 판에 딸린 물건이다
   blueprint = null;          // 청사진도 판에 딸린 물건이다
 
@@ -59,7 +59,7 @@ function newGame(seed) {
 function refreshAllUI() {
   if (typeof document === 'undefined' || !document.getElementById('buildList')) return;
   renderBuildList(); renderInv(); renderCraftList(); renderCraftQueue();
-  renderTech(); renderTop(); renderTutorial();
+  renderTech(); renderTop(); renderTutorial(); renderBus();
 }
 
 // --- 한 틱 -------------------------------------------------------------------
@@ -231,6 +231,7 @@ function saveGame() {
     // 버스는 직전 틱 합계 하나뿐이다. 안 담으면 불러온 첫 틱에 모든 채널이 0 이
     // 돼, 신호를 받아 라인을 잡고 있던 회로가 한 틱 동안 손을 놓는다.
     bus: busSnapshot(),
+    busN: busNames,          // 채널 이름 — 없으면 불러온 판의 배선이 다시 익명이 된다
     // 청사진도 저장한다. 저장 한 번에 사라지면 '한 라인 잘 만들어 두고 늘리기'가
     // 성립하지 않는다 — 그게 이 기능의 전부다.
     bp: blueprint,
@@ -283,6 +284,8 @@ function loadGame(raw) {
     currentResearch = data.res || null; researchProgress = data.resP || 0;
     researchProgressBy = data.resBy || {};   // 예전 저장본엔 없다 — 빈 채로 두면 그만이다
     busRestore(data.bus);                    // 마찬가지로 없으면 전 채널 0 에서 시작한다
+    busNamesClear();
+    if (data.busN) { for (var bk in data.busN) setBusName(bk, data.busN[bk]); }
     blueprint = data.bp || null;             // 예전 저장본엔 없다 — 빈 채로 둔다
     trains.length = 0;
     handQueue.length = 0;
@@ -537,6 +540,12 @@ window.__GAME = {
   fluidNetCount: function () { if (fluidDirty) rebuildFluid(); return fluidNets.length; },
   // 신호 버스 — 지금 읽히는 값(직전 틱 합계)
   bus: function (ch) { return ch === undefined ? busSnapshot() : busRead(ch); },
+  busName: function (ch, name) {
+    if (name === undefined) return busName(ch);
+    var ok = setBusName(ch, name); refreshAllUI(); return ok;
+  },
+  busLabel: function (ch) { return busLabel(ch); },
+  busUsers: function () { return busUsers(); },
   busChannels: function () { return BUS_CHANNELS.slice(); },
   setSpeed: function (n) { gameSpeed = Math.max(0, Math.min(60, +n || 1)); return gameSpeed; },
   getSpeed: function () { return gameSpeed; },

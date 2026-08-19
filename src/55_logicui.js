@@ -219,7 +219,11 @@ function buildNodeDom(inner, g, n) {
       var sel = document.createElement('select');
       for (var o = 0; o < cf.opts.length; o++) {
         var op = document.createElement('option');
-        op.value = cf.opts[o]; op.textContent = cf.opts[o];
+        op.value = cf.opts[o];
+        // 채널은 이름이 붙어 있으면 이름으로 보여 준다 — 'A' 만 보이면 무엇을
+        // 고르는지 알 수 없고, 그 순간 버스는 다시 익명 배선이 된다.
+        op.textContent = (cf.k === 'ch' && typeof busLabel === 'function')
+          ? busLabel(cf.opts[o]) : cf.opts[o];
         if (n.cfg[cf.k] === cf.opts[o]) op.selected = true;
         sel.appendChild(op);
       }

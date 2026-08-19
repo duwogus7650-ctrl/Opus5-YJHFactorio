@@ -946,6 +946,43 @@
         '빈 땅 클릭 → 열차 ' + afterBad + '대(0이어야 · 조건 발생 확인) · ' +
         '레일 위 클릭 → ' + afterGood + '대 (1이어야)');
 
+      // --- 신호 버스 계기판 ------------------------------------------------
+      // 값·이름·쓰는 곳/읽는 곳이 **화면에** 있어야 한다. 모델이 답을 갖고 있어도
+      // 볼 창이 없으면 제어기가 둘만 넘어가도 회로를 읽을 수 없다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.powerCheat(true);
+      G.research('logic-mem'); G.research('logic-ctrl');
+      var bsC = G.place('controller', 60, 60, 0);
+      var bsSend = G.gAdd(bsC, 'bussend', 20, 20); G.gCfg(bsC, bsSend, 'ch', 'D');
+      var bsK = G.gAdd(bsC, 'const', 20, 200); G.gCfg(bsC, bsK, 'value', 42);
+      G.gLink(bsC, bsK, 0, bsSend, 0);
+      G.run(0.3);
+      G.ui.refresh();
+      var busRows = document.querySelectorAll('#busList .brow');
+      var rowD = document.querySelector('#busList .brow[data-ch="D"]');
+      var valD = rowD ? rowD.querySelector('.bval').textContent.trim() : '';
+      var useD = rowD ? rowD.querySelector('.buse').textContent.trim() : '';
+      chk('ui.busPanelShowsChannels',
+        busRows.length === 8 && /42/.test(valD) && useD === '1→0',
+        '버스 줄 ' + busRows.length + '개(8이어야) · D 값 "' + valD + '"(42여야) · 쓰기→읽기 "' +
+        useD + '"(1→0이어야)');
+
+      // 이름은 **고칠 수 있어야** 한다 — 못 고치면 채널은 여전히 익명이다
+      var nameIn = rowD ? rowD.querySelector('.bname') : null;
+      if (nameIn) { nameIn.value = '증기%'; nameIn.onchange(); }
+      G.ui.refresh();
+      var afterName = G.busName('D');
+      var shownName = (document.querySelector('#busList .brow[data-ch="D"] .bname') || {}).value;
+      chk('ui.busNameIsEditable', afterName === '증기%' && shownName === '증기%',
+        '입력칸에 치고 나면 모델 이름 "' + afterName + '" · 화면 값 "' + shownName + '"');
+
+      // 이름을 치는 동안 게임 단축키가 먹으면 글자마다 건물이 바뀐다
+      var toolBefore = G.ui.curTool();
+      if (nameIn) {
+        nameIn.dispatchEvent(new KeyboardEvent('keydown', { key: '3', bubbles: true }));
+      }
+      chk('ui.busNameTypingIsNotAHotkey', G.ui.curTool() === toolBefore,
+        '이름칸에서 "3" 을 쳤을 때 든 도구 ' + G.ui.curTool() + ' (그대로여야 · 바뀌면 타이핑이 건설이 된다)');
+
       // --- 빌드 도장 -----------------------------------------------------
       // 폰이 캐시된 예전 사본을 열고 있어도 화면만 봐서는 알 수 없다. 도움말에 찍힌
       // 도장이 그 자리를 가른다 — 실기기 보고("복제 버튼이 안 보인다")가 코드 문제인지
