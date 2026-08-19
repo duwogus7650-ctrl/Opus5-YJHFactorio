@@ -47,6 +47,33 @@ self.addEventListener('activate', function (e) {
 // 그 자리에서 걸렸다. 네트워크를 아는 쪽은 이 껍데기다.
 self.addEventListener('message', function (e) {
   var msg = e.data || {};
+  // **갱신은 여기서 한다.** 페이지가 캐시만 지우고 다시 열면, 브라우저의 HTTP 캐시가
+  // (GitHub Pages 는 max-age=600) 같은 옛 파일을 그대로 준다 — 실기기에서 갱신을
+  // 눌러도 도장이 안 바뀐 이유가 이것이었다. HTTP 캐시를 건너뛰는 것(cache:'reload')은
+  // 네트워크를 아는 이쪽의 일이고, 배포본은 네트워크를 열지 않는다는 규칙도 지켜진다.
+  if (msg.q === 'refresh') {
+    var src0 = e.source;
+    e.waitUntil(
+      caches.keys().then(function (ks) {
+        return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+      }).then(function () {
+        return caches.open(CACHE);
+      }).then(function (c) {
+        return Promise.all(ASSETS.map(function (u) {
+          var abs = new URL(u, self.location.href).href;
+          return fetch(abs, { cache: 'reload' }).then(function (r) {
+            if (r && r.status === 200) return c.put(new Request(abs), r.clone());
+            return null;
+          }).catch(function () { return null; });
+        }));
+      }).then(function () {
+        if (src0) src0.postMessage({ a: 'refreshed' });
+      }).catch(function () {
+        if (src0) src0.postMessage({ a: 'refreshed' });   // 실패해도 페이지를 세워 두지 않는다
+      })
+    );
+    return;
+  }
   if (msg.q !== 'version') return;
   var src = e.source;
   fetch(new URL('./build.txt', self.location.href).href, { cache: 'no-store' })

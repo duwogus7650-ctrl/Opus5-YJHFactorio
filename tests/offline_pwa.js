@@ -28,7 +28,10 @@ function line(ok, name, detail) {
 }
 
 (async () => {
-  const srv = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'],
+  // **GitHub Pages 처럼 max-age 를 보내는 서버로 띄운다.** 기본 http.server 는
+  // 캐시 헤더가 없어서, 캐시를 지운 뒤 다시 받으면 늘 새것이 온다 — 실기기에서
+  // 나는 '지워도 옛 판이 다시 오는' 실패가 시험에서는 재현되지 않았다.
+  const srv = spawn('python', [path.join(ROOT, 'tests', 'serve_like_pages.py'), String(PORT)],
                     { cwd: ROOT, stdio: 'ignore' });
   const done = () => { try { srv.kill(); } catch (e) { void e; } };
   process.on('exit', done);
@@ -139,8 +142,12 @@ function line(ok, name, detail) {
                                            "var BUILD_ID = 'deadbeef'"));
     let afterStamp = null;
     try {
-      await p.evaluate(() => window.__GAME.ui.applyUpdateNow());
-      await p.waitForFunction(() => !!window.__GAME, null, { timeout: 30000 });
+      // **다시 열렸는지를 표시로 확인한다.** 갱신이 비동기가 되면서, 누른 직후에는
+      // 아직 옛 페이지가 살아 있다 — 거기서 도장을 읽으면 '안 바뀌었다'가 나온다
+      // (실제로 그렇게 거짓 RED 를 봤다). 새로고침이 지우는 표시를 심어 두고 기다린다.
+      await p.evaluate(() => { window.__beforeUpdate = true; window.__GAME.ui.applyUpdateNow(); });
+      await p.waitForFunction(() => !window.__beforeUpdate && !!window.__GAME,
+                              null, { timeout: 40000 });
       afterStamp = await p.evaluate(() => window.__GAME.buildId());
     } catch (e) { void e; }
     fs.writeFileSync(DIST, distSrc);           // 배포본을 되돌린다

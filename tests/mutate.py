@@ -175,6 +175,13 @@ MUTATIONS = [
      b'    background:transparent;',
      ['mobile.sheetIsOneSurface'], 'mobile.js'),
 
+    # 갱신이 HTTP 캐시를 건너뛰지 않으면, 캐시를 지워도 같은 옛 파일이 다시 온다
+    # (GitHub Pages 는 max-age=600). 실기기에서 갱신을 눌러도 도장이 안 바뀌었다.
+    ('update: 갱신이 HTTP 캐시를 건너뛰지 않는다', 'sw.js',
+     b"          return fetch(abs, { cache: 'reload' }).then(function (r) {",
+     b'          return fetch(abs).then(function (r) {',
+     ['offline.updateButtonActuallyUpdates'], 'offline_pwa.js'),
+
     # --- 신호 버스 이름 --------------------------------------------------
     ('bus: 채널 이름을 저장에 안 담는다', '60_game.js',
      b'    busN: busNames,',
