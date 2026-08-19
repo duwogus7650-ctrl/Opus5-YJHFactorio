@@ -196,12 +196,19 @@ function stepFluids(dt) {
       if (m.type !== 'chemplant') continue;
       if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }
       if (invTotal(m.out) >= SPEC.machineBufOut) { m.working = false; m.load = 0; continue; }
-      var wantGas = SPEC.chemGasPerPlastic * SPEC.chemPlasticRate * dt * m.powerSat;
+      // **가스를 무엇에 쓸지는 플레이어가 정한다.** 화학공장은 두 레시피를 갖는다:
+      // 플라스틱(탄창·회로로 가는 길)과 고체 연료(석탄 없이 발전하는 길). 같은 가스를
+      // 두고 다투므로 "지금 무엇이 급한가"가 매번 판단거리가 된다.
+      var makingFuel = (m.recipe === 'solid-fuel');
+      var perUnit = makingFuel ? SPEC.chemGasPerFuel : SPEC.chemGasPerPlastic;
+      var rate = makingFuel ? SPEC.chemFuelRate : SPEC.chemPlasticRate;
+      var outItem = makingFuel ? 'solid-fuel' : 'plastic';
+      var wantGas = perUnit * rate * dt * m.powerSat;
       var lim3 = Math.min(wantGas, gas);
       if (lim3 <= 0) { m.working = false; m.load = 0; continue; }
       gas -= lim3;
-      m.progress = (m.progress || 0) + lim3 / SPEC.chemGasPerPlastic;
-      while (m.progress >= 1) { m.progress -= 1; invAdd(m.out, 'plastic', 1); }
+      m.progress = (m.progress || 0) + lim3 / perUnit;
+      while (m.progress >= 1) { m.progress -= 1; invAdd(m.out, outItem, 1); }
       m.load = wantGas > 0 ? lim3 / wantGas : 0;
       m.working = true;
       emitPollution(m, 8 * m.load * dt);

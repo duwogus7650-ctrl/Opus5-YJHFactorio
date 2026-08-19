@@ -170,6 +170,24 @@ MUTATIONS = [
      ['mobile.tapTargetsBigEnough'], 'mobile.js'),
 
 
+    # --- 석유 2단계: 고체 연료 -----------------------------------------
+    ('oil2: 고체 연료가 석탄과 같은 에너지', '05_data.js',
+     b'  solidFuelEnergy: 12000,',
+     b'  solidFuelEnergy: 4000,',
+     ['oil.solidFuelIsThreeCoal']),
+
+    ('oil2: 레시피를 골라도 늘 플라스틱을 만든다', '32_fluid.js',
+     b"      var makingFuel = (m.recipe === 'solid-fuel');",
+     b'      var makingFuel = false;',
+     ['oil.chemMakesSolidFuel']),
+
+    ('oil2: 발전기가 고체 연료를 안 받는다', '25_entity.js',
+     b"  if (itemId === 'solid-fuel') return SPEC.solidFuelEnergy;",
+     b'  if (false) return 0;',
+     # 스윕은 '만드는가'만 본다 — 태우는 쪽을 보는 것은 발전기에 넣어 에너지를
+     # 재는 모델 게이트다. 처음에 스윕을 지목했다가 MISS 로 드러났다.
+     ['oil.solidFuelIsThreeCoal']),
+
     # --- 석유·화학 사슬 ------------------------------------------------
     ('oil: 펌프잭이 절반만 뽑는다', '05_data.js',
      b'  pumpjackRate: 10,',

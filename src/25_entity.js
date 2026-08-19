@@ -322,14 +322,21 @@ function invTotal(obj) { var s = 0; for (var k in obj) s += obj[k]; return s; }
 
 // --- 아이템 주고받기 --------------------------------------------------------
 // 대상이 이 아이템을 받을 수 있는가 (인서터가 집기 전에 물어본다 — 교착 방지)
+// 태울 수 있는 것들. 석탄만 알던 자리에 고체 연료가 들어온다 — 값은 SPEC 에서
+// 온다(여기에 숫자를 적으면 설명문·게이트와 갈린다).
+function fuelEnergyOf(itemId) {
+  if (itemId === 'coal') return SPEC.coalEnergy;
+  if (itemId === 'solid-fuel') return SPEC.solidFuelEnergy;
+  return 0;
+}
 function canAccept(e, itemId) {
   if (!e) return false;
   switch (e.type) {
     case 'chest': return invTotal(e.inv) < SPEC.chestCap;
-    case 'generator': return itemId === 'coal' && e.fuel < SPEC.coalEnergy * 20;
+    case 'generator': return fuelEnergyOf(itemId) > 0 && e.fuel < SPEC.coalEnergy * 20;
     // 보일러도 석탄을 태운다 — 저장 방식(e.fuel = 에너지)까지 발전기와 같게 둔다.
     // 여기가 갈리면 철거 환급·인스펙터·오염 계산이 전부 따로 놀게 된다.
-    case 'boiler': return itemId === 'coal' && e.fuel < SPEC.coalEnergy * 20;
+    case 'boiler': return fuelEnergyOf(itemId) > 0 && e.fuel < SPEC.coalEnergy * 20;
     case 'turret': return itemId === 'ammo' && e.ammo < 200;
     case 'lab': return (itemId === 'sci-red' || itemId === 'sci-green') && invCount(e.inv, itemId) < 100;
     case 'furnace':
@@ -349,7 +356,7 @@ function canAccept(e, itemId) {
 }
 function giveTo(e, itemId) {
   if (!canAccept(e, itemId)) return false;
-  if (e.type === 'generator' || e.type === 'boiler') { e.fuel += SPEC.coalEnergy; return true; }
+  if (e.type === 'generator' || e.type === 'boiler') { e.fuel += fuelEnergyOf(itemId); return true; }
   if (e.type === 'turret') { e.ammo += SPEC.turretShotsPerAmmo; return true; }
   if (e.type === 'furnace' && !e.recipe) e.recipe = furnaceRecipeIdFor(itemId);
   invAdd(e.inv, itemId, 1);

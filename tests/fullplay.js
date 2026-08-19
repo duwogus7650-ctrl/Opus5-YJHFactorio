@@ -614,6 +614,35 @@
         var outMap = G.recipeInfo(allRec[pr]).out;
         for (var ok2 in outMap) if (!consumed[ok2] && !SINK_EXEMPT[ok2]) deadEnds.push(ok2);
       }
+      // **유체 기계의 레시피도 레시피다.** RECIPES 표에 없다는 이유로 위 스윕이
+      // 화학공장의 두 갈래를 건너뛴다 — 고르는 길이 있는데 아무도 안 밟으면
+      // '고를 수는 있지만 아무 일도 안 일어나는' 상태가 조용히 남는다.
+      var chemFail = [];
+      var oilSp = G.oilSpot ? G.oilSpot(80, 80) : null;
+      if (!oilSp) chemFail.push('원유 광맥을 못 찾음');
+      else {
+        G.research('steel'); G.research('logistics'); G.research('oil');
+        G.clearTrees();
+        var cpj = G.place('pumpjack', oilSp.x, oilSp.y, 0);
+        for (var cq = 0; cq < 3; cq++) G.place('pipe', oilSp.x + 3, oilSp.y + cq, 0);
+        var cref = G.place('refinery', oilSp.x + 4, oilSp.y, 0);
+        for (var cq2 = 0; cq2 < 3; cq2++) G.place('pipe', oilSp.x + 7, oilSp.y + cq2, 0);
+        var cchem = G.place('chemplant', oilSp.x + 8, oilSp.y, 0);
+        if (!cpj || !cref || !cchem) chemFail.push('설비 배치 실패');
+        else {
+          var wants = [['plastic', 'plastic'], ['solid-fuel', 'solid-fuel']];
+          for (var ci = 0; ci < wants.length; ci++) {
+            G.setRecipe(cchem, wants[ci][0]);
+            G.clearOut(cchem);
+            G.run(40);
+            if (((G.ent(cchem).out[wants[ci][1]]) || 0) < 1) chemFail.push(wants[ci][0]);
+          }
+        }
+      }
+      chk('sweep.chemplantRecipesBothWork', chemFail.length === 0,
+        '화학공장 두 레시피(플라스틱·고체 연료)를 각각 걸고 40초씩 — 실패 ' +
+        chemFail.length + (chemFail.length ? ': ' + chemFail.join(',') : ''));
+
       chk('sweep.noDeadEndItems', deadEnds.length === 0,
         '만들 수 있는데 아무 데도 안 쓰이는 품목 ' + deadEnds.length + '종' +
         (deadEnds.length ? ': ' + deadEnds.join(', ') + ' — 만들 이유가 없는 것을 연구로 열어 주고 있다'

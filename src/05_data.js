@@ -21,6 +21,9 @@ var ITEMS = {
   'iron-ore':    { name: '철광석',   color: '#8593a0', shape: 'rock' },
   'copper-ore':  { name: '구리광석', color: '#c87941', shape: 'rock' },
   'coal':        { name: '석탄',     color: '#2b2b30', shape: 'rock' },
+  // 석유의 두 번째 쓰임 — 가스를 태울 수 있는 덩어리로 굳힌다. 석탄 3개분(12 MJ)이라
+  // 석탄 광맥에서 멀어질수록 값이 커진다. 플라스틱과 **같은 가스를 두고 다툰다.**
+  'solid-fuel':  { name: '고체 연료', color: '#3a3340', shape: 'rock' },
   'stone':       { name: '돌',       color: '#a89880', shape: 'rock' },
 
   'iron-plate':  { name: '철판',     color: '#b8bfc6', shape: 'plate' },
@@ -177,7 +180,7 @@ var BUILDINGS = {
                  desc: '원유 20/s 를 석유가스 20/s 로 바꾼다. 420 kW 를 먹는다.' },
   'chemplant': { name: '화학공장', w: 3, h: 3, cost: { 'steel': 5, 'circuit': 5, 'gear': 5, 'pipe-item': 5 },
                  tech: 'oil', fluid: true, power: 210,
-                 desc: '석유가스 10/s 를 플라스틱 1개/s 로. 고체가 나오므로 인서터로 빼낸다.' },
+                 desc: '석유가스 10/s 를 플라스틱 1개/s 로. 고체 연료도 만든다(가스 20 → 1개). 인서터로 빼낸다.' },
   'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
                  tech: 'steel', fluid: true,
                  desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
@@ -214,6 +217,11 @@ var SPEC = {
   refineryIn: 20,             // 원유/s → 가스/s (1:1 — 기본 석유 처리의 단순화)
   chemGasPerPlastic: 10,      // 플라스틱 1개당 석유가스 (Factorio 는 20 가스 → 2 플라스틱)
   chemPlasticRate: 1,         // 플라스틱/s
+  // 고체 연료 — 석탄(4 MJ)의 정확히 3배로 둔다. 배수가 정수라 철거 환급을
+  // 석탄으로 돌려줘도 에너지가 어긋나지 않는다(어긋나면 그 자리가 이득 구멍이 된다).
+  solidFuelEnergy: 12000,     // kJ (12 MJ)
+  chemGasPerFuel: 20,         // 고체연료 1개당 석유가스
+  chemFuelRate: 0.5,          // 고체연료/s
   // 기차 — **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
   // 160타일이라 그대로 쓰면 2초에 횡단한다. 8 타일/s 면 횡단에 20초 — 벨트(1.875)보다
   // 4.3배 빠르고, 먼 광맥을 쓸 이유가 되면서 화면에서 눈으로 따라갈 수 있다.
@@ -298,5 +306,5 @@ function tierMixFor(evo) {
 // 첫 채광 라인 한 줄과 발전기 한 대를 세울 수 있을 만큼만 준다.
 var START_INV = {
   'iron-plate': 60, 'copper-plate': 30, 'brick': 30, 'gear': 30,
-  'wire': 20, 'circuit': 10, 'belt-item': 60, 'inserter-item': 12, 'coal': 50
+  'wire': 20, 'circuit': 10, 'belt-item': 60, 'inserter-item': 12, 'coal': 50, 'solid-fuel': 50
 };

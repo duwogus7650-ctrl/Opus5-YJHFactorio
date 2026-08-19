@@ -959,6 +959,31 @@ window.__GAME = {
   // 원유는 아이템이 아니라 oreSpot(아이템 이름) 으로 못 찾는다 — 따로 연다.
   // **가까운 것을 준다.** 좌상단부터 훑어 첫 자리를 주면 지도 끝의 광맥이 나와서
   // 전주를 20칸 넘게 이어야 한다. 기준점을 안 주면 지도 중앙에서 잰다.
+  // 후보를 여럿 준다 — 가까운 한 곳만 주면 그 자리가 공장에 덮인 판에서 '원유가
+  // 없다'가 된다(실제로 40분 주행이 그렇게 막혔다). 리그가 들어갈 자리는 부르는
+  // 쪽이 판단하므로, 여기서는 **비어 있는 3x3 후보들**을 가까운 순으로 준다.
+  oilSpots: function (cx, cy, max) {
+    var out = [];
+    for (var y = 0; y < H - 2; y++) {
+      for (var x = 0; x < W - 2; x++) {
+        var ok = true;
+        for (var dy = 0; dy < 3 && ok; dy++) {
+          for (var dx = 0; dx < 3 && ok; dx++) {
+            var i = idx(x + dx, y + dy);
+            if (world.ore[i] !== ORE_OIL || world.oreAmt[i] <= 0) ok = false;
+            if (world.occ[i]) ok = false;
+          }
+        }
+        if (ok) out.push({ x: x, y: y });
+      }
+    }
+    var ox = cx === undefined ? (W >> 1) : cx, oy = cy === undefined ? (H >> 1) : cy;
+    out.sort(function (a2, b2) {
+      return ((a2.x - ox) * (a2.x - ox) + (a2.y - oy) * (a2.y - oy)) -
+             ((b2.x - ox) * (b2.x - ox) + (b2.y - oy) * (b2.y - oy));
+    });
+    return out.slice(0, max || 12);
+  },
   oilSpot: function (cx, cy) {
     var best = null, bestD = Infinity;
     for (var y = 0; y < H - 2; y++) {

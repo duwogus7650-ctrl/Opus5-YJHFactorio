@@ -2781,6 +2781,10 @@
       // 그러면 증기가 용량까지 차서 보일러가 멈추고, 연료는 영영 안 마른다.
       // 보유 재고를 1개로 깎아 정확히 4000 kJ 만 넣는다.
       G.setInv('coal', 1);
+      // **다른 연료도 비운다.** 고체 연료가 생기면서 보일러가 그것도 받는데,
+      // putFromStock 은 받을 수 있는 것을 다 넣는다 — 창고에 고체 연료가 있으면
+      // '석탄 1개분' 이라는 이 시험의 전제가 조용히 깨진다(실제로 82,600 kJ 이 들어갔다).
+      G.setInv('solid-fuel', 0);
       G.putFromStock(fr2.boiler);                    // 석탄 1개 = 4000 kJ = 2.22초분
       G.run(3);                                      // 다 태우고도 남을 시간
       var fuelLeft = G.ent(fr2.boiler).fuel;
@@ -2849,6 +2853,7 @@
       // 성립한다. 먼저 떨어지지 않으면 이 계는 복잡도만 늘린 것이다.
       var fr5 = fluidRig(8207);
       G.setInv('coal', 1);
+      G.setInv('solid-fuel', 0);      // 위와 같은 이유 — 이 시험도 '석탄 1개분' 이 전제다
       G.putFromStock(fr5.boiler);
       G.run(2);                                       // 증기를 모은다
       // 전주를 먼저 깔고 인서터로 공급(900)을 넘는 수요를 만든다
@@ -3544,6 +3549,28 @@
           '정제소를 끈 뒤 남은 가스 ' + r2(drained) + ' · 플라스틱 ' + q0 + ' → ' + q1 +
           ' (늘면 꺼도 도는 것)');
         G.setEnabled(refId, true);
+
+        // 6) **가스를 무엇에 쓸 것인가** — 화학공장의 두 번째 레시피.
+        // 플라스틱과 고체 연료가 같은 가스를 두고 다툰다. 오라클은 두 개다:
+        // 가스 단가(20)와 석탄 대비 에너지(3배). 뒤엣것이 이 층의 존재 이유다 —
+        // 석탄 광맥에서 멀어져도 발전할 길이 생긴다.
+        G.setEnabled(refId, true); G.setEnabled(pj, true);
+        G.setRecipe(chemId, 'solid-fuel');
+        G.run(30);                                    // 가스를 다시 채우고 굽는다
+        var fuelMade = (G.ent(chemId).out['solid-fuel'] || 0);
+        chk('oil.chemMakesSolidFuel', fuelMade > 0,
+          '레시피를 고체 연료로 바꾼 뒤 산출 ' + fuelMade + '개 (0 이면 선택이 안 먹는 것)');
+
+        // 석탄 3개분인가 — 발전기에 넣어 **실제로 타는 시간**으로 확인한다.
+        var genA = G.place('generator', oilAt.x, oilAt.y + 6, 0);
+        var genB = G.place('generator', oilAt.x + 4, oilAt.y + 6, 0);
+        G.setInv('coal', 0); G.setInv('solid-fuel', 0);
+        G.give('coal', 1); G.putFromStock(genA);
+        G.give('solid-fuel', 1); G.putFromStock(genB);
+        var eA = G.ent(genA).fuel, eB = G.ent(genB).fuel;
+        chk('oil.solidFuelIsThreeCoal',
+          near(eB, eA * 3, 0.02, 1),
+          '석탄 1개 = ' + eA + ' kJ · 고체 연료 1개 = ' + eB + ' kJ (3배여야)');
 
         // 5) 광맥은 마른다 — 무한 자원이면 후반 압박이 사라진다.
         // 처음엔 G.ent(pj).oreLeft 로 쟀는데 그런 필드가 없어 undefined 였고,

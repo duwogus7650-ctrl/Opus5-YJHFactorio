@@ -1665,17 +1665,35 @@
   // **지도 전체를 훑는 검색이다.** 매 사이클 부르면 40분 주행이 눈에 띄게 느려진다
   // (1200 사이클 x 23만 칸). 한 번 찾아서 기억하고, 실패해도 한동안 다시 안 찾는다.
   var oilScanAt = -1e9;
+  // **자리와 재료는 다른 문제다.** whyPlace 는 둘을 한 문장으로 돌려주는데
+  // ('회로기판 5개 필요'), 그것을 '자리 없음' 으로 읽는 바람에 40분 주행이 원유를
+  // 못 세우고도 "광맥을 못 찾았다"고 보고했다 — 사유가 틀리면 고치는 방향이 틀린다.
+  // 재료는 이 단계가 따로 사 모으므로, 자리 판정에서는 재료 사유를 통과로 본다.
+  function siteOk(why) { return why === 'ok' || why.indexOf('필요') >= 0; }
+  function rigFits(sp) {
+    if (!siteOk(G.whyPlace('pumpjack', sp.x, sp.y, 0))) return false;
+    for (var k = 0; k < 3; k++) if (!siteOk(G.whyPlace('pipe', sp.x + 3, sp.y + k, 0))) return false;
+    if (!siteOk(G.whyPlace('refinery', sp.x + 4, sp.y, 0))) return false;
+    for (var k2 = 0; k2 < 3; k2++) if (!siteOk(G.whyPlace('pipe', sp.x + 7, sp.y + k2, 0))) return false;
+    if (!siteOk(G.whyPlace('chemplant', sp.x + 8, sp.y, 0))) return false;
+    return true;
+  }
   function findOilSpot() {
     if (G.state().t - oilScanAt < 60) return null;
     oilScanAt = G.state().t;
-    var sp = G.oilSpot(80, 80);
-    if (!sp) return null;
-    if (G.whyPlace('pumpjack', sp.x, sp.y, 0) !== 'ok') return null;
-    for (var k = 0; k < 3; k++) if (G.whyPlace('pipe', sp.x + 3, sp.y + k, 0) !== 'ok') return null;
-    if (G.whyPlace('refinery', sp.x + 4, sp.y, 0) !== 'ok') return null;
-    for (var k2 = 0; k2 < 3; k2++) if (G.whyPlace('pipe', sp.x + 7, sp.y + k2, 0) !== 'ok') return null;
-    if (G.whyPlace('chemplant', sp.x + 8, sp.y, 0) !== 'ok') return null;
-    return sp;
+    // **후보를 여럿 본다.** 가장 가까운 한 곳만 보다가, 공장이 커져 그 자리를 덮은
+    // 판에서 '원유 광맥을 못 찾았다'로 40분을 흘려보냈다. 광맥은 사방에 있다.
+    var cands = G.oilSpots ? G.oilSpots(80, 80, 24) : [G.oilSpot(80, 80)];
+    for (var i = 0; i < cands.length; i++) {
+      if (cands[i] && rigFits(cands[i])) return cands[i];
+    }
+    // 왜 하나도 안 되는지 남긴다 — '자리 없음' 만으로는 광맥이 덮인 것인지
+    // 리그가 들어갈 줄이 막힌 것인지 알 수 없다.
+    oilWhy = '자리 없음 (후보 ' + cands.length + '곳' +
+      (cands.length ? ' · 첫 후보 ' + cands[0].x + ',' + cands[0].y +
+        ' 펌프잭=' + G.whyPlace('pumpjack', cands[0].x, cands[0].y, 0) +
+        ' 정제소=' + G.whyPlace('refinery', cands[0].x + 4, cands[0].y, 0) : '') + ')';
+    return null;
   }
   function stageOil() {
     if (oilDone) return true;
@@ -1692,7 +1710,8 @@
       return oilSay('파이프 ' + (invNow()['pipe-item'] || 0) + '/22 제작 중');
     }
     if (!oilSpotPos) oilSpotPos = findOilSpot();
-    if (!oilSpotPos) return oilSay('자리 없음 (11x3 이 비어 있는 원유 광맥을 못 찾았다)');
+    if (!oilSpotPos) return oilSay(oilWhy && oilWhy.indexOf('자리 없음') === 0 ? oilWhy
+                                  : '자리 없음 (11x3 이 비어 있는 원유 광맥을 못 찾았다)');
     var o = oilSpotPos;
     // 전기가 없으면 세 대 다 멈춘 채 서 있다 — 먼저 망을 끌고 온다.
     if (!poleLinked(o.x + 1, o.y + 1) && !reachPole(o.x + 1, o.y + 1)) {

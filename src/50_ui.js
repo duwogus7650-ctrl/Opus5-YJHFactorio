@@ -954,6 +954,18 @@ function refreshInsp() {
             ITEMS[Object.keys(RECIPES[r].out)[0]].name + ' (' + RECIPES[r].time + 's)</option>';
         }).join('') + '</select></div>');
     }
+    // 화학공장은 **가스를 무엇으로 만들지** 고른다. 조립기와 달리 재료가 유체라
+    // 레시피표가 아니라 두 갈래 중 하나를 고르는 일이다 — 목록을 여기서 만든다.
+    if (e.type === 'chemplant') {
+      var chemOpts = [['plastic', '플라스틱 (가스 ' + SPEC.chemGasPerPlastic + ' → 1개/s)'],
+                      ['solid-fuel', '고체 연료 (가스 ' + SPEC.chemGasPerFuel + ' → ' +
+                                     SPEC.chemFuelRate + '개/s · 석탄 3개분)']];
+      c.push('<div class="frow"><label>레시피</label><select id="recSel">' +
+        chemOpts.map(function (o) {
+          var sel = ((e.recipe || 'plastic') === o[0]) ? ' selected' : '';
+          return '<option value="' + o[0] + '"' + sel + '>' + o[1] + '</option>';
+        }).join('') + '</select></div>');
+    }
     if (e.type === 'furnace' && e.recipe) {
       c.push('<div class="frow"><label>레시피</label><span class="num">' +
         ITEMS[Object.keys(RECIPES[e.recipe].out)[0]].name + '</span></div>');
@@ -1106,6 +1118,12 @@ function refreshInsp() {
 function bindInspControls(e) {
   var rs = document.getElementById('recSel');
   if (rs) rs.onchange = function () {
+    if (e.type === 'chemplant') {
+      // 유체를 먹으므로 되돌릴 입력 버퍼가 없다. 진행률만 버린다.
+      e.recipe = rs.value || 'plastic'; e.progress = 0;
+      refreshInsp();
+      return;
+    }
     e.recipe = rs.value || null; e.progress = 0;
     // 레시피를 바꾸면 남은 입력은 창고로 — 안 그러면 영원히 안 쓰이는 재료가 갇힌다
     for (var kk in e.inv) inventory[kk] = (inventory[kk] || 0) + e.inv[kk];
@@ -1276,6 +1294,10 @@ function fillHelp() {
     '<p>숫자는 한 줄기로 맞아떨어진다 — 펌프잭 <b>원유 10/s</b> → 정제소가 그만큼 <b>가스</b>로',
     '바꾸고 → 화학공장이 <b>가스 10 당 플라스틱 1개</b>. 즉 펌프잭 1대가 화학공장 1대를 꽉 채운다.',
     '대신 셋을 합치면 <b>720 kW</b> — 증기기관 한 대를 거의 다 먹는다. 발전을 먼저 늘려 두는 편이 낫다.</p>',
+    '<p><b>화학공장은 두 갈래다.</b> 같은 석유가스로 <b>플라스틱</b>(가스 10 → 1개/s)을 만들 수도,',
+    '<b>고체 연료</b>(가스 20 → 0.5개/s)를 만들 수도 있다. 고체 연료는 <b>석탄 3개분</b>(12 MJ)이라',
+    '발전기·보일러에 그대로 넣는다 — 석탄 광맥에서 멀어져도 전기를 만들 길이 생긴다.',
+    '무엇이 급한지는 그때그때 다르고, 그 선택이 이 층의 요점이다.</p>',
     '<h4>청사진 — 잘 도는 라인을 통째로 늘린다</h4>',
     '<p><code>B</code> (폰은 아래 [청사진] 버튼) 를 누르고 <b>영역을 끌어서</b> 담는다.',
     '담으면 곧바로 붙여넣기 모드가 되고, <b>좌클릭</b> 한 번으로 그 자리에 지어진다.',

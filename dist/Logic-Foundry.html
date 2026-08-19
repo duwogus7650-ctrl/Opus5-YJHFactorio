@@ -662,7 +662,7 @@ var VERSION = '1.0.0';
 // 왜 있나: 폰이 캐시된 예전 사본을 열고 있어도 화면만 봐서는 알 수 없다 —
 // '복제 버튼이 안 보인다'가 코드 문제인지 사본 문제인지 가르는 데 반나절이 든다.
 // 도움말 맨 아래에 이 값을 찍어 두면 한 줄로 갈린다.
-var BUILD_ID = '66a7b4e9';
+var BUILD_ID = '17a2d7ea';
 
 var TILE = 32;            // 타일 한 변 픽셀 (레퍼런스 스크린샷과 동일 배율)
 var W = 160;              // 월드 가로 타일 수
@@ -824,6 +824,9 @@ var ITEMS = {
   'iron-ore':    { name: '철광석',   color: '#8593a0', shape: 'rock' },
   'copper-ore':  { name: '구리광석', color: '#c87941', shape: 'rock' },
   'coal':        { name: '석탄',     color: '#2b2b30', shape: 'rock' },
+  // 석유의 두 번째 쓰임 — 가스를 태울 수 있는 덩어리로 굳힌다. 석탄 3개분(12 MJ)이라
+  // 석탄 광맥에서 멀어질수록 값이 커진다. 플라스틱과 **같은 가스를 두고 다툰다.**
+  'solid-fuel':  { name: '고체 연료', color: '#3a3340', shape: 'rock' },
   'stone':       { name: '돌',       color: '#a89880', shape: 'rock' },
 
   'iron-plate':  { name: '철판',     color: '#b8bfc6', shape: 'plate' },
@@ -980,7 +983,7 @@ var BUILDINGS = {
                  desc: '원유 20/s 를 석유가스 20/s 로 바꾼다. 420 kW 를 먹는다.' },
   'chemplant': { name: '화학공장', w: 3, h: 3, cost: { 'steel': 5, 'circuit': 5, 'gear': 5, 'pipe-item': 5 },
                  tech: 'oil', fluid: true, power: 210,
-                 desc: '석유가스 10/s 를 플라스틱 1개/s 로. 고체가 나오므로 인서터로 빼낸다.' },
+                 desc: '석유가스 10/s 를 플라스틱 1개/s 로. 고체 연료도 만든다(가스 20 → 1개). 인서터로 빼낸다.' },
   'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
                  tech: 'steel', fluid: true,
                  desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
@@ -1017,6 +1020,11 @@ var SPEC = {
   refineryIn: 20,             // 원유/s → 가스/s (1:1 — 기본 석유 처리의 단순화)
   chemGasPerPlastic: 10,      // 플라스틱 1개당 석유가스 (Factorio 는 20 가스 → 2 플라스틱)
   chemPlasticRate: 1,         // 플라스틱/s
+  // 고체 연료 — 석탄(4 MJ)의 정확히 3배로 둔다. 배수가 정수라 철거 환급을
+  // 석탄으로 돌려줘도 에너지가 어긋나지 않는다(어긋나면 그 자리가 이득 구멍이 된다).
+  solidFuelEnergy: 12000,     // kJ (12 MJ)
+  chemGasPerFuel: 20,         // 고체연료 1개당 석유가스
+  chemFuelRate: 0.5,          // 고체연료/s
   // 기차 — **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
   // 160타일이라 그대로 쓰면 2초에 횡단한다. 8 타일/s 면 횡단에 20초 — 벨트(1.875)보다
   // 4.3배 빠르고, 먼 광맥을 쓸 이유가 되면서 화면에서 눈으로 따라갈 수 있다.
@@ -1101,7 +1109,7 @@ function tierMixFor(evo) {
 // 첫 채광 라인 한 줄과 발전기 한 대를 세울 수 있을 만큼만 준다.
 var START_INV = {
   'iron-plate': 60, 'copper-plate': 30, 'brick': 30, 'gear': 30,
-  'wire': 20, 'circuit': 10, 'belt-item': 60, 'inserter-item': 12, 'coal': 50
+  'wire': 20, 'circuit': 10, 'belt-item': 60, 'inserter-item': 12, 'coal': 50, 'solid-fuel': 50
 };
 
 /* ===================== 10_world.js ===================== */
@@ -2020,14 +2028,21 @@ function invTotal(obj) { var s = 0; for (var k in obj) s += obj[k]; return s; }
 
 // --- 아이템 주고받기 --------------------------------------------------------
 // 대상이 이 아이템을 받을 수 있는가 (인서터가 집기 전에 물어본다 — 교착 방지)
+// 태울 수 있는 것들. 석탄만 알던 자리에 고체 연료가 들어온다 — 값은 SPEC 에서
+// 온다(여기에 숫자를 적으면 설명문·게이트와 갈린다).
+function fuelEnergyOf(itemId) {
+  if (itemId === 'coal') return SPEC.coalEnergy;
+  if (itemId === 'solid-fuel') return SPEC.solidFuelEnergy;
+  return 0;
+}
 function canAccept(e, itemId) {
   if (!e) return false;
   switch (e.type) {
     case 'chest': return invTotal(e.inv) < SPEC.chestCap;
-    case 'generator': return itemId === 'coal' && e.fuel < SPEC.coalEnergy * 20;
+    case 'generator': return fuelEnergyOf(itemId) > 0 && e.fuel < SPEC.coalEnergy * 20;
     // 보일러도 석탄을 태운다 — 저장 방식(e.fuel = 에너지)까지 발전기와 같게 둔다.
     // 여기가 갈리면 철거 환급·인스펙터·오염 계산이 전부 따로 놀게 된다.
-    case 'boiler': return itemId === 'coal' && e.fuel < SPEC.coalEnergy * 20;
+    case 'boiler': return fuelEnergyOf(itemId) > 0 && e.fuel < SPEC.coalEnergy * 20;
     case 'turret': return itemId === 'ammo' && e.ammo < 200;
     case 'lab': return (itemId === 'sci-red' || itemId === 'sci-green') && invCount(e.inv, itemId) < 100;
     case 'furnace':
@@ -2047,7 +2062,7 @@ function canAccept(e, itemId) {
 }
 function giveTo(e, itemId) {
   if (!canAccept(e, itemId)) return false;
-  if (e.type === 'generator' || e.type === 'boiler') { e.fuel += SPEC.coalEnergy; return true; }
+  if (e.type === 'generator' || e.type === 'boiler') { e.fuel += fuelEnergyOf(itemId); return true; }
   if (e.type === 'turret') { e.ammo += SPEC.turretShotsPerAmmo; return true; }
   if (e.type === 'furnace' && !e.recipe) e.recipe = furnaceRecipeIdFor(itemId);
   invAdd(e.inv, itemId, 1);
@@ -2728,12 +2743,19 @@ function stepFluids(dt) {
       if (m.type !== 'chemplant') continue;
       if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }
       if (invTotal(m.out) >= SPEC.machineBufOut) { m.working = false; m.load = 0; continue; }
-      var wantGas = SPEC.chemGasPerPlastic * SPEC.chemPlasticRate * dt * m.powerSat;
+      // **가스를 무엇에 쓸지는 플레이어가 정한다.** 화학공장은 두 레시피를 갖는다:
+      // 플라스틱(탄창·회로로 가는 길)과 고체 연료(석탄 없이 발전하는 길). 같은 가스를
+      // 두고 다투므로 "지금 무엇이 급한가"가 매번 판단거리가 된다.
+      var makingFuel = (m.recipe === 'solid-fuel');
+      var perUnit = makingFuel ? SPEC.chemGasPerFuel : SPEC.chemGasPerPlastic;
+      var rate = makingFuel ? SPEC.chemFuelRate : SPEC.chemPlasticRate;
+      var outItem = makingFuel ? 'solid-fuel' : 'plastic';
+      var wantGas = perUnit * rate * dt * m.powerSat;
       var lim3 = Math.min(wantGas, gas);
       if (lim3 <= 0) { m.working = false; m.load = 0; continue; }
       gas -= lim3;
-      m.progress = (m.progress || 0) + lim3 / SPEC.chemGasPerPlastic;
-      while (m.progress >= 1) { m.progress -= 1; invAdd(m.out, 'plastic', 1); }
+      m.progress = (m.progress || 0) + lim3 / perUnit;
+      while (m.progress >= 1) { m.progress -= 1; invAdd(m.out, outItem, 1); }
       m.load = wantGas > 0 ? lim3 / wantGas : 0;
       m.working = true;
       emitPollution(m, 8 * m.load * dt);
@@ -6711,6 +6733,18 @@ function refreshInsp() {
             ITEMS[Object.keys(RECIPES[r].out)[0]].name + ' (' + RECIPES[r].time + 's)</option>';
         }).join('') + '</select></div>');
     }
+    // 화학공장은 **가스를 무엇으로 만들지** 고른다. 조립기와 달리 재료가 유체라
+    // 레시피표가 아니라 두 갈래 중 하나를 고르는 일이다 — 목록을 여기서 만든다.
+    if (e.type === 'chemplant') {
+      var chemOpts = [['plastic', '플라스틱 (가스 ' + SPEC.chemGasPerPlastic + ' → 1개/s)'],
+                      ['solid-fuel', '고체 연료 (가스 ' + SPEC.chemGasPerFuel + ' → ' +
+                                     SPEC.chemFuelRate + '개/s · 석탄 3개분)']];
+      c.push('<div class="frow"><label>레시피</label><select id="recSel">' +
+        chemOpts.map(function (o) {
+          var sel = ((e.recipe || 'plastic') === o[0]) ? ' selected' : '';
+          return '<option value="' + o[0] + '"' + sel + '>' + o[1] + '</option>';
+        }).join('') + '</select></div>');
+    }
     if (e.type === 'furnace' && e.recipe) {
       c.push('<div class="frow"><label>레시피</label><span class="num">' +
         ITEMS[Object.keys(RECIPES[e.recipe].out)[0]].name + '</span></div>');
@@ -6863,6 +6897,12 @@ function refreshInsp() {
 function bindInspControls(e) {
   var rs = document.getElementById('recSel');
   if (rs) rs.onchange = function () {
+    if (e.type === 'chemplant') {
+      // 유체를 먹으므로 되돌릴 입력 버퍼가 없다. 진행률만 버린다.
+      e.recipe = rs.value || 'plastic'; e.progress = 0;
+      refreshInsp();
+      return;
+    }
     e.recipe = rs.value || null; e.progress = 0;
     // 레시피를 바꾸면 남은 입력은 창고로 — 안 그러면 영원히 안 쓰이는 재료가 갇힌다
     for (var kk in e.inv) inventory[kk] = (inventory[kk] || 0) + e.inv[kk];
@@ -7033,6 +7073,10 @@ function fillHelp() {
     '<p>숫자는 한 줄기로 맞아떨어진다 — 펌프잭 <b>원유 10/s</b> → 정제소가 그만큼 <b>가스</b>로',
     '바꾸고 → 화학공장이 <b>가스 10 당 플라스틱 1개</b>. 즉 펌프잭 1대가 화학공장 1대를 꽉 채운다.',
     '대신 셋을 합치면 <b>720 kW</b> — 증기기관 한 대를 거의 다 먹는다. 발전을 먼저 늘려 두는 편이 낫다.</p>',
+    '<p><b>화학공장은 두 갈래다.</b> 같은 석유가스로 <b>플라스틱</b>(가스 10 → 1개/s)을 만들 수도,',
+    '<b>고체 연료</b>(가스 20 → 0.5개/s)를 만들 수도 있다. 고체 연료는 <b>석탄 3개분</b>(12 MJ)이라',
+    '발전기·보일러에 그대로 넣는다 — 석탄 광맥에서 멀어져도 전기를 만들 길이 생긴다.',
+    '무엇이 급한지는 그때그때 다르고, 그 선택이 이 층의 요점이다.</p>',
     '<h4>청사진 — 잘 도는 라인을 통째로 늘린다</h4>',
     '<p><code>B</code> (폰은 아래 [청사진] 버튼) 를 누르고 <b>영역을 끌어서</b> 담는다.',
     '담으면 곧바로 붙여넣기 모드가 되고, <b>좌클릭</b> 한 번으로 그 자리에 지어진다.',
@@ -9916,6 +9960,31 @@ window.__GAME = {
   // 원유는 아이템이 아니라 oreSpot(아이템 이름) 으로 못 찾는다 — 따로 연다.
   // **가까운 것을 준다.** 좌상단부터 훑어 첫 자리를 주면 지도 끝의 광맥이 나와서
   // 전주를 20칸 넘게 이어야 한다. 기준점을 안 주면 지도 중앙에서 잰다.
+  // 후보를 여럿 준다 — 가까운 한 곳만 주면 그 자리가 공장에 덮인 판에서 '원유가
+  // 없다'가 된다(실제로 40분 주행이 그렇게 막혔다). 리그가 들어갈 자리는 부르는
+  // 쪽이 판단하므로, 여기서는 **비어 있는 3x3 후보들**을 가까운 순으로 준다.
+  oilSpots: function (cx, cy, max) {
+    var out = [];
+    for (var y = 0; y < H - 2; y++) {
+      for (var x = 0; x < W - 2; x++) {
+        var ok = true;
+        for (var dy = 0; dy < 3 && ok; dy++) {
+          for (var dx = 0; dx < 3 && ok; dx++) {
+            var i = idx(x + dx, y + dy);
+            if (world.ore[i] !== ORE_OIL || world.oreAmt[i] <= 0) ok = false;
+            if (world.occ[i]) ok = false;
+          }
+        }
+        if (ok) out.push({ x: x, y: y });
+      }
+    }
+    var ox = cx === undefined ? (W >> 1) : cx, oy = cy === undefined ? (H >> 1) : cy;
+    out.sort(function (a2, b2) {
+      return ((a2.x - ox) * (a2.x - ox) + (a2.y - oy) * (a2.y - oy)) -
+             ((b2.x - ox) * (b2.x - ox) + (b2.y - oy) * (b2.y - oy));
+    });
+    return out.slice(0, max || 12);
+  },
   oilSpot: function (cx, cy) {
     var best = null, bestD = Infinity;
     for (var y = 0; y < H - 2; y++) {
