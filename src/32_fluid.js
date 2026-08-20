@@ -165,6 +165,7 @@ function stepFluids(dt) {
     // 플라스틱을 뱉는다. 보일러와 같은 자리(같은 망 루프)에 두는 이유는 순서 때문이다:
     // **넣는 쪽 → 바꾸는 쪽 → 빼는 쪽** 이어야 한 틱 안에서 사슬이 이어진다.
     var oil = net.oil || 0, gas = net.gas || 0;
+    var heavy = net.heavy || 0, light = net.light || 0;
     for (i = 0; i < net.members.length; i++) {
       m = net.members[i];
       if (m.type !== 'pumpjack') continue;
@@ -183,10 +184,22 @@ function stepFluids(dt) {
       m = net.members[i];
       if (m.type !== 'refinery') continue;
       if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }
+      // **셋을 동시에 낸다 — 그리고 하나만 차도 통째로 멈춘다.** 레시피는 쪼갤 수
+      // 없는 한 덩어리다: 중유 낼 자리가 없으면 가스도 못 만든다. 이것이 이 층에서
+      // 제어기가 꼭 필요해지는 이유다. '얼마나 돌 수 있나' 를 출구마다 **원유로 환산**해
+      // 가장 좁은 곳에 맞춘다 — 어느 하나가 꽉 차면 그 환산값이 0 이 되어 멈춘다.
       var wantOil = SPEC.refineryIn * dt * m.powerSat;
-      var lim2 = Math.min(wantOil, oil, net.cap - gas);
+      var shH = SPEC.refineryHeavy / SPEC.refineryIn;
+      var shL = SPEC.refineryLight / SPEC.refineryIn;
+      var shG = SPEC.refineryGas / SPEC.refineryIn;
+      var lim2 = Math.min(wantOil, oil,
+                          (net.cap - heavy) / shH,
+                          (net.cap - light) / shL,
+                          (net.cap - gas) / shG);
       if (lim2 <= 0) { m.working = false; m.load = 0; continue; }
-      oil -= lim2; gas += lim2;          // 1:1 (기본 석유 처리의 단순화)
+      // 보존: 나가는 셋의 합이 들어온 원유와 같다. 게이트가 이것으로 검산한다.
+      oil -= lim2;
+      heavy += lim2 * shH; light += lim2 * shL; gas += lim2 * shG;
       m.load = wantOil > 0 ? lim2 / wantOil : 0;
       m.working = true;
       emitPollution(m, 10 * m.load * dt);
@@ -195,25 +208,40 @@ function stepFluids(dt) {
       m = net.members[i];
       if (m.type !== 'chemplant') continue;
       if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }
-      if (invTotal(m.out) >= SPEC.machineBufOut) { m.working = false; m.load = 0; continue; }
-      // **가스를 무엇에 쓸지는 플레이어가 정한다.** 화학공장은 두 레시피를 갖는다:
-      // 플라스틱(탄창·회로로 가는 길)과 고체 연료(석탄 없이 발전하는 길). 같은 가스를
-      // 두고 다투므로 "지금 무엇이 급한가"가 매번 판단거리가 된다.
-      var makingFuel = (m.recipe === 'solid-fuel');
-      var perUnit = makingFuel ? SPEC.chemGasPerFuel : SPEC.chemGasPerPlastic;
-      var rate = makingFuel ? SPEC.chemFuelRate : SPEC.chemPlasticRate;
-      var outItem = makingFuel ? 'solid-fuel' : 'plastic';
-      var wantGas = perUnit * rate * dt * m.powerSat;
-      var lim3 = Math.min(wantGas, gas);
-      if (lim3 <= 0) { m.working = false; m.load = 0; continue; }
-      gas -= lim3;
-      m.progress = (m.progress || 0) + lim3 / perUnit;
-      while (m.progress >= 1) { m.progress -= 1; invAdd(m.out, outItem, 1); }
-      m.load = wantGas > 0 ? lim3 / wantGas : 0;
+      // **무엇을 만들지는 플레이어가 정한다.** 다섯 갈래가 같은 건물을 두고 다툰다 —
+      // 가스로 플라스틱을 뽑을지 태울 연료로 바꿀지, 남는 중유·경유를 분해해 흘려보낼지.
+      // '지금 무엇이 급한가' 가 매번 판단거리이고, 그 판단을 회로에 맡길 수 있다.
+      var rec = CHEM_RECIPES[m.recipe] || CHEM_RECIPES['plastic'];
+      // 물건을 만드는 레시피만 출력 버퍼가 찬다 — 분해는 유체를 내므로 버퍼가 없다.
+      if (rec.item && invTotal(m.out) >= SPEC.machineBufOut) { m.working = false; m.load = 0; continue; }
+      var avail = (rec.fin === 'gas') ? gas : (rec.fin === 'heavy' ? heavy : light);
+      var want = rec.inRate * dt * m.powerSat;
+      var used = Math.min(want, avail);
+      // **분해는 내놓을 자리도 있어야 한다.** 받는 쪽이 꽉 차 있으면 분해도 멈춘다 —
+      // 안 그러면 유체가 허공으로 사라져서, 넘치는 것이 문제가 아니게 된다.
+      if (rec.fout) {
+        var have = (rec.fout === 'gas') ? gas : (rec.fout === 'light' ? light : heavy);
+        var byRoom = (net.cap - have) / (rec.outRate / rec.inRate);
+        if (byRoom < used) used = byRoom;
+      }
+      if (used <= 0) { m.working = false; m.load = 0; continue; }
+      if (rec.fin === 'gas') gas -= used;
+      else if (rec.fin === 'heavy') heavy -= used;
+      else light -= used;
+      if (rec.fout) {
+        var made = used * (rec.outRate / rec.inRate);
+        if (rec.fout === 'gas') gas += made;
+        else if (rec.fout === 'light') light += made;
+        else heavy += made;
+      } else {
+        m.progress = (m.progress || 0) + used / rec.per;
+        while (m.progress >= 1) { m.progress -= 1; invAdd(m.out, rec.item, 1); }
+      }
+      m.load = want > 0 ? used / want : 0;
       m.working = true;
       emitPollution(m, 8 * m.load * dt);
     }
-    net.oil = oil; net.gas = gas;
+    net.oil = oil; net.gas = gas; net.heavy = heavy; net.light = light;
 
     net.water = w; net.steam = s;
     spreadFluid(net);
@@ -277,11 +305,33 @@ function fluidNetAt(tx, ty) {
 // 박혀 있어(net.water/net.steam · m.fw/m.fs) 종류를 하나 늘리려면 스무 군데를 고쳐야
 // 했다. 석유 계통을 넣으면서 목록 하나로 몰았다 — 새 유체는 이 배열에 한 줄이다.
 //   key = 망이 들고 있는 이름 · f = 회원(건물)이 제 몫을 들고 있는 필드 이름
+// 화학공장이 할 수 있는 일 — **한 자리에서 정한다.** 갈래가 둘일 때는 if 하나로 됐지만,
+// 다섯이 되면 조건문이 표를 어설프게 흉내 내기 시작한다.
+//   fin    먹는 유체        inRate  초당 먹는 양(만근일 때)
+//   item   내놓는 물건      per     물건 1개당 먹는 유체
+//   fout   내놓는 유체      outRate 초당 내놓는 양   ← 분해가 이쪽이다
+// 물건을 만드는 셋은 전부 초당 10 을 먹는다 — 건물 하나의 처리량은 같고, 무엇으로
+// 바꾸느냐만 다르다. 분해만 처리량이 낮다(4·3): 흘려보내는 일은 만드는 일보다 느리다.
+var CHEM_RECIPES = {
+  'plastic':     { fin: 'gas',   inRate: SPEC.chemGasPerPlastic * SPEC.chemPlasticRate,
+                   item: 'plastic',    per: SPEC.chemGasPerPlastic },
+  'solid-fuel':  { fin: 'gas',   inRate: SPEC.chemGasPerFuel * SPEC.chemFuelRate,
+                   item: 'solid-fuel', per: SPEC.chemGasPerFuel },
+  'fuel-light':  { fin: 'light', inRate: SPEC.lightPerFuel * SPEC.chemFuelLightRate,
+                   item: 'solid-fuel', per: SPEC.lightPerFuel },
+  'crack-heavy': { fin: 'heavy', inRate: SPEC.crackHeavyIn,
+                   fout: 'light', outRate: SPEC.crackHeavyOut },
+  'crack-light': { fin: 'light', inRate: SPEC.crackLightIn,
+                   fout: 'gas',   outRate: SPEC.crackLightOut }
+};
+
 var FLUID_KINDS = [
   { key: 'water', f: 'fw' },
   { key: 'steam', f: 'fs' },
   { key: 'oil',   f: 'fo' },      // 원유 — 펌프잭이 뽑는다
-  { key: 'gas',   f: 'fg' }       // 석유가스 — 정제소가 만든다
+  { key: 'heavy', f: 'fh' },      // 중유 — 정제소가 낸다. 갈 곳은 분해뿐이다
+  { key: 'light', f: 'fl' },      // 경유 — 분해해서 가스로, 또는 그대로 고체 연료로
+  { key: 'gas',   f: 'fg' }       // 석유가스 — 플라스틱·고체 연료
 ];
 
 function netTotal(net) {
@@ -325,7 +375,8 @@ function fluidOf(e) {
   }
   var net = fluidNets[e.fnet];
   return { connected: 1, water: net.water, steam: net.steam,
-           oil: net.oil || 0, gas: net.gas || 0, cap: net.cap,
+           oil: net.oil || 0, heavy: net.heavy || 0, light: net.light || 0,
+           gas: net.gas || 0, cap: net.cap,
            steamPct: net.cap > 0 ? (net.steam / net.cap) * 100 : 0 };
 }
 function engineHasSteam(e) {

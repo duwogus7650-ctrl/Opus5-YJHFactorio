@@ -98,10 +98,13 @@ var BUILDINGS = {
   'inserter':  { hotkey: '2', name: '인서터', w: 1, h: 1, cost: { 'inserter-item': 1 }, rot: true, power: 13,
                  desc: '뒤에서 집어 앞에 놓는다. 0.83개/s. 제어기로 켜고 끌 수 있다.' },
   'miner':     { hotkey: '3', name: '채광기', w: 2, h: 2, cost: { 'gear': 5, 'iron-plate': 10 }, rot: true, power: 90,
+                 takeable: true,   // 인서터가 여기서 물건을 꺼낼 수 있다
                  desc: '아래 광맥을 0.5개/s 로 캔다. 출력 방향으로 뱉는다.' },
   'furnace':   { hotkey: '4', name: '용광로', w: 2, h: 2, cost: { 'brick': 5, 'iron-plate': 5 }, power: 180,
+                 takeable: true,   // 인서터가 여기서 물건을 꺼낼 수 있다
                  desc: '광석을 판으로. 3.2초에 1개.' },
   'assembler': { hotkey: '5', name: '조립기', w: 3, h: 3, cost: { 'gear': 9, 'circuit': 3, 'iron-plate': 9 }, power: 155,
+                 takeable: true,   // 인서터가 여기서 물건을 꺼낼 수 있다
                  desc: '레시피를 지정해 조립. 제작속도 0.75. 재료는 조립기 안에 들어 있어야 한다 — ' +
                        '인서터로 넣거나 [보유 자재 넣기]로 손수 채운다.' },
   'generator': { hotkey: '6', name: '발전기', w: 3, h: 3, cost: { 'gear': 8, 'iron-plate': 12, 'brick': 10 },
@@ -177,10 +180,11 @@ var BUILDINGS = {
                  desc: '원유 광맥 위에 놓는다. 원유를 10/s 뽑아 파이프로 보낸다.' },
   'refinery':  { name: '정제소', w: 3, h: 3, cost: { 'steel': 10, 'circuit': 10, 'gear': 10, 'pipe-item': 10 },
                  tech: 'oil', fluid: true, power: 420,
-                 desc: '원유 20/s 를 석유가스 20/s 로 바꾼다. 420 kW 를 먹는다.' },
+                 desc: '원유 20/s 를 중유 6 · 경유 6 · 가스 8 로 쪼갠다(합은 그대로다). 셋 중 한 출구만 막혀도 전부 선다. 420 kW 를 먹는다.' },
   'chemplant': { name: '화학공장', w: 3, h: 3, cost: { 'steel': 5, 'circuit': 5, 'gear': 5, 'pipe-item': 5 },
                  tech: 'oil', fluid: true, power: 210,
-                 desc: '석유가스 10/s 를 플라스틱 1개/s 로. 고체 연료도 만든다(가스 20 → 1개). 인서터로 빼낸다.' },
+                 takeable: true,   // 인서터가 여기서 물건을 꺼낼 수 있다
+                 desc: '석유가스 10/s 를 플라스틱 1개/s 로. 경유 10 으로도 고체 연료 1개/s 를 만든다. 남는 중유·경유는 분해해 아래로 흘려보낸다. 인서터로 빼낸다.' },
   'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
                  tech: 'steel', fluid: true,
                  desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
@@ -214,7 +218,23 @@ var SPEC = {
   // 석유 — Factorio 공개값을 이 게임의 배율(초당)로 옮긴 값이다.
   pumpjackRate: 10,           // 원유/s  (Factorio pumpjack 은 광맥 수율에 비례하지만
                               //  이 게임은 광맥 수율 개념이 없어 고정값으로 둔다)
-  refineryIn: 20,             // 원유/s → 가스/s (1:1 — 기본 석유 처리의 단순화)
+  refineryIn: 20,             // 원유/s — 정제소가 한 번에 받는 양
+  // **정제소는 셋을 동시에 낸다.** 합이 들어간 원유와 같다(20 = 6+6+8) — 정제는
+  // 쪼개는 일이지 만드는 일이 아니다. 그래서 '나온 것의 합 = 들어간 것' 이 이 계의
+  // 보존량이고, 게이트가 그것으로 검산한다. 비율 30:30:40 은 Factorio 기본 석유 처리다.
+  //
+  // 이 셋이 이 게임에서 제어기가 **꼭 필요해지는 자리**를 만든다: 세 출구 중 하나만
+  // 차도 정제소 전체가 멈춘다. 중유만 쌓여도 가스가 끊긴다 — 남는 것을 분해로
+  // 흘려보내야 하고, 언제 얼마나 흘릴지는 회로가 정한다.
+  refineryHeavy: 6,           // 중유/s
+  refineryLight: 6,           // 경유/s
+  refineryGas: 8,             // 석유가스/s
+  // 분해(cracking) — **공짜가 아니다.** 아래로 내려갈수록 부피가 준다.
+  // 4→3(75%), 3→2(67%). 손실이 없으면 '항상 분해' 가 늘 옳아서 결정이 사라진다.
+  crackHeavyIn: 4,            // 중유/s  →
+  crackHeavyOut: 3,           //   경유/s
+  crackLightIn: 3,            // 경유/s  →
+  crackLightOut: 2,           //   석유가스/s
   chemGasPerPlastic: 10,      // 플라스틱 1개당 석유가스 (Factorio 는 20 가스 → 2 플라스틱)
   chemPlasticRate: 1,         // 플라스틱/s
   // 고체 연료 — 석탄(4 MJ)의 정확히 3배로 둔다. 배수가 정수라 철거 환급을
@@ -222,6 +242,11 @@ var SPEC = {
   solidFuelEnergy: 12000,     // kJ (12 MJ)
   chemGasPerFuel: 20,         // 고체연료 1개당 석유가스
   chemFuelRate: 0.5,          // 고체연료/s
+  // **경유로 만들면 두 배 낫다.** 가스는 플라스틱에도 쓰이므로 연료로 태우는 것이
+  // 아깝고, 경유는 분해해서 가스로 만들 수도 있다 — 그 둘 사이의 저울질이 이 층의
+  // 결정이다. 경유를 태우는 쪽이 유리해야 저울이 한쪽으로 기울지 않는다.
+  lightPerFuel: 10,           // 고체연료 1개당 경유
+  chemFuelLightRate: 1,       // 고체연료/s (경유로 만들 때)
   // 기차 — **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
   // 160타일이라 그대로 쓰면 2초에 횡단한다. 8 타일/s 면 횡단에 20초 — 벨트(1.875)보다
   // 4.3배 빠르고, 먼 광맥을 쓸 이유가 되면서 화면에서 눈으로 따라갈 수 있다.

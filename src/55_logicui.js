@@ -263,6 +263,17 @@ function drawSpark(cvs, series) {
   ctx.textAlign = 'left';
 }
 
+// **출구 이름이 설정을 따라간다.** [유체 잔량] 의 석유 출구는 무엇을 고르느냐에 따라
+// '중유%' 도 되고 '가스%' 도 된다. 늘 '석유%' 라고만 적혀 있으면 배선을 보고도
+// 무엇을 읽는 선인지 알 수 없어, 설정을 하나하나 열어 봐야 한다.
+function outPortName(n, d, po) {
+  if (n.kind === 'fluid' && (po === 4 || po === 5)) {
+    var k = n.cfg.oil || '중유';
+    return (po === 4) ? (k + '%') : k;
+  }
+  return d.outs[po];
+}
+
 function buildNodeDom(inner, g, n) {
   var d = NODE_DEFS[n.kind];
   var el = document.createElement('div');
@@ -354,7 +365,8 @@ function buildNodeDom(inner, g, n) {
     var pr2 = document.createElement('div'); pr2.className = 'port out';
     var dot2 = document.createElement('div'); dot2.className = 'dot';
     dot2.setAttribute('data-out', String(po));
-    var nm2 = document.createElement('span'); nm2.textContent = d.outs[po];
+    var nm2 = document.createElement('span'); nm2.textContent = outPortName(n, d, po);
+    nm2.setAttribute('data-pn', n.nid + ':' + po);   // 설정이 바뀌면 updateLive 가 고쳐 쓴다
     var pv = document.createElement('span'); pv.className = 'pv'; pv.setAttribute('data-pv', n.nid + ':' + po);
     pv.textContent = '0';
     pr2.appendChild(dot2); pr2.appendChild(nm2); pr2.appendChild(pv);
@@ -371,7 +383,7 @@ function buildNodeDom(inner, g, n) {
     // CSS 크기와 그림 크기를 따로 준다 — 같게 두면 고해상도 화면에서 뭉갠다.
     cvs.width = SPARK_W * 2; cvs.height = SPARK_H * 2;
     cvs.style.width = SPARK_W + 'px'; cvs.style.height = SPARK_H + 'px';
-    cvs.title = d.outs[sp] + ' — 지난 8초';
+    cvs.title = outPortName(n, d, sp) + ' — 지난 8초';
     bodyEl.appendChild(cvs);
   }
   // 출력 노드는 자기가 지금 하는 일을 한 줄로 말한다 (updateLive 가 매 140ms 갱신)
@@ -573,6 +585,15 @@ function updateLive() {
         el.textContent = txt;
       }
     }
+  }
+  // 출구 이름 — 설정을 바꾸면 따라 바뀌어야 한다(그래프를 다시 그리지 않고도).
+  var pns = document.querySelectorAll('[data-pn]');
+  for (var pn = 0; pn < pns.length; pn++) {
+    var pk = pns[pn].getAttribute('data-pn').split(':');
+    var pnode = graphNode(g, parseInt(pk[0], 10));
+    if (!pnode) continue;
+    var want = outPortName(pnode, NODE_DEFS[pnode.kind], parseInt(pk[1], 10));
+    if (pns[pn].textContent !== want) pns[pn].textContent = want;
   }
   // 파형 — 담긴 표본을 그대로 그린다. 편집기가 연 제어기만 담기므로 다른
   // 제어기의 노드는 빈 칸(…)으로 남는다.

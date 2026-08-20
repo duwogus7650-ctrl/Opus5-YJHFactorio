@@ -710,7 +710,7 @@ var VERSION = '1.0.0';
 // 왜 있나: 폰이 캐시된 예전 사본을 열고 있어도 화면만 봐서는 알 수 없다 —
 // '복제 버튼이 안 보인다'가 코드 문제인지 사본 문제인지 가르는 데 반나절이 든다.
 // 도움말 맨 아래에 이 값을 찍어 두면 한 줄로 갈린다.
-var BUILD_ID = '04047854';
+var BUILD_ID = '60c73e23';
 
 var TILE = 32;            // 타일 한 변 픽셀 (레퍼런스 스크린샷과 동일 배율)
 var W = 160;              // 월드 가로 타일 수
@@ -949,10 +949,13 @@ var BUILDINGS = {
   'inserter':  { hotkey: '2', name: '인서터', w: 1, h: 1, cost: { 'inserter-item': 1 }, rot: true, power: 13,
                  desc: '뒤에서 집어 앞에 놓는다. 0.83개/s. 제어기로 켜고 끌 수 있다.' },
   'miner':     { hotkey: '3', name: '채광기', w: 2, h: 2, cost: { 'gear': 5, 'iron-plate': 10 }, rot: true, power: 90,
+                 takeable: true,   // 인서터가 여기서 물건을 꺼낼 수 있다
                  desc: '아래 광맥을 0.5개/s 로 캔다. 출력 방향으로 뱉는다.' },
   'furnace':   { hotkey: '4', name: '용광로', w: 2, h: 2, cost: { 'brick': 5, 'iron-plate': 5 }, power: 180,
+                 takeable: true,   // 인서터가 여기서 물건을 꺼낼 수 있다
                  desc: '광석을 판으로. 3.2초에 1개.' },
   'assembler': { hotkey: '5', name: '조립기', w: 3, h: 3, cost: { 'gear': 9, 'circuit': 3, 'iron-plate': 9 }, power: 155,
+                 takeable: true,   // 인서터가 여기서 물건을 꺼낼 수 있다
                  desc: '레시피를 지정해 조립. 제작속도 0.75. 재료는 조립기 안에 들어 있어야 한다 — ' +
                        '인서터로 넣거나 [보유 자재 넣기]로 손수 채운다.' },
   'generator': { hotkey: '6', name: '발전기', w: 3, h: 3, cost: { 'gear': 8, 'iron-plate': 12, 'brick': 10 },
@@ -1028,10 +1031,11 @@ var BUILDINGS = {
                  desc: '원유 광맥 위에 놓는다. 원유를 10/s 뽑아 파이프로 보낸다.' },
   'refinery':  { name: '정제소', w: 3, h: 3, cost: { 'steel': 10, 'circuit': 10, 'gear': 10, 'pipe-item': 10 },
                  tech: 'oil', fluid: true, power: 420,
-                 desc: '원유 20/s 를 석유가스 20/s 로 바꾼다. 420 kW 를 먹는다.' },
+                 desc: '원유 20/s 를 중유 6 · 경유 6 · 가스 8 로 쪼갠다(합은 그대로다). 셋 중 한 출구만 막혀도 전부 선다. 420 kW 를 먹는다.' },
   'chemplant': { name: '화학공장', w: 3, h: 3, cost: { 'steel': 5, 'circuit': 5, 'gear': 5, 'pipe-item': 5 },
                  tech: 'oil', fluid: true, power: 210,
-                 desc: '석유가스 10/s 를 플라스틱 1개/s 로. 고체 연료도 만든다(가스 20 → 1개). 인서터로 빼낸다.' },
+                 takeable: true,   // 인서터가 여기서 물건을 꺼낼 수 있다
+                 desc: '석유가스 10/s 를 플라스틱 1개/s 로. 경유 10 으로도 고체 연료 1개/s 를 만든다. 남는 중유·경유는 분해해 아래로 흘려보낸다. 인서터로 빼낸다.' },
   'engine':    { name: '증기기관', w: 3, h: 2, cost: { 'gear': 8, 'iron-plate': 10, 'pipe-item': 5 },
                  tech: 'steel', fluid: true,
                  desc: '증기 30/s 로 900 kW. 발전기와 같은 출력인데 석탄을 직접 안 먹는다 — ' +
@@ -1065,7 +1069,23 @@ var SPEC = {
   // 석유 — Factorio 공개값을 이 게임의 배율(초당)로 옮긴 값이다.
   pumpjackRate: 10,           // 원유/s  (Factorio pumpjack 은 광맥 수율에 비례하지만
                               //  이 게임은 광맥 수율 개념이 없어 고정값으로 둔다)
-  refineryIn: 20,             // 원유/s → 가스/s (1:1 — 기본 석유 처리의 단순화)
+  refineryIn: 20,             // 원유/s — 정제소가 한 번에 받는 양
+  // **정제소는 셋을 동시에 낸다.** 합이 들어간 원유와 같다(20 = 6+6+8) — 정제는
+  // 쪼개는 일이지 만드는 일이 아니다. 그래서 '나온 것의 합 = 들어간 것' 이 이 계의
+  // 보존량이고, 게이트가 그것으로 검산한다. 비율 30:30:40 은 Factorio 기본 석유 처리다.
+  //
+  // 이 셋이 이 게임에서 제어기가 **꼭 필요해지는 자리**를 만든다: 세 출구 중 하나만
+  // 차도 정제소 전체가 멈춘다. 중유만 쌓여도 가스가 끊긴다 — 남는 것을 분해로
+  // 흘려보내야 하고, 언제 얼마나 흘릴지는 회로가 정한다.
+  refineryHeavy: 6,           // 중유/s
+  refineryLight: 6,           // 경유/s
+  refineryGas: 8,             // 석유가스/s
+  // 분해(cracking) — **공짜가 아니다.** 아래로 내려갈수록 부피가 준다.
+  // 4→3(75%), 3→2(67%). 손실이 없으면 '항상 분해' 가 늘 옳아서 결정이 사라진다.
+  crackHeavyIn: 4,            // 중유/s  →
+  crackHeavyOut: 3,           //   경유/s
+  crackLightIn: 3,            // 경유/s  →
+  crackLightOut: 2,           //   석유가스/s
   chemGasPerPlastic: 10,      // 플라스틱 1개당 석유가스 (Factorio 는 20 가스 → 2 플라스틱)
   chemPlasticRate: 1,         // 플라스틱/s
   // 고체 연료 — 석탄(4 MJ)의 정확히 3배로 둔다. 배수가 정수라 철거 환급을
@@ -1073,6 +1093,11 @@ var SPEC = {
   solidFuelEnergy: 12000,     // kJ (12 MJ)
   chemGasPerFuel: 20,         // 고체연료 1개당 석유가스
   chemFuelRate: 0.5,          // 고체연료/s
+  // **경유로 만들면 두 배 낫다.** 가스는 플라스틱에도 쓰이므로 연료로 태우는 것이
+  // 아깝고, 경유는 분해해서 가스로 만들 수도 있다 — 그 둘 사이의 저울질이 이 층의
+  // 결정이다. 경유를 태우는 쪽이 유리해야 저울이 한쪽으로 기울지 않는다.
+  lightPerFuel: 10,           // 고체연료 1개당 경유
+  chemFuelLightRate: 1,       // 고체연료/s (경유로 만들 때)
   // 기차 — **설계값이다.** Factorio 기관차 최고속도는 82 타일/s 인데 이 맵은 한 변이
   // 160타일이라 그대로 쓰면 2초에 횡단한다. 8 타일/s 면 횡단에 20초 — 벨트(1.875)보다
   // 4.3배 빠르고, 먼 광맥을 쓸 이유가 되면서 화면에서 눈으로 따라갈 수 있다.
@@ -2121,7 +2146,12 @@ function takeFrom(e, filter) {
   if (!e) return null;
   var src = null;
   if (e.type === 'chest') src = e.inv;
-  else if (e.type === 'miner' || e.type === 'furnace' || e.type === 'assembler') src = e.out;
+  // **타입을 여기 늘어놓지 않는다.** 예전엔 miner/furnace/assembler 를 손으로 적어
+  // 뒀는데, 화학공장을 새로 만들면서 이 줄을 못 고쳤다 — 건물 설명과 도움말은
+  // '인서터로 빼낸다' 라고 말하는데 실제로는 아무것도 못 꺼냈고, 출력 버퍼가 차서
+  // 화학공장이 영구히 멈췄다. 석유 사슬 전체가 막다른 길이었다.
+  // 이제는 건물 자신이 '나는 물건을 내놓는다' 고 말한다(05_data.js 의 takeable).
+  else if (BUILDINGS[e.type] && BUILDINGS[e.type].takeable) src = e.out;
   else return null;
   if (filter) { return invTake(src, filter, 1) ? filter : null; }
   for (var k in src) { if (src[k] > 0) { invTake(src, k, 1); return k; } }
@@ -2131,7 +2161,12 @@ function peekTake(e, filter) {
   if (!e) return null;
   var src = null;
   if (e.type === 'chest') src = e.inv;
-  else if (e.type === 'miner' || e.type === 'furnace' || e.type === 'assembler') src = e.out;
+  // **타입을 여기 늘어놓지 않는다.** 예전엔 miner/furnace/assembler 를 손으로 적어
+  // 뒀는데, 화학공장을 새로 만들면서 이 줄을 못 고쳤다 — 건물 설명과 도움말은
+  // '인서터로 빼낸다' 라고 말하는데 실제로는 아무것도 못 꺼냈고, 출력 버퍼가 차서
+  // 화학공장이 영구히 멈췄다. 석유 사슬 전체가 막다른 길이었다.
+  // 이제는 건물 자신이 '나는 물건을 내놓는다' 고 말한다(05_data.js 의 takeable).
+  else if (BUILDINGS[e.type] && BUILDINGS[e.type].takeable) src = e.out;
   else return null;
   if (filter) return (src[filter] > 0) ? filter : null;
   for (var k in src) if (src[k] > 0) return k;
@@ -2760,6 +2795,7 @@ function stepFluids(dt) {
     // 플라스틱을 뱉는다. 보일러와 같은 자리(같은 망 루프)에 두는 이유는 순서 때문이다:
     // **넣는 쪽 → 바꾸는 쪽 → 빼는 쪽** 이어야 한 틱 안에서 사슬이 이어진다.
     var oil = net.oil || 0, gas = net.gas || 0;
+    var heavy = net.heavy || 0, light = net.light || 0;
     for (i = 0; i < net.members.length; i++) {
       m = net.members[i];
       if (m.type !== 'pumpjack') continue;
@@ -2778,10 +2814,22 @@ function stepFluids(dt) {
       m = net.members[i];
       if (m.type !== 'refinery') continue;
       if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }
+      // **셋을 동시에 낸다 — 그리고 하나만 차도 통째로 멈춘다.** 레시피는 쪼갤 수
+      // 없는 한 덩어리다: 중유 낼 자리가 없으면 가스도 못 만든다. 이것이 이 층에서
+      // 제어기가 꼭 필요해지는 이유다. '얼마나 돌 수 있나' 를 출구마다 **원유로 환산**해
+      // 가장 좁은 곳에 맞춘다 — 어느 하나가 꽉 차면 그 환산값이 0 이 되어 멈춘다.
       var wantOil = SPEC.refineryIn * dt * m.powerSat;
-      var lim2 = Math.min(wantOil, oil, net.cap - gas);
+      var shH = SPEC.refineryHeavy / SPEC.refineryIn;
+      var shL = SPEC.refineryLight / SPEC.refineryIn;
+      var shG = SPEC.refineryGas / SPEC.refineryIn;
+      var lim2 = Math.min(wantOil, oil,
+                          (net.cap - heavy) / shH,
+                          (net.cap - light) / shL,
+                          (net.cap - gas) / shG);
       if (lim2 <= 0) { m.working = false; m.load = 0; continue; }
-      oil -= lim2; gas += lim2;          // 1:1 (기본 석유 처리의 단순화)
+      // 보존: 나가는 셋의 합이 들어온 원유와 같다. 게이트가 이것으로 검산한다.
+      oil -= lim2;
+      heavy += lim2 * shH; light += lim2 * shL; gas += lim2 * shG;
       m.load = wantOil > 0 ? lim2 / wantOil : 0;
       m.working = true;
       emitPollution(m, 10 * m.load * dt);
@@ -2790,25 +2838,40 @@ function stepFluids(dt) {
       m = net.members[i];
       if (m.type !== 'chemplant') continue;
       if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }
-      if (invTotal(m.out) >= SPEC.machineBufOut) { m.working = false; m.load = 0; continue; }
-      // **가스를 무엇에 쓸지는 플레이어가 정한다.** 화학공장은 두 레시피를 갖는다:
-      // 플라스틱(탄창·회로로 가는 길)과 고체 연료(석탄 없이 발전하는 길). 같은 가스를
-      // 두고 다투므로 "지금 무엇이 급한가"가 매번 판단거리가 된다.
-      var makingFuel = (m.recipe === 'solid-fuel');
-      var perUnit = makingFuel ? SPEC.chemGasPerFuel : SPEC.chemGasPerPlastic;
-      var rate = makingFuel ? SPEC.chemFuelRate : SPEC.chemPlasticRate;
-      var outItem = makingFuel ? 'solid-fuel' : 'plastic';
-      var wantGas = perUnit * rate * dt * m.powerSat;
-      var lim3 = Math.min(wantGas, gas);
-      if (lim3 <= 0) { m.working = false; m.load = 0; continue; }
-      gas -= lim3;
-      m.progress = (m.progress || 0) + lim3 / perUnit;
-      while (m.progress >= 1) { m.progress -= 1; invAdd(m.out, outItem, 1); }
-      m.load = wantGas > 0 ? lim3 / wantGas : 0;
+      // **무엇을 만들지는 플레이어가 정한다.** 다섯 갈래가 같은 건물을 두고 다툰다 —
+      // 가스로 플라스틱을 뽑을지 태울 연료로 바꿀지, 남는 중유·경유를 분해해 흘려보낼지.
+      // '지금 무엇이 급한가' 가 매번 판단거리이고, 그 판단을 회로에 맡길 수 있다.
+      var rec = CHEM_RECIPES[m.recipe] || CHEM_RECIPES['plastic'];
+      // 물건을 만드는 레시피만 출력 버퍼가 찬다 — 분해는 유체를 내므로 버퍼가 없다.
+      if (rec.item && invTotal(m.out) >= SPEC.machineBufOut) { m.working = false; m.load = 0; continue; }
+      var avail = (rec.fin === 'gas') ? gas : (rec.fin === 'heavy' ? heavy : light);
+      var want = rec.inRate * dt * m.powerSat;
+      var used = Math.min(want, avail);
+      // **분해는 내놓을 자리도 있어야 한다.** 받는 쪽이 꽉 차 있으면 분해도 멈춘다 —
+      // 안 그러면 유체가 허공으로 사라져서, 넘치는 것이 문제가 아니게 된다.
+      if (rec.fout) {
+        var have = (rec.fout === 'gas') ? gas : (rec.fout === 'light' ? light : heavy);
+        var byRoom = (net.cap - have) / (rec.outRate / rec.inRate);
+        if (byRoom < used) used = byRoom;
+      }
+      if (used <= 0) { m.working = false; m.load = 0; continue; }
+      if (rec.fin === 'gas') gas -= used;
+      else if (rec.fin === 'heavy') heavy -= used;
+      else light -= used;
+      if (rec.fout) {
+        var made = used * (rec.outRate / rec.inRate);
+        if (rec.fout === 'gas') gas += made;
+        else if (rec.fout === 'light') light += made;
+        else heavy += made;
+      } else {
+        m.progress = (m.progress || 0) + used / rec.per;
+        while (m.progress >= 1) { m.progress -= 1; invAdd(m.out, rec.item, 1); }
+      }
+      m.load = want > 0 ? used / want : 0;
       m.working = true;
       emitPollution(m, 8 * m.load * dt);
     }
-    net.oil = oil; net.gas = gas;
+    net.oil = oil; net.gas = gas; net.heavy = heavy; net.light = light;
 
     net.water = w; net.steam = s;
     spreadFluid(net);
@@ -2872,11 +2935,33 @@ function fluidNetAt(tx, ty) {
 // 박혀 있어(net.water/net.steam · m.fw/m.fs) 종류를 하나 늘리려면 스무 군데를 고쳐야
 // 했다. 석유 계통을 넣으면서 목록 하나로 몰았다 — 새 유체는 이 배열에 한 줄이다.
 //   key = 망이 들고 있는 이름 · f = 회원(건물)이 제 몫을 들고 있는 필드 이름
+// 화학공장이 할 수 있는 일 — **한 자리에서 정한다.** 갈래가 둘일 때는 if 하나로 됐지만,
+// 다섯이 되면 조건문이 표를 어설프게 흉내 내기 시작한다.
+//   fin    먹는 유체        inRate  초당 먹는 양(만근일 때)
+//   item   내놓는 물건      per     물건 1개당 먹는 유체
+//   fout   내놓는 유체      outRate 초당 내놓는 양   ← 분해가 이쪽이다
+// 물건을 만드는 셋은 전부 초당 10 을 먹는다 — 건물 하나의 처리량은 같고, 무엇으로
+// 바꾸느냐만 다르다. 분해만 처리량이 낮다(4·3): 흘려보내는 일은 만드는 일보다 느리다.
+var CHEM_RECIPES = {
+  'plastic':     { fin: 'gas',   inRate: SPEC.chemGasPerPlastic * SPEC.chemPlasticRate,
+                   item: 'plastic',    per: SPEC.chemGasPerPlastic },
+  'solid-fuel':  { fin: 'gas',   inRate: SPEC.chemGasPerFuel * SPEC.chemFuelRate,
+                   item: 'solid-fuel', per: SPEC.chemGasPerFuel },
+  'fuel-light':  { fin: 'light', inRate: SPEC.lightPerFuel * SPEC.chemFuelLightRate,
+                   item: 'solid-fuel', per: SPEC.lightPerFuel },
+  'crack-heavy': { fin: 'heavy', inRate: SPEC.crackHeavyIn,
+                   fout: 'light', outRate: SPEC.crackHeavyOut },
+  'crack-light': { fin: 'light', inRate: SPEC.crackLightIn,
+                   fout: 'gas',   outRate: SPEC.crackLightOut }
+};
+
 var FLUID_KINDS = [
   { key: 'water', f: 'fw' },
   { key: 'steam', f: 'fs' },
   { key: 'oil',   f: 'fo' },      // 원유 — 펌프잭이 뽑는다
-  { key: 'gas',   f: 'fg' }       // 석유가스 — 정제소가 만든다
+  { key: 'heavy', f: 'fh' },      // 중유 — 정제소가 낸다. 갈 곳은 분해뿐이다
+  { key: 'light', f: 'fl' },      // 경유 — 분해해서 가스로, 또는 그대로 고체 연료로
+  { key: 'gas',   f: 'fg' }       // 석유가스 — 플라스틱·고체 연료
 ];
 
 function netTotal(net) {
@@ -2920,7 +3005,8 @@ function fluidOf(e) {
   }
   var net = fluidNets[e.fnet];
   return { connected: 1, water: net.water, steam: net.steam,
-           oil: net.oil || 0, gas: net.gas || 0, cap: net.cap,
+           oil: net.oil || 0, heavy: net.heavy || 0, light: net.light || 0,
+           gas: net.gas || 0, cap: net.cap,
            steamPct: net.cap > 0 ? (net.steam / net.cap) * 100 : 0 };
 }
 function engineHasSteam(e) {
@@ -3160,7 +3246,10 @@ function pasteBlueprint(tx, ty) {
 //  소수를 내는 노드를 참/거짓 자리에 물릴 때 걸린다 — 도움말에도 적어 둔다.
 // ===========================================================================
 
-var TRUE_EPS = 0.5;      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
+var TRUE_EPS = 0.5;
+// 화면에 보이는 이름 → 유체망이 들고 있는 이름. 한글을 코드 안에서 바로 키로 쓰면
+// 이름 하나 바꿀 때 저장까지 깨진다.
+var OIL_KEY = { '원유': 'oil', '중유': 'heavy', '경유': 'light', '가스': 'gas' };      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
 function truthy(v) { return v >= TRUE_EPS; }
 
 // --- 신호 버스 --------------------------------------------------------------
@@ -3269,10 +3358,17 @@ var NODE_DEFS = {
   // 읽는 값은 **직전 틱**의 유체 상태다. 틱 순서가 로직 → 유체 → 전력이라
   // 그렇게 되고, 기계 상태 센서도 같은 규약이다. 60/s 로 차는 중이면 한 틱에
   // 1 만큼 벌어질 수 있다 — 임계값을 그 폭보다 촘촘하게 잡지 말 것.
+  // **출구를 뒤에 붙인다.** 앞의 넷은 순서가 곧 배선이라, 사이에 끼우면 예전 저장의
+  // 배선이 통째로 어긋난다(증기를 읽던 선이 물을 읽게 된다). 새 것은 언제나 뒤로.
+  // 석유는 넷(원유·중유·경유·가스)이나 출구를 넷 다 달면 노드가 8칸짜리가 된다 —
+  // 하나를 골라 읽는다. 회로가 한 번에 보고 싶은 것은 대개 하나다.
   'fluid':   { label: '유체 잔량', cat: 'in', ins: [],
-               outs: ['증기%', '증기', '물', '망연결'],
+               outs: ['증기%', '증기', '물', '망연결', '석유%', '석유'],
                cfg: [{ k: 'ent', t: 'ent', label: '대상',
-                       filter: ['pipe', 'pump', 'boiler', 'engine'] }],
+                       filter: ['pipe', 'pump', 'boiler', 'engine', 'tank', 'xpump',
+                                'pumpjack', 'refinery', 'chemplant'] },
+                     { k: 'oil', t: 'opsel', label: '석유',
+                       opts: ['원유', '중유', '경유', '가스'], def: '중유' }],
                tech: 'steel' },
 
   // 역 센서 — 배차를 회로로 짜려면 "지금 열차가 서 있나 · 얼마나 실렸나" 를
@@ -3771,11 +3867,15 @@ function evalNode(g, n, dt, ctrl) {
     case 'fluid': {
       var fe = entities[n.cfg.ent];
       var fi = fe ? fluidOf(fe) : null;
-      if (!fi) { n.out[0] = 0; n.out[1] = 0; n.out[2] = 0; n.out[3] = 0; break; }
+      if (!fi) { for (var fz = 0; fz < n.out.length; fz++) n.out[fz] = 0; break; }
       n.out[0] = fi.steamPct;
       n.out[1] = fi.steam;
       n.out[2] = fi.water;
       n.out[3] = fi.connected;
+      var okey = OIL_KEY[n.cfg.oil] || 'heavy';
+      var oamt = fi[okey] || 0;
+      n.out[4] = fi.cap > 0 ? (oamt / fi.cap) * 100 : 0;
+      n.out[5] = oamt;
       break;
     }
 
@@ -6907,9 +7007,17 @@ function refreshInsp() {
     // 화학공장은 **가스를 무엇으로 만들지** 고른다. 조립기와 달리 재료가 유체라
     // 레시피표가 아니라 두 갈래 중 하나를 고르는 일이다 — 목록을 여기서 만든다.
     if (e.type === 'chemplant') {
+      // **다섯 갈래를 한 목록에 적는다.** 숫자를 라벨에 박아 두는 것은 의도다 —
+      // 무엇이 유리한지 도움말을 뒤지지 않고 고르는 자리에서 바로 견줄 수 있어야 한다.
       var chemOpts = [['plastic', '플라스틱 (가스 ' + SPEC.chemGasPerPlastic + ' → 1개/s)'],
                       ['solid-fuel', '고체 연료 (가스 ' + SPEC.chemGasPerFuel + ' → ' +
-                                     SPEC.chemFuelRate + '개/s · 석탄 3개분)']];
+                                     SPEC.chemFuelRate + '개/s · 석탄 3개분)'],
+                      ['fuel-light', '고체 연료 (경유 ' + SPEC.lightPerFuel + ' → ' +
+                                     SPEC.chemFuelLightRate + '개/s · 가스보다 2배 낫다)'],
+                      ['crack-heavy', '중유 분해 (중유 ' + SPEC.crackHeavyIn + ' → 경유 ' +
+                                      SPEC.crackHeavyOut + '/s)'],
+                      ['crack-light', '경유 분해 (경유 ' + SPEC.crackLightIn + ' → 가스 ' +
+                                      SPEC.crackLightOut + '/s)']];
       c.push('<div class="frow"><label>레시피</label><select id="recSel">' +
         chemOpts.map(function (o) {
           var sel = ((e.recipe || 'plastic') === o[0]) ? ' selected' : '';
@@ -7031,8 +7139,22 @@ function refreshInsp() {
         s.push('<div class="frow"><label>원유</label><span class="num" style="color:' +
           (fi.oil > 0 ? 'var(--run)' : 'var(--stop)') + '">' + fmt(fi.oil, 0) + ' / ' + fi.cap +
           '</span></div>');
+        // **중유·경유도 보여야 한다.** 정제소는 셋 중 하나만 차도 멈추는데, 안 보이면
+        // '왜 멈췄나' 에 답할 길이 없다 — 멈춘 이유가 화면에 있어야 한다.
+        s.push('<div class="frow"><label>중유</label><span class="num" style="color:' +
+          (fi.cap > 0 && fi.heavy >= fi.cap - 0.5 ? 'var(--stop)'
+           : (fi.heavy > 0 ? 'var(--run)' : 'var(--ink-2)')) + '">' + fmt(fi.heavy, 0) +
+          ' / ' + fi.cap + (fi.cap > 0 && fi.heavy >= fi.cap - 0.5 ? ' · 가득 참' : '') +
+          '</span></div>');
+        s.push('<div class="frow"><label>경유</label><span class="num" style="color:' +
+          (fi.cap > 0 && fi.light >= fi.cap - 0.5 ? 'var(--stop)'
+           : (fi.light > 0 ? 'var(--run)' : 'var(--ink-2)')) + '">' + fmt(fi.light, 0) +
+          ' / ' + fi.cap + (fi.cap > 0 && fi.light >= fi.cap - 0.5 ? ' · 가득 참' : '') +
+          '</span></div>');
         s.push('<div class="frow"><label>석유가스</label><span class="num" style="color:' +
-          (fi.gas > 0 ? 'var(--run)' : 'var(--stop)') + '">' + fmt(fi.gas, 0) + ' / ' + fi.cap +
+          (fi.cap > 0 && fi.gas >= fi.cap - 0.5 ? 'var(--stop)'
+           : (fi.gas > 0 ? 'var(--run)' : 'var(--ink-2)')) + '">' + fmt(fi.gas, 0) +
+          ' / ' + fi.cap + (fi.cap > 0 && fi.gas >= fi.cap - 0.5 ? ' · 가득 참' : '') +
           '</span></div>');
       }
     }
@@ -7281,13 +7403,28 @@ function fillHelp() {
     '<p><b>원유는 채광기로 못 캔다.</b> 시도하면 거절당한다 — 아이템이 아니라 <b>유체</b>라',
     '벨트에 실을 수가 없다. <b>펌프잭</b>을 광맥 위에 세우고, 파이프로 <b>정제소</b>까지,',
     '다시 <b>화학공장</b>까지 잇는다. 나오는 <b>플라스틱</b>은 고체라 인서터로 빼낸다.</p>',
-    '<p>숫자는 한 줄기로 맞아떨어진다 — 펌프잭 <b>원유 10/s</b> → 정제소가 그만큼 <b>가스</b>로',
-    '바꾸고 → 화학공장이 <b>가스 10 당 플라스틱 1개</b>. 즉 펌프잭 1대가 화학공장 1대를 꽉 채운다.',
-    '대신 셋을 합치면 <b>720 kW</b> — 증기기관 한 대를 거의 다 먹는다. 발전을 먼저 늘려 두는 편이 낫다.</p>',
-    '<p><b>화학공장은 두 갈래다.</b> 같은 석유가스로 <b>플라스틱</b>(가스 10 → 1개/s)을 만들 수도,',
-    '<b>고체 연료</b>(가스 20 → 0.5개/s)를 만들 수도 있다. 고체 연료는 <b>석탄 3개분</b>(12 MJ)이라',
-    '발전기·보일러에 그대로 넣는다 — 석탄 광맥에서 멀어져도 전기를 만들 길이 생긴다.',
-    '무엇이 급한지는 그때그때 다르고, 그 선택이 이 층의 요점이다.</p>',
+    '<p><b>정제소는 하나를 셋으로 쪼갠다.</b> 원유 <b>20/s</b> 가 들어가면 <b>중유 6 · 경유 6 ·',
+    '가스 8</b> 이 나온다 — 합은 그대로다(정제는 쪼개는 일이지 만드는 일이 아니다).',
+    '화학공장은 <b>가스 10 → 플라스틱 1개/s</b>. 셋을 합치면 <b>720 kW</b> —',
+    '증기기관 한 대를 거의 다 먹으니 발전을 먼저 늘려 두는 편이 낫다.</p>',
+    '<p><b class="bad">그리고 여기서 반드시 한 번 막힌다.</b> 정제소의 레시피는 쪼갤 수 없는',
+    '한 덩어리라, <b>셋 중 한 출구만 차도 전부 선다.</b> 중유는 그대로는 쓸 데가 없어 제일',
+    '먼저 쌓이는데, 그러면 <b>가스 자리가 텅 비어 있는데도 가스가 안 나온다</b> —',
+    '플라스틱 라인이 왜 멈췄는지 알려면 중유를 봐야 한다. 인스펙터가 셋을 다 보여주고,',
+    '가득 찬 것에는 <b class="bad">가득 참</b>이라고 적는다.</p>',
+    '<p><b>막힌 것은 아래로 흘려보낸다 — 분해(cracking)다.</b> 화학공장이 <code>중유 4 → 경유 3</code>,',
+    '<code>경유 3 → 가스 2</code> 로 바꾼다. <b>부피가 준다</b>(75% · 67%) — 공짜가 아니어서,',
+    '"남으면 무조건 분해" 가 늘 옳지는 않다. 아래를 아무리 비워도 <b>위가 막혀 있으면 사슬은',
+    '선다</b>: 경유만 흘려보내면 잠깐 돌다가 중유가 다시 차면서 멎는다.</p>',
+    '<p><b>그래서 무엇을 얼마나 흘려보낼지가 회로의 일이 된다.</b> 늘 분해하도록 켜 두면',
+    '가스가 넘쳐 이번엔 가스가 정제소를 막고, 안 켜 두면 중유가 막는다. <code>유체 잔량</code>',
+    '노드에서 <b>중유·경유·가스 중 하나를 골라</b> %로 읽고, <code>SR 래치</code>로 여닫으면',
+    '"중유가 60% 넘으면 분해를 켜고 20% 아래로 내려가면 끈다" 가 된다 — 부하 차단과 같은',
+    '히스테리시스이고, 이 게임에서 배운 것을 그대로 다시 쓰는 자리다.',
+    '노드에 깔린 <b>파형</b>을 보면 그 회로가 발진하는지 한눈에 보인다.</p>',
+    '<p><b>경유는 태울 수도 있다.</b> 고체 연료를 <b>가스 20 → 0.5개/s</b> 로도, <b>경유 10 → 1개/s</b>',
+    '로도 만든다 — 경유 쪽이 두 배 낫다. 가스는 플라스틱에도 쓰이니 태우기 아깝고, 경유는',
+    '분해해서 가스로 만들 수도 있다. <b>태울 것인가 분해할 것인가</b> — 그 저울질이 이 층의 결정이다.</p>',
     '<h4>청사진 — 잘 도는 라인을 통째로 늘린다</h4>',
     '<p><code>B</code> (폰은 아래 [청사진] 버튼) 를 누르고 <b>영역을 끌어서</b> 담는다.',
     '담으면 곧바로 붙여넣기 모드가 되고, <b>좌클릭</b> 한 번으로 그 자리에 지어진다.',
@@ -8443,6 +8580,17 @@ function drawSpark(cvs, series) {
   ctx.textAlign = 'left';
 }
 
+// **출구 이름이 설정을 따라간다.** [유체 잔량] 의 석유 출구는 무엇을 고르느냐에 따라
+// '중유%' 도 되고 '가스%' 도 된다. 늘 '석유%' 라고만 적혀 있으면 배선을 보고도
+// 무엇을 읽는 선인지 알 수 없어, 설정을 하나하나 열어 봐야 한다.
+function outPortName(n, d, po) {
+  if (n.kind === 'fluid' && (po === 4 || po === 5)) {
+    var k = n.cfg.oil || '중유';
+    return (po === 4) ? (k + '%') : k;
+  }
+  return d.outs[po];
+}
+
 function buildNodeDom(inner, g, n) {
   var d = NODE_DEFS[n.kind];
   var el = document.createElement('div');
@@ -8534,7 +8682,8 @@ function buildNodeDom(inner, g, n) {
     var pr2 = document.createElement('div'); pr2.className = 'port out';
     var dot2 = document.createElement('div'); dot2.className = 'dot';
     dot2.setAttribute('data-out', String(po));
-    var nm2 = document.createElement('span'); nm2.textContent = d.outs[po];
+    var nm2 = document.createElement('span'); nm2.textContent = outPortName(n, d, po);
+    nm2.setAttribute('data-pn', n.nid + ':' + po);   // 설정이 바뀌면 updateLive 가 고쳐 쓴다
     var pv = document.createElement('span'); pv.className = 'pv'; pv.setAttribute('data-pv', n.nid + ':' + po);
     pv.textContent = '0';
     pr2.appendChild(dot2); pr2.appendChild(nm2); pr2.appendChild(pv);
@@ -8551,7 +8700,7 @@ function buildNodeDom(inner, g, n) {
     // CSS 크기와 그림 크기를 따로 준다 — 같게 두면 고해상도 화면에서 뭉갠다.
     cvs.width = SPARK_W * 2; cvs.height = SPARK_H * 2;
     cvs.style.width = SPARK_W + 'px'; cvs.style.height = SPARK_H + 'px';
-    cvs.title = d.outs[sp] + ' — 지난 8초';
+    cvs.title = outPortName(n, d, sp) + ' — 지난 8초';
     bodyEl.appendChild(cvs);
   }
   // 출력 노드는 자기가 지금 하는 일을 한 줄로 말한다 (updateLive 가 매 140ms 갱신)
@@ -8753,6 +8902,15 @@ function updateLive() {
         el.textContent = txt;
       }
     }
+  }
+  // 출구 이름 — 설정을 바꾸면 따라 바뀌어야 한다(그래프를 다시 그리지 않고도).
+  var pns = document.querySelectorAll('[data-pn]');
+  for (var pn = 0; pn < pns.length; pn++) {
+    var pk = pns[pn].getAttribute('data-pn').split(':');
+    var pnode = graphNode(g, parseInt(pk[0], 10));
+    if (!pnode) continue;
+    var want = outPortName(pnode, NODE_DEFS[pnode.kind], parseInt(pk[1], 10));
+    if (pns[pn].textContent !== want) pns[pn].textContent = want;
   }
   // 파형 — 담긴 표본을 그대로 그린다. 편집기가 연 제어기만 담기므로 다른
   // 제어기의 노드는 빈 칸(…)으로 남는다.
@@ -9917,6 +10075,14 @@ window.__GAME = {
   setFuel: function (id, kj) { var e = entities[id]; if (e) { e.fuel = kj; return true; } return false; },
   setAmmo: function (id, n) { var e = entities[id]; if (e) { e.ammo = n; return true; } return false; },
   fillChest: function (id, item, n) { var e = entities[id]; if (e) { invAdd(e.inv, item, n); return invTotal(e.inv); } return -1; },
+  // fillChest 의 짝. 상자는 600 에서 차고, 차면 인서터가 못 놓고, 그러면 기계가
+  // 버퍼에 막혀 멈춘다 — 오래 도는 시험에서는 **계기 자신이 포화**해서 '생산 0' 이라는
+  // 거짓 신호를 낸다(실제로 그랬다). 재기 직전에 비워 '물류가 실어 갔다' 를 흉내 낸다.
+  emptyChest: function (id) {
+    var e = entities[id]; if (!e) return -1;
+    for (var k in e.inv) delete e.inv[k];
+    return 0;
+  },
   putOnBelt: function (id, item, cellIdx, lane) {
     var e = entities[id];
     if (!e || !e.cells) return false;
@@ -10033,7 +10199,7 @@ window.__GAME = {
     // name·desc 도 내준다 — 게임 안 설명문이 실제 상수와 어긋나는지 시험이 대조한다.
     // 설명문은 플레이어에게 하는 약속이고, 상수만 바뀌면 조용히 거짓말이 된다.
     return { cost: B.cost, tech: B.tech || null, w: B.w, h: B.h, power: B.power || 0,
-             name: B.name, desc: B.desc || '' };
+             name: B.name, desc: B.desc || '', takeable: !!B.takeable };
   },
   recipeIds: function () { return Object.keys(RECIPES); },
   recipeInfo: function (rid) {

@@ -12,6 +12,7 @@
 // ===========================================================================
 (function () {
   var checks = [];
+  function invTotalOf(o) { var t = 0; for (var k in o) t += o[k]; return t; }
   function chk(name, ok, detail, expectFail) {
     checks.push({ name: name, ok: !!ok, detail: String(detail), expectFail: !!expectFail });
   }
@@ -3498,7 +3499,14 @@
       var OIL_PUB = {
         pumpjackRate: 10,        // 설계값 — 채광기 0.5/s 의 20배, 파이프 한 칸(100)을 10초에 채운다
         refineryIn: 20,          // 설계값 — 펌프잭 2대분을 한 대가 받는다
-        chemGasPerPlastic: 10    // 설계값 — 가스 10 → 플라스틱 1개
+        chemGasPerPlastic: 10,   // 설계값 — 가스 10 → 플라스틱 1개
+        chemPlasticRate: 1,      // 설계값 — 화학공장 한 대의 상한
+        // 분해 — 아래로 내려갈수록 부피가 준다. 손실이 없으면 '항상 분해' 가 늘 옳아
+        // 결정이 사라진다. 여기 적은 값은 SPEC 에서 읽어오지 않는다(같은 실수를 두 번
+        // 하면 게이트가 코드를 따라 틀린다).
+        crackHeavy: [4, 3],      // 중유 4/s → 경유 3/s
+        crackLight: [3, 2],      // 경유 3/s → 가스 2/s
+        lightPerFuel: 10         // 설계값 — 고체 연료 1개당 경유
       };
       var oilAt = G.oilSpot ? G.oilSpot() : null;
       chk('oil.patchExists', !!oilAt, '원유 광맥 위치 ' + JSON.stringify(oilAt));
@@ -3525,33 +3533,51 @@
         chk('oil.pumpjackRateMatchesSpec', near(oilRate, OIL_PUB.pumpjackRate, 0.15, 1),
           '펌프잭 단독 1초 산출 ' + r2(oilRate) + ' (오라클 ' + OIL_PUB.pumpjackRate + '/s)');
 
-        // 2) 정제소를 붙인다 — 화학공장은 아직 없다. 원유 공급이 10/s 라 정제소는
-        // 공급 한계로 돌고, 가스도 10/s 로 는다.
+        // 2) 정제소를 붙인다 — **셋이 동시에 나오고, 합은 들어간 원유와 같아야 한다.**
+        // 이것이 이 계의 보존량이다: 정제는 쪼개는 일이지 만드는 일이 아니다.
+        // 합만 보면 비율이 틀려도 통과하고, 비율만 보면 총량이 새도 통과한다 — 둘 다 본다.
         for (var op = 0; op < 3; op++) G.build('pipe', oilAt.x + 3, oilAt.y + op, 0);
         var refId = G.build('refinery', oilAt.x + 4, oilAt.y, 0);
         // 붙이자마자 재면 안 된다 — 1)에서 망에 쌓인 원유를 정제소가 20/s 로 퍼가는
-        // 배수 구간이라 가스가 14/s 로 나온다. 재고가 마를 때까지 기다린 뒤 잰다.
+        // 배수 구간이다. 재고가 마를 때까지 기다린 뒤 잰다.
         G.run(5);
-        var gas0 = G.fluid(pj).gas;
+        var f0 = G.fluid(pj);
+        var h0 = f0.heavy, l0 = f0.light, gas0 = f0.gas;
         G.run(4);
-        var gasRate = (G.fluid(pj).gas - gas0) / 4;
-        chk('oil.refineryConvertsAtSupplyRate',
-          !!refId && near(gasRate, OIL_PUB.pumpjackRate, 0.2, 1),
-          '정제소 가스 산출 ' + r2(gasRate) + '/s (원유 공급이 ' + OIL_PUB.pumpjackRate +
-          '/s 니 그만큼 나와야) · 정제소 id=' + refId);
+        var f1 = G.fluid(pj);
+        var hRate = (f1.heavy - h0) / 4, lRate = (f1.light - l0) / 4;
+        var gasRate = (f1.gas - gas0) / 4;
+        var sumRate = hRate + lRate + gasRate;
+        chk('oil.refineryConservesVolume',
+          !!refId && near(sumRate, OIL_PUB.pumpjackRate, 0.1, 0.5),
+          '나온 것의 합 ' + r2(sumRate) + '/s = 중유 ' + r2(hRate) + ' + 경유 ' + r2(lRate) +
+          ' + 가스 ' + r2(gasRate) + ' (들어간 원유 ' + OIL_PUB.pumpjackRate +
+          '/s 와 같아야 한다 — 정제는 쪼개는 일이지 만드는 일이 아니다)');
+        chk('oil.refinerySplitsThirtyThirtyForty',
+          sumRate > 1 && near(hRate / sumRate, 0.3, 0.08, 0.02) &&
+          near(lRate / sumRate, 0.3, 0.08, 0.02) && near(gasRate / sumRate, 0.4, 0.08, 0.02),
+          '비율 중유 ' + r2(hRate / sumRate * 100) + '% · 경유 ' + r2(lRate / sumRate * 100) +
+          '% · 가스 ' + r2(gasRate / sumRate * 100) + '% (오라클 30:30:40)');
 
-        // 3) 화학공장을 붙인다 — 가스 10/s ÷ 10가스/개 = 1개/s 가 오라클.
+        // 3) 화학공장을 붙인다. **가스를 넉넉히 채워 두고 잰다** — 정제소가 원유 10/s
+        // 에서 내는 가스는 4/s 뿐이라(30:30:40), 공급에 맞춰 재면 화학공장의 상한이
+        // 아니라 정제소의 몫을 재게 된다. 여기서 묻는 것은 화학공장이 얼마나 빠른가다.
         for (var oq = 0; oq < 3; oq++) G.build('pipe', oilAt.x + 7, oilAt.y + oq, 0);
         var chemId = G.build('chemplant', oilAt.x + 8, oilAt.y, 0);
-        G.run(2);
+        G.setEnabled(chemId, false);
+        G.run(30);                                   // 가스를 모은다 (4/s x 30 = 120)
+        var gasStock0 = G.fluid(pj).gas;
+        G.setEnabled(chemId, true);
         var p0 = G.ent(chemId).out['plastic'] || 0;
-        G.run(10);
-        var plasticRate = ((G.ent(chemId).out['plastic'] || 0) - p0) / 10;
-        var expPlastic = OIL_PUB.pumpjackRate / OIL_PUB.chemGasPerPlastic;
+        G.run(6);
+        var plasticRate = ((G.ent(chemId).out['plastic'] || 0) - p0) / 6;
+        var expPlastic = OIL_PUB.chemPlasticRate;
         chk('oil.chemPlasticRateMatchesSpec',
-          !!chemId && near(plasticRate, expPlastic, 0.2, 0.2),
-          '플라스틱 ' + r2(plasticRate) + '개/s (가스 ' + OIL_PUB.pumpjackRate + '/s ÷ ' +
-          OIL_PUB.chemGasPerPlastic + '가스/개 = ' + expPlastic + '개/s 여야)');
+          !!chemId && gasStock0 > 60 && near(plasticRate, expPlastic, 0.2, 0.2),
+          '플라스틱 ' + r2(plasticRate) + '개/s (오라클 ' + expPlastic +
+          '개/s) · 잴 때 쌓여 있던 가스 ' + r2(gasStock0) +
+          ' (모자라면 화학공장이 아니라 공급을 재는 것이다)');
+        G.run(4);
 
         // 3.5) 가스 1개당 플라스틱 몇 개인가 — 위 3)은 화학공장의 생산 **속도**
         // 상한(chemPlasticRate)이 지배해서, 가스 단가를 반으로 줄여도 속도가 그대로라
@@ -3625,6 +3651,266 @@
         }
       }
 
+      // ================= 11.87 석유 분해 =================================
+      // **이 층의 요점.** 정제소는 셋을 한 덩어리로 낸다 — 어느 하나라도 자리가 없으면
+      // 나머지도 못 만든다. 중유·경유는 그대로는 쓸 데가 적어 쌓이고, 그러면 가스 자리가
+      // 텅 비어 있는데도 가스가 안 나온다. 플레이어가 겪을 그 장면을 그대로 재현한다.
+      labSetup();
+      G.clearTrees();
+      G.research('steel'); G.research('logistics'); G.research('oil');
+      var cAt = G.oilSpot ? G.oilSpot() : null;
+      chk('crack.patchExists', !!cAt, '원유 광맥 ' + JSON.stringify(cAt));
+      if (cAt) {
+        var cPj = G.build('pumpjack', cAt.x, cAt.y, 0);
+        for (var cp = 0; cp < 3; cp++) G.build('pipe', cAt.x + 3, cAt.y + cp, 0);
+        var cRef = G.build('refinery', cAt.x + 4, cAt.y, 0);
+        for (var cq = 0; cq < 3; cq++) G.build('pipe', cAt.x + 7, cAt.y + cq, 0);
+        var cCh = G.build('chemplant', cAt.x + 8, cAt.y, 0);
+        // **만든 것을 빼내야 한다.** 안 빼면 출력 버퍼가 차서 화학공장이 스스로 멈추고,
+        // 그러면 '가스를 계속 먹는 소비자' 라는 전제가 깨진다 — 처음에 이걸 안 두었다가
+        // 가스까지 가득 차 버려서, 무엇이 사슬을 막았는지 구분할 수 없었다.
+        var cIns = G.build('inserter', cAt.x + 8, cAt.y + 3, 2);   // 남쪽으로: 공장 → 상자
+        var cBox = G.build('chest', cAt.x + 8, cAt.y + 4, 0);
+        function boxPlastic() { var b = G.ent(cBox); return (b && b.inv['plastic']) || 0; }
+
+        // --- (가) 분해의 환율 — **공짜가 아니다** ---------------------------
+        // 먼저 중유를 모은다. 분해를 켠 채로 모으면 먹는 쪽(4/s)이 만드는 쪽(3/s)보다
+        // 빨라 중유가 0 에 붙고, 그 상태로 재면 '환율 0' 이라는 엉뚱한 값이 나온다(그랬다).
+        G.setRecipe(cCh, 'plastic');
+        G.run(30);                                    // 중유 90 쯤 모인다
+        G.setEnabled(cPj, false); G.setEnabled(cRef, false);    // 공급을 끊고 잰다
+        G.setRecipe(cCh, 'crack-heavy');
+        G.run(1);
+        var xh0 = G.fluid(cPj).heavy, xl0 = G.fluid(cPj).light;
+        G.run(6);
+        var hUsed = xh0 - G.fluid(cPj).heavy, lMade = G.fluid(cPj).light - xl0;
+        chk('crack.heavyToLightLosesVolume',
+          hUsed > 3 && near(lMade / hUsed, OIL_PUB.crackHeavy[1] / OIL_PUB.crackHeavy[0], 0.08, 0.02),
+          '중유 ' + r2(hUsed) + ' 를 써서 경유 ' + r2(lMade) + ' → 환율 ' + r2(lMade / hUsed) +
+          ' (오라클 ' + OIL_PUB.crackHeavy[1] + '/' + OIL_PUB.crackHeavy[0] +
+          ' = 0.75 · 1 이면 손실이 없다는 뜻이고, 그러면 늘 분해하는 것이 옳아져 결정이 사라진다)');
+
+        G.setRecipe(cCh, 'crack-light');
+        G.run(1);
+        var yl0 = G.fluid(cPj).light, yg0 = G.fluid(cPj).gas;
+        G.run(6);
+        var lUsed = yl0 - G.fluid(cPj).light, gMade = G.fluid(cPj).gas - yg0;
+        chk('crack.lightToGasLosesVolume',
+          lUsed > 2 && near(gMade / lUsed, OIL_PUB.crackLight[1] / OIL_PUB.crackLight[0], 0.08, 0.02),
+          '경유 ' + r2(lUsed) + ' 를 써서 가스 ' + r2(gMade) + ' → 환율 ' + r2(gMade / lUsed) +
+          ' (오라클 ' + OIL_PUB.crackLight[1] + '/' + OIL_PUB.crackLight[0] + ' = 0.67)');
+
+        // --- (나) 하나만 차도 멈춘다 ----------------------------------------
+        // 화학공장을 **플라스틱**에 걸어 가스를 계속 빼 간다(10/s 를 먹는데 정제소는
+        // 4/s 밖에 못 주므로 가스는 안 찬다). 그런데도 중유·경유가 차면 사슬이 선다.
+        G.setRecipe(cCh, 'plastic');
+        G.setEnabled(cPj, true); G.setEnabled(cRef, true);
+        // **용량은 고정값이 아니다.** 파이프나 화학공장을 더 이으면 그만큼 망이 커진다 —
+        // 한 번 재서 들고 다녔더니 '중유 3572/3300' 처럼 용량을 넘는 값이 찍혔고,
+        // 그 낡은 값으로 '가득 찼나' 를 물어서 기다려야 할 자리에서 안 기다렸다.
+        function capNow() { return G.fluid(cPj).cap; }
+        for (var cw = 0; cw < 90 && G.fluid(cPj).heavy < capNow() - 1; cw++) G.run(20);
+        var fJam = G.fluid(cPj);
+        G.emptyChest(cBox);
+        var jamBox0 = boxPlastic();
+        G.run(10);
+        var jamMade = boxPlastic() - jamBox0;
+        // **어느 쪽이 먼저 차는지는 정해져 있지 않다.** 중유·경유가 같은 3/s 로 늘어서,
+        // 앞선 측정이 남긴 차이만큼 한쪽이 먼저 닿는다. 물어야 할 것은 '중유가 찼나' 가
+        // 아니라 '둘 중 하나가 차서 사슬이 섰나' 다 — 처음엔 중유로 못박았다가 틀렸다.
+        var jamFull = Math.max(fJam.heavy, fJam.light);
+        chk('crack.oneFullOutputStopsTheRefinery',
+          jamFull >= capNow() - 1 && fJam.gas < capNow() * 0.5 && jamMade === 0,
+          '중유 ' + r2(fJam.heavy) + ' · 경유 ' + r2(fJam.light) + ' (한쪽이 ' + capNow() +
+          ' 로 가득) · 가스는 ' + r2(fJam.gas) + '/' + capNow() +
+          ' 라 자리가 남아도는데도 10초에 플라스틱 ' + jamMade + '개 · 정제소 가동=' +
+          G.ent(cRef).working + ' (레시피가 한 덩어리라, 한 출구가 막히면 나머지도 못 만든다)');
+
+        // **경유만 흘려보내는 것으로는 부족하다** — 중유가 여전히 막고 있다.
+        // 음성 대조군이다: 이게 통과해 버리면 아래 (다)는 아무것도 증명하지 못한다.
+        for (var cr = 0; cr < 3; cr++) G.build('pipe', cAt.x + 11, cAt.y + cr, 0);
+        var cCh2 = G.build('chemplant', cAt.x + 12, cAt.y, 0);
+        G.setRecipe(cCh2, 'crack-light');
+        // **잠깐은 돈다.** 경유 자리가 생기면 정제소가 다시 도는데, 그만큼 중유도 다시
+        // 쌓여서 곧 중유 쪽이 막는다. 그래서 바로 재면 '고쳐졌다' 는 거짓 신호가 나온다
+        // (실제로 10초에 8개가 나왔다). 다시 설 때까지 기다린 뒤 **지속되는 속도**를 잰다.
+        G.run(20);
+        G.emptyChest(cBox);
+        var burstMade = boxPlastic();
+        G.run(10);
+        burstMade = boxPlastic() - burstMade;      // 되살아난 직후의 한때 속도
+        for (var hw = 0; hw < 40 && G.fluid(cPj).heavy < capNow() - 1; hw++) G.run(20);
+        // **여기서 물어야 할 것은 플라스틱 개수가 아니다.** 경유가 망에 4500 쯤 고여 있어서,
+        // 정제소가 멈춘 뒤에도 그 재고를 분해하며 플라스틱이 한참 더 나온다 — 개수로 재면
+        // '아직 잘 돈다' 로 읽힌다. 그건 사슬이 도는 것이 아니라 **재고를 태우는 것**이다.
+        // 그래서 정제소 자신을 본다: 중유가 가득이라 서 있고, 원유는 쌓이기만 한다.
+        var halfOil0 = G.fluid(cPj).oil;
+        G.run(20);
+        var halfOilGrew = G.fluid(cPj).oil - halfOil0;
+        chk('crack.crackingLightAloneIsNotEnough',
+          burstMade > 0 && G.fluid(cPj).heavy >= capNow() - 1 &&
+          G.ent(cRef).working === false && halfOilGrew > 0,
+          '경유만 분해 — 자리가 생겨 잠깐은 돌았지만(10초에 ' + burstMade + '개), 중유가 ' +
+          r2(G.fluid(cPj).heavy) + '/' + capNow() + ' 로 다시 차자 정제소는 다시 섰다(가동=' +
+          G.ent(cRef).working + '). 그 동안 원유는 ' + r2(halfOilGrew) +
+          ' 만큼 쌓이기만 한다 — 아래를 비워도 위가 막히면 사슬은 서 있고, ' +
+          '그 뒤로 나오는 플라스틱은 고여 있던 경유 재고를 태우는 것이다');
+
+        // --- (다) 둘 다 흘려보내면 사슬이 되살아난다 ------------------------
+        for (var cs = 0; cs < 3; cs++) G.build('pipe', cAt.x + 15, cAt.y + cs, 0);
+        var cCh3 = G.build('chemplant', cAt.x + 16, cAt.y, 0);
+        G.setRecipe(cCh3, 'crack-heavy');
+        G.run(30);
+        G.emptyChest(cBox);
+        var liveBox0 = boxPlastic();
+        G.run(20);
+        var liveRate = (boxPlastic() - liveBox0) / 20;
+        chk('crack.crackingRestartsTheChain',
+          liveRate > 0.05 && G.fluid(cPj).heavy < capNow() * 0.9,
+          '중유 분해까지 켠 뒤 — 플라스틱 ' + r2(liveRate) + '개/s (0보다 커야) · 중유 ' +
+          r2(G.fluid(cPj).heavy) + '/' + capNow() + ' 로 내려감 · 정제소 가동=' + G.ent(cRef).working +
+          ' (막힌 것을 흘려보내면 사슬 전체가 다시 돈다 — 이것이 분해가 있는 이유다)');
+
+        // 경유로 만드는 고체 연료가 가스로 만드는 것보다 두 배 낫다 — 그 차이가
+        // '무엇을 분해하고 무엇을 태울지' 를 저울질하게 만든다. 같으면 저울이 기운다.
+        // 물건을 만드는 레시피라 여기서도 인서터가 빼내 줘야 버퍼에 막히지 않는다.
+        G.setRecipe(cCh, 'fuel-light');
+        G.run(20);
+        var lStock = G.fluid(cPj).light;
+        G.emptyChest(cBox);
+        var fu0 = (G.ent(cBox).inv['solid-fuel'] || 0) + ((G.ent(cCh).out['solid-fuel']) || 0);
+        G.run(10);
+        var lightFuelRate = (((G.ent(cBox).inv['solid-fuel'] || 0) +
+                              (G.ent(cCh).out['solid-fuel'] || 0)) - fu0) / 10;
+        G.setRecipe(cCh, 'solid-fuel');
+        G.run(20);
+        var gStock2 = G.fluid(cPj).gas;
+        G.emptyChest(cBox);
+        var fu1 = (G.ent(cBox).inv['solid-fuel'] || 0) + (G.ent(cCh).out['solid-fuel'] || 0);
+        G.run(10);
+        var gasFuelRate = (((G.ent(cBox).inv['solid-fuel'] || 0) +
+                            (G.ent(cCh).out['solid-fuel'] || 0)) - fu1) / 10;
+        // **단가는 속도와 따로 재야 한다.** 속도(개/s)는 chemFuelLightRate 가 정하고,
+        // 단가(개당 경유)는 lightPerFuel 이 정한다 — 단가만 두 배로 바꿔도 속도는 그대로라
+        // 위 비교로는 안 걸린다(돌연변이가 그대로 빠져나갔다). 공급을 끊고 재고로만 만든다.
+        G.setRecipe(cCh, 'fuel-light');
+        G.setEnabled(cCh2, false); G.setEnabled(cCh3, false);
+        G.setEnabled(cPj, false); G.setEnabled(cRef, false);
+        G.run(2);
+        G.emptyChest(cBox);
+        var upL0 = G.fluid(cPj).light;
+        var upF0 = (G.ent(cBox).inv['solid-fuel'] || 0) + (G.ent(cCh).out['solid-fuel'] || 0);
+        G.run(12);
+        var upLUsed = upL0 - G.fluid(cPj).light;
+        var upFMade = ((G.ent(cBox).inv['solid-fuel'] || 0) +
+                       (G.ent(cCh).out['solid-fuel'] || 0)) - upF0;
+        var perFuel = upFMade > 0 ? upLUsed / upFMade : 0;
+        chk('crack.lightPerFuelMatchesSpec',
+          upFMade > 0 && near(perFuel, OIL_PUB.lightPerFuel, 0.15, 0.5),
+          '경유 ' + r2(upLUsed) + ' 로 고체 연료 ' + upFMade + '개 → 개당 ' + r2(perFuel) +
+          ' (오라클 ' + OIL_PUB.lightPerFuel + ')');
+        G.setEnabled(cPj, true); G.setEnabled(cRef, true);
+        G.setEnabled(cCh2, true); G.setEnabled(cCh3, true);
+
+        chk('crack.lightFuelBeatsGasFuel',
+          lStock > 10 && gStock2 > 10 && lightFuelRate > gasFuelRate * 1.5,
+          '고체 연료 — 경유로 ' + r2(lightFuelRate) + '개/s vs 가스로 ' + r2(gasFuelRate) +
+          '개/s (경유 쪽이 1.5배 넘게 빨라야 한다) · 잴 때 쌓여 있던 경유 ' + r2(lStock) +
+          ' · 가스 ' + r2(gStock2) + ' (모자라면 레시피가 아니라 공급을 재는 것이다)');
+
+        // **분해가 받는 쪽 자리를 봐야 한다.** 안 보면 먹은 유체가 허공으로 사라지고,
+        // 그러면 넘치는 것이 문제가 아니게 되어 이 층의 결정 자체가 없어진다.
+        // 가스를 가득 채워 놓되, 중유 분해로 경유를 계속 대 준다 — 그래야 '경유가 없어서
+        // 안 먹는 것' 과 '자리가 없어서 안 먹는 것' 이 갈린다(처음엔 경유가 말라 버렸다).
+        G.setRecipe(cCh, 'crack-heavy');     // 경유를 계속 만들어 준다 (중유는 가득하다)
+        G.setRecipe(cCh2, 'crack-light');
+        G.setRecipe(cCh3, 'crack-light');
+        for (var gw = 0; gw < 60 && G.fluid(cPj).gas < capNow() - 1; gw++) G.run(20);
+        var backGas = G.fluid(cPj).gas, backLight0 = G.fluid(cPj).light;
+        G.run(10);
+        var backLightGrew = G.fluid(cPj).light - backLight0;
+        chk('crack.crackingStopsWhenTargetIsFull',
+          backGas >= capNow() - 1 && backLight0 > 10 && backLightGrew > 0.5,
+          '가스가 ' + r2(backGas) + '/' + capNow() + ' 로 가득한 동안 경유는 ' + r2(backLight0) +
+          ' 에서 10초에 ' + r2(backLightGrew) + ' 만큼 늘었다 (늘어야 한다 — 분해가 자리 없음을 ' +
+          '보고 멈췄다는 뜻이다. 줄면 자리도 안 보고 계속 먹어 유체가 허공으로 사라지는 것이다)');
+
+        // **[유체 잔량] 노드가 석유를 읽는가.** 회로가 분해를 여닫으려면 먼저 읽을 수
+        // 있어야 한다. 고른 유체가 실제로 바뀌는지까지 본다 — 늘 같은 값을 내면 계기가 아니다.
+        G.research('logic-mem'); G.research('logic-ctrl');
+        var oCtl = G.place('controller', cAt.x, cAt.y + 8, 0);
+        var oSense = G.gAdd(oCtl, 'fluid', 20, 20);
+        G.gCfg(oCtl, oSense, 'ent', cRef);
+        G.gCfg(oCtl, oSense, 'oil', '중유');
+        G.run(0.2);
+        var fNow = G.fluid(cPj);
+        var readHeavyPct = G.gOut(oCtl, oSense, 4), readHeavy = G.gOut(oCtl, oSense, 5);
+        G.gCfg(oCtl, oSense, 'oil', '가스');
+        G.run(0.2);
+        var readGas = G.gOut(oCtl, oSense, 5);
+        chk('logic.fluidNodeReadsOilLevels',
+          near(readHeavy, fNow.heavy, 0.02, 1) && near(readGas, fNow.gas, 0.02, 1) &&
+          near(readHeavyPct, fNow.heavy / fNow.cap * 100, 0.02, 1) &&
+          Math.abs(readHeavy - readGas) > 1,
+          '중유 읽음 ' + r2(readHeavy) + ' (실제 ' + r2(fNow.heavy) + ') · ' + r2(readHeavyPct) +
+          '% · 고른 유체를 가스로 바꾸니 ' + r2(readGas) + ' (실제 ' + r2(fNow.gas) +
+          ') · 둘이 같으면 고르는 것이 안 먹는 것이다');
+      }
+
+      // ================= 11.88 설명이 약속한 반출 =========================
+      // **실제로 있었던 결함.** 화학공장 설명과 도움말은 '인서터로 빼낸다' 라고 적혀
+      // 있었는데, 인서터의 반출 대상은 chest/miner/furnace/assembler 를 **손으로 적은
+      // 목록**이라 화학공장이 빠져 있었다. 아무것도 못 꺼내니 출력 버퍼가 차서 화학공장이
+      // 영구히 멈췄고, 석유 사슬 전체가 막다른 길이었다. 게이트가 못 잡은 이유는 모든
+      // 석유 시험이 기계 버퍼(G.ent(id).out)를 직접 읽어, 게임 자신의 반출 경로를
+      // 한 번도 안 밟았기 때문이다.
+      //
+      // 그래서 여기서는 **설명문을 오라클로 쓴다** — 설명이 '인서터로 빼낸다' 고 약속한
+      // 건물은 실제로 빼낼 수 있어야 한다. 다음에 생산 건물을 하나 더 만들 때, 설명을
+      // 적는 순간 이 게이트가 목록 갱신을 요구한다.
+      var promiseTypes = [], promiseBroken = [];
+      var bTypes = G.buildingTypes();
+      for (var bt = 0; bt < bTypes.length; bt++) {
+        var bi = G.buildingInfo(bTypes[bt]);
+        if (!bi) continue;
+        var promises = bi.desc.indexOf('인서터로 빼낸다') >= 0 || bi.desc.indexOf('인서터로 꺼낸다') >= 0;
+        if (!promises) continue;
+        promiseTypes.push(bTypes[bt]);
+        if (!bi.takeable) promiseBroken.push(bTypes[bt] + '(' + bi.name + ')');
+      }
+      chk('entity.descriptionPromisesAreKept',
+        promiseTypes.length >= 1 && promiseBroken.length === 0,
+        '설명이 반출을 약속한 건물 ' + (promiseTypes.join(',') || '없음') +
+        ' · 그중 실제로는 못 꺼내는 것 ' + (promiseBroken.join(',') || '없음') +
+        ' (약속한 건물이 0개면 이 검사는 아무것도 안 본 것이다)');
+
+      // 그리고 반출이 **말이 아니라 실제로** 되는지 인서터로 확인한다. 위 검사는 표만
+      // 보므로, 표를 맞춰 놓고 코드가 딴 짓을 해도 통과한다.
+      labSetup();
+      var tkChest = G.place('chest', 40, 40, 0);
+      var tkFur = G.place('furnace', 42, 40, 0);
+      G.fillChest(tkChest, 'iron-ore', 100);
+      // **건물 크기를 눈대중으로 적지 않는다.** 용광로가 2x2 라 (43,40) 은 건물 안이고,
+      // 거기 놓으려던 인서터가 null 로 떨어져 '빼낸 철판 0개' 라는 거짓 RED 가 났다.
+      var furW = G.buildingInfo('furnace').w;
+      var tkIn = G.place('inserter', 41, 40, 1);              // 상자 → 용광로
+      var tkOut = G.place('inserter', 42 + furW, 40, 1);      // 용광로 → 상자
+      var tkDst = G.place('chest', 43 + furW, 40, 0);
+      G.run(30);
+      var tkGot = (G.ent(tkDst).inv['iron-plate'] || 0);
+      // 음성 대조군 — 연구소는 물건을 내놓는 건물이 아니다. 인서터를 붙여도 아무것도
+      // 안 나와야 한다. 안 그러면 '아무 건물에서나 꺼내진다' 는 뜻이고, 그건 더 나쁘다.
+      var labW = G.buildingInfo('lab').w;
+      var tkLab = G.place('lab', 50, 40, 0);
+      var tkLabIns = G.place('inserter', 50 + labW, 40, 1);
+      var tkLabDst = G.place('chest', 51 + labW, 40, 0);
+      G.run(20);
+      var tkLabGot = G.ent(tkLabDst) ? invTotalOf(G.ent(tkLabDst).inv) : -1;
+      chk('entity.inserterActuallyEmptiesProducers',
+        tkGot > 0 && tkLabGot === 0,
+        '용광로에서 인서터로 빼낸 철판 ' + tkGot + '개(0보다 커야) · 연구소에서 빼낸 것 ' +
+        tkLabGot + '개(0 이어야 — 아무 건물에서나 꺼내지면 그것도 결함이다) · 인서터 id ' +
+        tkOut + '/' + tkLabIns);
       // ================= 11.9 공개 숫자 대조 ==============================
       // **여기까지의 처리량 게이트는 SPEC 을 검정하지 않는다.** belt.throughput ·
       // inserter.rate · miner.rate 는 기대값을 G.spec() 에서 받아 쓰는데 그 값이
@@ -3790,7 +4076,14 @@
         ['train', rw.trainCargoCap + '개까지'],
         ['tank', String(rw.tankCap).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' 까지'],  // 25,000
         ['tank', '파이프 ' + (rw.tankCap / rw.fluidPerTile) + '칸어치'],
-        ['xpump', rw.xpumpRate + '/s 옮긴다']
+        ['xpump', rw.xpumpRate + '/s 옮긴다'],
+        // 석유 — 쪼개는 비율이 설명문에 박혀 있어야 한다. 상수만 바꾸고 설명을
+        // 안 고치면 게임이 조용히 거짓말을 한다.
+        ['refinery', '원유 ' + rw.refineryIn + '/s'],
+        ['refinery', '중유 ' + rw.refineryHeavy + ' · 경유 ' + rw.refineryLight +
+                     ' · 가스 ' + rw.refineryGas],
+        ['chemplant', '경유 ' + rw.lightPerFuel + ' 으로도 고체 연료 ' +
+                      rw.chemFuelLightRate + '개/s']
       ];
       var descBad = [], descSeen = 0;
       for (var di = 0; di < DESC.length; di++) {

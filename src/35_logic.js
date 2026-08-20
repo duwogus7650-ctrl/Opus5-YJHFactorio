@@ -12,7 +12,10 @@
 //  소수를 내는 노드를 참/거짓 자리에 물릴 때 걸린다 — 도움말에도 적어 둔다.
 // ===========================================================================
 
-var TRUE_EPS = 0.5;      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
+var TRUE_EPS = 0.5;
+// 화면에 보이는 이름 → 유체망이 들고 있는 이름. 한글을 코드 안에서 바로 키로 쓰면
+// 이름 하나 바꿀 때 저장까지 깨진다.
+var OIL_KEY = { '원유': 'oil', '중유': 'heavy', '경유': 'light', '가스': 'gas' };      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
 function truthy(v) { return v >= TRUE_EPS; }
 
 // --- 신호 버스 --------------------------------------------------------------
@@ -121,10 +124,17 @@ var NODE_DEFS = {
   // 읽는 값은 **직전 틱**의 유체 상태다. 틱 순서가 로직 → 유체 → 전력이라
   // 그렇게 되고, 기계 상태 센서도 같은 규약이다. 60/s 로 차는 중이면 한 틱에
   // 1 만큼 벌어질 수 있다 — 임계값을 그 폭보다 촘촘하게 잡지 말 것.
+  // **출구를 뒤에 붙인다.** 앞의 넷은 순서가 곧 배선이라, 사이에 끼우면 예전 저장의
+  // 배선이 통째로 어긋난다(증기를 읽던 선이 물을 읽게 된다). 새 것은 언제나 뒤로.
+  // 석유는 넷(원유·중유·경유·가스)이나 출구를 넷 다 달면 노드가 8칸짜리가 된다 —
+  // 하나를 골라 읽는다. 회로가 한 번에 보고 싶은 것은 대개 하나다.
   'fluid':   { label: '유체 잔량', cat: 'in', ins: [],
-               outs: ['증기%', '증기', '물', '망연결'],
+               outs: ['증기%', '증기', '물', '망연결', '석유%', '석유'],
                cfg: [{ k: 'ent', t: 'ent', label: '대상',
-                       filter: ['pipe', 'pump', 'boiler', 'engine'] }],
+                       filter: ['pipe', 'pump', 'boiler', 'engine', 'tank', 'xpump',
+                                'pumpjack', 'refinery', 'chemplant'] },
+                     { k: 'oil', t: 'opsel', label: '석유',
+                       opts: ['원유', '중유', '경유', '가스'], def: '중유' }],
                tech: 'steel' },
 
   // 역 센서 — 배차를 회로로 짜려면 "지금 열차가 서 있나 · 얼마나 실렸나" 를
@@ -623,11 +633,15 @@ function evalNode(g, n, dt, ctrl) {
     case 'fluid': {
       var fe = entities[n.cfg.ent];
       var fi = fe ? fluidOf(fe) : null;
-      if (!fi) { n.out[0] = 0; n.out[1] = 0; n.out[2] = 0; n.out[3] = 0; break; }
+      if (!fi) { for (var fz = 0; fz < n.out.length; fz++) n.out[fz] = 0; break; }
       n.out[0] = fi.steamPct;
       n.out[1] = fi.steam;
       n.out[2] = fi.water;
       n.out[3] = fi.connected;
+      var okey = OIL_KEY[n.cfg.oil] || 'heavy';
+      var oamt = fi[okey] || 0;
+      n.out[4] = fi.cap > 0 ? (oamt / fi.cap) * 100 : 0;
+      n.out[5] = oamt;
       break;
     }
 

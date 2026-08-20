@@ -367,7 +367,12 @@ function takeFrom(e, filter) {
   if (!e) return null;
   var src = null;
   if (e.type === 'chest') src = e.inv;
-  else if (e.type === 'miner' || e.type === 'furnace' || e.type === 'assembler') src = e.out;
+  // **타입을 여기 늘어놓지 않는다.** 예전엔 miner/furnace/assembler 를 손으로 적어
+  // 뒀는데, 화학공장을 새로 만들면서 이 줄을 못 고쳤다 — 건물 설명과 도움말은
+  // '인서터로 빼낸다' 라고 말하는데 실제로는 아무것도 못 꺼냈고, 출력 버퍼가 차서
+  // 화학공장이 영구히 멈췄다. 석유 사슬 전체가 막다른 길이었다.
+  // 이제는 건물 자신이 '나는 물건을 내놓는다' 고 말한다(05_data.js 의 takeable).
+  else if (BUILDINGS[e.type] && BUILDINGS[e.type].takeable) src = e.out;
   else return null;
   if (filter) { return invTake(src, filter, 1) ? filter : null; }
   for (var k in src) { if (src[k] > 0) { invTake(src, k, 1); return k; } }
@@ -377,7 +382,12 @@ function peekTake(e, filter) {
   if (!e) return null;
   var src = null;
   if (e.type === 'chest') src = e.inv;
-  else if (e.type === 'miner' || e.type === 'furnace' || e.type === 'assembler') src = e.out;
+  // **타입을 여기 늘어놓지 않는다.** 예전엔 miner/furnace/assembler 를 손으로 적어
+  // 뒀는데, 화학공장을 새로 만들면서 이 줄을 못 고쳤다 — 건물 설명과 도움말은
+  // '인서터로 빼낸다' 라고 말하는데 실제로는 아무것도 못 꺼냈고, 출력 버퍼가 차서
+  // 화학공장이 영구히 멈췄다. 석유 사슬 전체가 막다른 길이었다.
+  // 이제는 건물 자신이 '나는 물건을 내놓는다' 고 말한다(05_data.js 의 takeable).
+  else if (BUILDINGS[e.type] && BUILDINGS[e.type].takeable) src = e.out;
   else return null;
   if (filter) return (src[filter] > 0) ? filter : null;
   for (var k in src) if (src[k] > 0) return k;

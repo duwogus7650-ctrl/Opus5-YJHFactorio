@@ -597,6 +597,14 @@ window.__GAME = {
   setFuel: function (id, kj) { var e = entities[id]; if (e) { e.fuel = kj; return true; } return false; },
   setAmmo: function (id, n) { var e = entities[id]; if (e) { e.ammo = n; return true; } return false; },
   fillChest: function (id, item, n) { var e = entities[id]; if (e) { invAdd(e.inv, item, n); return invTotal(e.inv); } return -1; },
+  // fillChest 의 짝. 상자는 600 에서 차고, 차면 인서터가 못 놓고, 그러면 기계가
+  // 버퍼에 막혀 멈춘다 — 오래 도는 시험에서는 **계기 자신이 포화**해서 '생산 0' 이라는
+  // 거짓 신호를 낸다(실제로 그랬다). 재기 직전에 비워 '물류가 실어 갔다' 를 흉내 낸다.
+  emptyChest: function (id) {
+    var e = entities[id]; if (!e) return -1;
+    for (var k in e.inv) delete e.inv[k];
+    return 0;
+  },
   putOnBelt: function (id, item, cellIdx, lane) {
     var e = entities[id];
     if (!e || !e.cells) return false;
@@ -713,7 +721,7 @@ window.__GAME = {
     // name·desc 도 내준다 — 게임 안 설명문이 실제 상수와 어긋나는지 시험이 대조한다.
     // 설명문은 플레이어에게 하는 약속이고, 상수만 바뀌면 조용히 거짓말이 된다.
     return { cost: B.cost, tech: B.tech || null, w: B.w, h: B.h, power: B.power || 0,
-             name: B.name, desc: B.desc || '' };
+             name: B.name, desc: B.desc || '', takeable: !!B.takeable };
   },
   recipeIds: function () { return Object.keys(RECIPES); },
   recipeInfo: function (rid) {

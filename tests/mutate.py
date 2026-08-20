@@ -232,6 +232,62 @@ MUTATIONS = [
      b'    if (false) { ctx.moveTo(x - 1, yTop); ctx.lineTo(x + 1, yTop); }',
      ['ui.sparklineDrawsTheWave'], 'uismoke.js'),
 
+    # --- 석유 분해 --------------------------------------------------------
+    # 정제소가 예전처럼 가스만 내면 이 층의 문제 자체가 사라진다.
+    ('oil: 정제소가 셋이 아니라 가스만 낸다', '32_fluid.js',
+     b'      heavy += lim2 * shH; light += lim2 * shL; gas += lim2 * shG;',
+     b'      gas += lim2;',
+     ['oil.refinerySplitsThirtyThirtyForty'], 'driver.js'),
+
+    # 한 출구가 차도 계속 도는 정제소 — 막힘이 없으면 분해가 필요 없어진다.
+    ('oil: 한 출구가 차도 정제소가 계속 돈다', '32_fluid.js',
+     b'                          (net.cap - heavy) / shH,\n                          (net.cap - light) / shL,',
+     b'                          Infinity, Infinity,',
+     ['crack.oneFullOutputStopsTheRefinery'], 'driver.js'),
+
+    # 손실이 없으면 '남으면 무조건 분해' 가 늘 옳아져 결정이 사라진다.
+    ('oil: 분해에 손실이 없다', '05_data.js',
+     b'  crackHeavyOut: 3,',
+     b'  crackHeavyOut: 4,',
+     ['crack.heavyToLightLosesVolume'], 'driver.js'),
+
+    # 받는 쪽 자리를 안 보면 유체가 허공으로 사라지고, 넘침이 문제가 아니게 된다.
+    ('oil: 분해가 받는 쪽 자리를 안 본다', '32_fluid.js',
+     b'        var byRoom = (net.cap - have) / (rec.outRate / rec.inRate);',
+     b'        var byRoom = Infinity;',
+     ['crack.crackingStopsWhenTargetIsFull'], 'driver.js'),
+
+    # 경유로 태우는 것이 가스와 같아지면 저울질할 것이 없어진다.
+    ('oil: 경유 고체연료가 가스와 같아진다', '05_data.js',
+     b'  chemFuelLightRate: 1,',
+     b'  chemFuelLightRate: 0.5,',
+     ['crack.lightFuelBeatsGasFuel'], 'driver.js'),
+
+    # 단가만 바꾸면 속도는 그대로라 위 비교로는 안 걸린다 — 단가 전용 게이트가 잡는다.
+    ('oil: 경유 고체연료 단가가 두 배로 든다', '05_data.js',
+     b'  lightPerFuel: 10,',
+     b'  lightPerFuel: 20,',
+     ['crack.lightPerFuelMatchesSpec'], 'driver.js'),
+
+    # 실제로 있었던 결함 — 설명은 '인서터로 빼낸다' 인데 못 꺼냈다.
+    ('oil: 화학공장에서 인서터로 못 꺼낸다', '05_data.js',
+     ('takeable: true,   // \uc778\uc11c\ud130\uac00 \uc5ec\uae30\uc11c \ubb3c\uac74\uc744 \uaebc\ub0bc \uc218 \uc788\ub2e4\n'
+      '                 desc: \'\uc11d\uc720\uac00\uc2a4').encode('utf-8'),
+     ('desc: \'\uc11d\uc720\uac00\uc2a4').encode('utf-8'),
+     ['entity.descriptionPromisesAreKept'], 'driver.js'),
+
+    ('oil: 용광로에서 인서터로 못 꺼낸다', '05_data.js',
+     ('takeable: true,   // \uc778\uc11c\ud130\uac00 \uc5ec\uae30\uc11c \ubb3c\uac74\uc744 \uaebc\ub0bc \uc218 \uc788\ub2e4\n'
+      '                 desc: \'\uad11\uc11d\uc744').encode('utf-8'),
+     ('desc: \'\uad11\uc11d\uc744').encode('utf-8'),
+     ['entity.inserterActuallyEmptiesProducers'], 'driver.js'),
+
+    # 유체를 고르는 것이 안 먹으면 회로가 분해를 여닫을 수 없다.
+    ('oil: 석유 잔량 센서가 늘 중유만 읽는다', '35_logic.js',
+     b"      var okey = OIL_KEY[n.cfg.oil] || 'heavy';",
+     b"      var okey = 'heavy';",
+     ['logic.fluidNodeReadsOilLevels'], 'driver.js'),
+
     # 편집기를 열어도 담기 시작하지 않으면 파형 칸은 영원히 빈 칸이다.
     ('scope: 편집기를 열어도 담지 않는다', '55_logicui.js',
      b'  scopeWatch(e.id);',
@@ -280,8 +336,8 @@ MUTATIONS = [
      ['oil.solidFuelIsThreeCoal']),
 
     ('oil2: 레시피를 골라도 늘 플라스틱을 만든다', '32_fluid.js',
-     b"      var makingFuel = (m.recipe === 'solid-fuel');",
-     b'      var makingFuel = false;',
+     b"      var rec = CHEM_RECIPES[m.recipe] || CHEM_RECIPES['plastic'];",
+     b"      var rec = CHEM_RECIPES['plastic'];",
      ['oil.chemMakesSolidFuel']),
 
     ('oil2: 발전기가 고체 연료를 안 받는다', '25_entity.js',
@@ -308,8 +364,10 @@ MUTATIONS = [
      ['oil.chemGasPerPlasticMatchesSpec', 'spec.matchesPublishedValues']),
 
     ('oil: 정제소가 꺼도 계속 돈다', '32_fluid.js',
-     b'      if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }\n      var wantOil = SPEC.refineryIn * dt * m.powerSat;',
-     b'      if (m.powerSat <= 0) { m.working = false; m.load = 0; continue; }\n      var wantOil = SPEC.refineryIn * dt * m.powerSat;',
+     ('      if (!m.enabled || m.powerSat <= 0) { m.working = false; m.load = 0; continue; }\n'
+      '      // **\uc14b\uc744 \ub3d9\uc2dc\uc5d0 \ub0b8\ub2e4').encode('utf-8'),
+     ('      if (m.powerSat <= 0) { m.working = false; m.load = 0; continue; }\n'
+      '      // **\uc14b\uc744 \ub3d9\uc2dc\uc5d0 \ub0b8\ub2e4').encode('utf-8'),
      ['oil.refineryOffStopsChain']),
 
     ('oil: 원유 광맥이 마르지 않는다', '10_world.js',

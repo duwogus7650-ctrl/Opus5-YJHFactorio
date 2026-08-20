@@ -19,3 +19,5 @@ tests/_*.py
 shots/video/
 shots/video-open/
 shots/clips/
+
+tests/.mutate-run.log
