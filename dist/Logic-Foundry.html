@@ -686,7 +686,7 @@ var VERSION = '1.0.0';
 // 왜 있나: 폰이 캐시된 예전 사본을 열고 있어도 화면만 봐서는 알 수 없다 —
 // '복제 버튼이 안 보인다'가 코드 문제인지 사본 문제인지 가르는 데 반나절이 든다.
 // 도움말 맨 아래에 이 값을 찍어 두면 한 줄로 갈린다.
-var BUILD_ID = '056b5a98';
+var BUILD_ID = 'f6a98c38';
 
 var TILE = 32;            // 타일 한 변 픽셀 (레퍼런스 스크린샷과 동일 배율)
 var W = 160;              // 월드 가로 타일 수
@@ -6878,7 +6878,28 @@ function refreshInsp() {
       '<button id="copyBtn" title="Q — 같은 건물을 손에 든다">복제</button>' +
       '<button class="danger" id="delBtn">철거</button></div>');
     if (e.logicForced) {
-      c.push('<div class="ok" style="font-size:11px;margin-top:5px">⛓ 제어기 지배 중 — 수동 조작은 지배가 풀린 뒤 적용된다</div>');
+      // **누가 잡고 있는지 말한다.** '지배 중' 만으로는 지도 어딘가의 제어기를 찾아
+      // 헤매게 된다 — 회로가 여럿이면 그 탐색이 이 게임에서 제일 지치는 일이다.
+      // axisBy 에 축마다 제어기 id 가 이미 적혀 있다. 꺼내서 이름과 길을 준다.
+      // 축 이름은 이미 한국어다(35_logic 의 noteAxisWriter) — 영어 키로 매핑하려다
+      // 하나도 못 찾았다. 있는 것을 그대로 쓰고, 설명만 덧붙인다.
+      var AXIS_NAME = { '가동': '가동/정지', '게이트': '벨트 게이트', '필터': '인서터 필터',
+                        '사격허가': '사격', '열차출발': '열차 출발' };
+      var by = e.axisBy || {}, who = [], seen = {};
+      for (var ax in by) {
+        if (!by[ax]) continue;
+        who.push((AXIS_NAME[ax] || ax) + ' ← <b>제어기 #' + by[ax] + '</b>');
+        seen[by[ax]] = 1;
+      }
+      var ids = Object.keys(seen);
+      c.push('<div class="ok" style="font-size:11px;margin-top:5px">⛓ 제어기 지배 중 — ' +
+        (who.length ? who.join(' · ') : '축 미상') +
+        '. 수동 조작은 지배가 풀린 뒤 적용된다' +
+        (ids.length === 1
+          ? ' <button id="gotoCtrl" data-id="' + ids[0] +
+            '" style="min-height:32px;padding:2px 8px;margin-left:4px">보러 가기</button>'
+          : '') +
+        '</div>');
     }
     // 두 제어기가 같은 축을 다투면 한쪽이 조용히 무시된다. 그걸 말해 준다.
     if (e.logicConflict) {
@@ -6984,6 +7005,18 @@ function refreshInsp() {
 }
 
 function bindInspControls(e) {
+  // 지배 중인 제어기로 데려간다 — 화면을 옮기고 그 회로를 연다.
+  // **인스펙터가 다시 그려질 때마다 다시 걸어야 한다.** 처음엔 부팅 때 한 번 도는
+  // bindSaveButtons 에 넣었다가, 그때는 버튼이 아직 없어서 아무 일도 안 했다.
+  var gb = document.getElementById('gotoCtrl');
+  if (gb) gb.onclick = function () {
+    var cid = parseInt(gb.getAttribute('data-id'), 10);
+    var ce = entities[cid];
+    if (!ce) { toast('그 제어기는 이제 없다'); return; }
+    cam.x = ce.tx + 1; cam.y = ce.ty + 1; clampCam();
+    selected = cid; showInsp(ce);
+    openLogic(ce);          // 편집기는 엔티티를 받는다 (id 를 넘기면 조용히 빈 화면이 된다)
+  };
   var rs = document.getElementById('recSel');
   if (rs) rs.onchange = function () {
     if (e.type === 'chemplant') {
@@ -7237,6 +7270,10 @@ function fillHelp() {
     '지도 반대편 라인 제어기들이 그걸 받아 각자 판단한다. 규칙 두 가지만 기억하면 된다:',
     '<b>같은 채널에 여러 제어기가 보내면 합산</b>되고(순서를 안 타게 하려는 것이다),',
     '<b>받는 값은 언제나 한 틱 전 값</b>이다(되먹임 배선과 같은 규약). 보낸 노드를 지우면 그 몫이 바로 빠진다.</p>',
+    '<p><b>기계가 왜 멈췄는지 찾는 법.</b> 제어기가 잡고 있는 기계를 누르면 창에',
+    '<b>어느 축을 어느 제어기가</b> 잡았는지 뜬다(예: 가동/정지 ← 제어기 #72).',
+    '<b>[보러 가기]</b> 를 누르면 그 제어기로 화면이 옮겨 가고 회로가 열린다 —',
+    '지도를 뒤지며 찾아다니지 않아도 된다.</p>',
     '<p><b>채널에 이름을 붙여라.</b> A~H 는 이름이 없으면 하루 뒤의 자신도 못 읽는다 —',
     '[자재] 판의 <b>Bus 신호 버스</b>에서 이름을 치면 노드에서 고를 때도 <code>A — 증기%</code> 로 보인다.',
     '그 판은 채널마다 <b>지금 값</b>과 <b>쓰는 곳 → 읽는 곳</b> 수를 함께 적는다 —',

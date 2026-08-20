@@ -182,6 +182,17 @@ MUTATIONS = [
      b'          return fetch(abs).then(function (r) {',
      ['offline.updateButtonActuallyUpdates'], 'offline_pwa.js'),
 
+    # --- 지배 제어기 추적 -------------------------------------------------
+    ('trace: 지배 제어기 이름을 안 말한다', '50_ui.js',
+     ('        who.push((AXIS_NAME[ax] || ax) + ' + chr(39) + ' ← <b>제어기 #' + chr(39) + ' + by[ax] + ' + chr(39) + '</b>' + chr(39) + ');').encode('utf-8'),
+     ('        who.push(' + chr(39) + '지배 중' + chr(39) + ');').encode('utf-8'),
+     ['ui.inspectorNamesTheController'], 'uismoke.js'),
+
+    ('trace: 보러 가기가 화면을 안 옮긴다', '50_ui.js',
+     b'    cam.x = ce.tx + 1; cam.y = ce.ty + 1; clampCam();',
+     b'    clampCam();',
+     ['ui.gotoControllerTakesYouThere'], 'uismoke.js'),
+
     # --- 신호 버스 이름 --------------------------------------------------
     ('bus: 채널 이름을 저장에 안 담는다', '60_game.js',
      b'    busN: busNames,',

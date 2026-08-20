@@ -946,6 +946,50 @@
         '빈 땅 클릭 → 열차 ' + afterBad + '대(0이어야 · 조건 발생 확인) · ' +
         '레일 위 클릭 → ' + afterGood + '대 (1이어야)');
 
+      // --- 누가 이 기계를 잡고 있나 ----------------------------------------
+      // '제어기 지배 중' 만으로는 지도 어딘가의 제어기를 찾아 헤매게 된다.
+      // 축마다 누가 잡았는지 말하고, 눌러서 그 회로로 갈 수 있어야 한다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.powerCheat(true);
+      G.research('logic-mem'); G.research('logic-ctrl');
+      var domAsm = G.place('assembler', 70, 70, 0);
+      var domCtrl = G.place('controller', 90, 88, 0);
+      var domK = G.gAdd(domCtrl, 'const', 20, 20); G.gCfg(domCtrl, domK, 'value', 0);
+      var domEn = G.gAdd(domCtrl, 'enable', 240, 20); G.gCfg(domCtrl, domEn, 'ent', domAsm);
+      G.gLink(domCtrl, domK, 0, domEn, 0);
+      G.run(0.3);
+      G.ui.select(domAsm); G.ui.refresh();
+      var inspTxt = document.getElementById('insp').textContent;
+      var gotoBtn = document.getElementById('gotoCtrl');
+      chk('ui.inspectorNamesTheController',
+        inspTxt.indexOf('제어기 #' + domCtrl) >= 0 && inspTxt.indexOf('가동/정지') >= 0 && !!gotoBtn,
+        '인스펙터가 지배 제어기를 이름으로 말하는가 — "제어기 #' + domCtrl + '" 포함=' +
+        (inspTxt.indexOf('제어기 #' + domCtrl) >= 0) + ' · 축 이름 포함=' +
+        (inspTxt.indexOf('가동/정지') >= 0) + ' · [보러 가기] 있음=' + !!gotoBtn);
+
+      // 눌러서 실제로 그 제어기로 가는가 — 카메라와 편집기 둘 다
+      var camBefore = G.camera();
+      if (gotoBtn) gotoBtn.click();
+      var camAfter = G.camera();
+      var editorOpen = G.ui.logicOpen();
+      var movedToCtrl = Math.abs(camAfter.x - 91) < 2 && Math.abs(camAfter.y - 89) < 2;
+      chk('ui.gotoControllerTakesYouThere',
+        movedToCtrl && editorOpen && G.ui.nodeCount() === 2,
+        '누르기 전 카메라 (' + Math.round(camBefore.x) + ',' + Math.round(camBefore.y) +
+        ') → 누른 뒤 (' + Math.round(camAfter.x) + ',' + Math.round(camAfter.y) +
+        ') · 제어기 자리(91,89) 도착=' + movedToCtrl + ' · 편집기 열림=' + editorOpen +
+        ' · 그 회로의 노드 ' + G.ui.nodeCount() + '개(2여야)');
+      G.ui.closeLogic();
+
+      // 음성 대조군 — 아무도 안 잡은 기계에는 그 줄이 없어야 한다
+      var freeAsm = G.place('assembler', 74, 70, 0);
+      G.run(0.2);
+      G.ui.select(freeAsm); G.ui.refresh();
+      var freeTxt = document.getElementById('insp').textContent;
+      chk('ui.noControllerRowWhenFree',
+        freeTxt.indexOf('제어기 지배 중') < 0 && !document.getElementById('gotoCtrl'),
+        '지배당하지 않는 기계의 인스펙터에 지배 줄 없음=' +
+        (freeTxt.indexOf('제어기 지배 중') < 0) + ' (있으면 위 검사는 아무 기계에서나 통과한다)');
+
       // --- 신호 버스 계기판 ------------------------------------------------
       // 값·이름·쓰는 곳/읽는 곳이 **화면에** 있어야 한다. 모델이 답을 갖고 있어도
       // 볼 창이 없으면 제어기가 둘만 넘어가도 회로를 읽을 수 없다.
