@@ -187,6 +187,20 @@ MUTATIONS = [
      b'  #logicBar{height:42px;gap:10px;padding:0 12px}',
      ['mobile.barLabelsDoNotWrap'], 'mobile.js'),
 
+    # --- 한글 줄바꿈 ------------------------------------------------------
+    ('phone: 한글이 어절 한가운데서 끊긴다', 'shell.html',
+     b'.panel:not(#top),#rulePane,#toast{word-break:keep-all;overflow-wrap:break-word}',
+     b'.panel:not(#top),#rulePane,#toast{word-break:normal;overflow-wrap:break-word}',
+     ['mobile.koreanBreaksAtSpaces'], 'mobile.js'),
+
+    # keep-all 만 걸고 짝을 빼면, 끊을 자리 없는 덩어리가 판 밖으로 밀려난다 —
+    # 고치면서 새로 만드는 고장이라 같은 게이트가 둘 다 봐야 한다.
+    ('phone: 끊을 자리 없는 덩어리가 판 밖으로 밀려난다', 'shell.html',
+     b'.panel:not(#top),#rulePane,#toast{word-break:keep-all;overflow-wrap:break-word}',
+     b'.panel:not(#top),#rulePane,#toast{word-break:keep-all}',
+     ['mobile.koreanBreaksAtSpaces'], 'mobile.js'),
+
+
     # --- 지배 제어기 추적 -------------------------------------------------
     ('trace: 지배 제어기 이름을 안 말한다', '50_ui.js',
      ('        who.push((AXIS_NAME[ax] || ax) + ' + chr(39) + ' ← <b>제어기 #' + chr(39) + ' + by[ax] + ' + chr(39) + '</b>' + chr(39) + ');').encode('utf-8'),

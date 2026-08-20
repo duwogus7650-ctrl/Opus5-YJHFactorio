@@ -372,3 +372,10 @@
 - 실패 이유: 도구 칩은 그 검사보다 나중에 만들어졌고 목록에 안 들어갔다. 둘 다 화면 아래 60/64px 에 고정돼 있어 정확히 겹쳤고, 실기 스크린샷에서 '이미 뭔가 있다'가 '채광기 놓는 중 — 그만두기'를 덮었다. 이 레포에서 손으로 적은 목록이 새 요소를 놓친 네 번째 사례
 - 대안·다음엔: 떠 있는 요소끼리의 겹침은 손으로 적은 짝이 아니라 **떠 있는 것 전부를 자동 수집해 서로 겹치는지**로 검사한다. 새 것을 만들면 자동으로 검사에 든다
 - 재사용 자산: tests/mobile.js mobile.toastsDoNotCoverToolChip
+
+## 2026-08-20 — 문서 전체(html,body)에 overflow-wrap:break-word 를 걸었더니 좁은 숫자칸이 접혔다
+- 시도: 한글 어절 줄바꿈(word-break:keep-all)을 고치면서 짝인 overflow-wrap:break-word 를 html,body 에 함께 걸어 물려받게 함
+- 실패 이유: 계기 띠의 프레임 값 '0.0ms' 가 40px 칸을 1px 넘자 break-word 가 '0.0m / s' 로 접었다. 띠 높이가 43→58px 이 되어 top:52px 에 고정된 시트가 계기를 덮었다 (mobile.sheetsKeepTopBarVisible 이 잡음)
+- 대안·다음엔: 타이포 규칙은 **글을 읽는 면**에만 건다: .panel:not(#top),#rulePane,#toast. 좁은 숫자칸은 접는 것보다 넘치는 편이 낫다
+- 재사용 자산: 없음
+- 참조: [[verify-file-before-pronouncing]]

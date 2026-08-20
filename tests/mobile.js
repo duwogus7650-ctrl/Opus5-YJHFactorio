@@ -1202,6 +1202,78 @@
         ' · 띠 밖으로 넘친 것 ' + (barsOver.join(',') || '없음') +
         ' (접히면 "청사 진" 처럼 보인다 — 실기기에서 그렇게 나왔다)');
 
+      // ---------- 8.99 한글이 어절 한가운데서 끊기는가 ----------------------
+      // 실기 스크린샷: '…저장·불러오기·오염 보기가 있 / 고, 건물을 눌러…'. 브라우저
+      // 기본값은 한글 음절 사이 **아무 데서나** 줄을 바꾼다. 글자 크기와 판 폭이
+      // 맞아떨어지는 줄에서만 드러나므로 눈으로 훑어서는 못 잡는다 — 줄이 바뀌는
+      // 자리의 앞뒤 글자를 직접 재고, 그 사이에 띄어쓰기가 있었는지로 판정한다.
+      G.ui.openHelp();
+      var HAN = /[가-힣]/;
+      var midBreaks = [], wrapLines = 0, seenChars = 0;
+      function scanBreaks(root) {
+        if (!root) return;
+        var tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+        var tn, rg = document.createRange();
+        while ((tn = tw.nextNode())) {
+          if (seenChars > 12000) break;                  // 판정에 충분하다
+          var s2 = tn.nodeValue;
+          if (!s2 || !/\S/.test(s2)) continue;
+          rg.selectNodeContents(tn);
+          var lines = rg.getClientRects().length;
+          if (lines === 0) continue;                     // 화면에 없는 글자
+          if (lines === 1) { seenChars += s2.trim().length; continue; }  // 안 접힌 줄은 볼 것이 없다
+          wrapLines += lines - 1;
+          var prevIdx = -1, prevTop = null;
+          for (var ci = 0; ci < s2.length; ci++) {
+            rg.setStart(tn, ci); rg.setEnd(tn, ci + 1);
+            var cr = rg.getBoundingClientRect();
+            if (!cr.width && !cr.height) continue;
+            seenChars++;
+            if (prevTop !== null && cr.top > prevTop + 1) {   // 여기서 줄이 바뀌었다
+              var gap = s2.slice(prevIdx + 1, ci);            // 두 글자 사이에 있던 것
+              if (!/\s/.test(gap) && HAN.test(s2[prevIdx]) && HAN.test(s2[ci])) {
+                midBreaks.push('…' + s2.slice(Math.max(0, prevIdx - 6), prevIdx + 1) +
+                               ' / ' + s2.slice(ci, ci + 7) + '…');
+              }
+            }
+            prevIdx = ci; prevTop = cr.top;
+          }
+        }
+      }
+      scanBreaks(document.getElementById('helpBody'));
+      scanBreaks(document.getElementById('tutorBody'));
+      scanBreaks(document.getElementById('rulePane'));
+      // **keep-all 의 대가를 같은 자리에서 잰다.** 어절을 안 끊기로 하면, 끊을 자리가
+      // 없는 긴 덩어리는 갈 곳이 없어 판 밖으로 밀려난다. 짝인 break-word 가 빠지면
+      // 여기서 드러난다 — 고치면서 새로 만드는 고장이라, 고침과 함께 걸어 둔다.
+      var helpBodyEl = document.getElementById('helpBody');
+      var probe = document.createElement('p');
+      probe.textContent = 'abcdefghij'.repeat(20) + ' 그리고 ' + '1234567890'.repeat(20);
+      helpBodyEl.appendChild(probe);
+      // **scrollWidth 로는 안 보인다.** overflow 가 visible 인 문단은 글자가 밖으로
+      // 삐져나가도 scrollWidth 가 안 늘어난다 — 짝을 빼는 돌연변이가 그대로 통과했다(MISS).
+      // 글자가 실제로 놓인 자리를 Range 로 재서 제 상자와 견준다.
+      var rgp = document.createRange();
+      rgp.selectNodeContents(probe);
+      var inkBox = rgp.getBoundingClientRect();
+      var probeBox = probe.getBoundingClientRect();
+      var probeOver = inkBox.width > probeBox.width + 1 || inkBox.right > probeBox.right + 1;
+      var helpPanel = document.getElementById('help');
+      var panelOver = inkBox.right > helpPanel.getBoundingClientRect().right + 1;
+      probe.remove();
+      // **몇 줄이 접혔는지 세서 적는다.** 아무것도 안 접힌 판에서는 끊긴 자리도 없어서
+      // 0곳을 재고도 GREEN 이 된다 — 이 레포에서 이미 세 번 그랬다.
+      chk('mobile.koreanBreaksAtSpaces',
+        midBreaks.length === 0 && !probeOver && !panelOver &&
+        wrapLines >= 8 && seenChars >= 800,
+        '접힌 줄 ' + wrapLines + '개 · 검사한 글자 ' + seenChars + '자 · 어절 한가운데서 끊긴 곳 ' +
+        (midBreaks.slice(0, 3).join(' | ') || '없음') +
+        (midBreaks.length > 3 ? ' 외 ' + (midBreaks.length - 3) + '곳' : '') +
+        ' · 끊을 자리 없는 200자 덩어리: ' +
+        (probeOver || panelOver ? '판 밖으로 밀려남(break-word 가 빠졌다)' : '판 안에 담김'));
+      G.ui.closeHelp();
+
+
       // ---------- 9. 탭 표적이 손가락 크기인가 ------------------------------
       // 접근성 지침의 최소 타깃은 44x44 CSS px 다. 그보다 작으면 오탭이 난다.
       // **재기 전에 인스펙터를 열어 둔다.** 이 검사는 화면에 보이는 것만 재는데,
