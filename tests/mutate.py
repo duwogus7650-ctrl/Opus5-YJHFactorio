@@ -182,6 +182,11 @@ MUTATIONS = [
      b'          return fetch(abs).then(function (r) {',
      ['offline.updateButtonActuallyUpdates'], 'offline_pwa.js'),
 
+    ('phone: 편집기 머리띠가 한 줄로 돌아간다', 'shell.html',
+     b'  #logicBar{height:var(--lbar-h);flex-wrap:wrap;align-content:center;gap:6px;padding:4px 8px}',
+     b'  #logicBar{height:42px;gap:10px;padding:0 12px}',
+     ['mobile.barLabelsDoNotWrap'], 'mobile.js'),
+
     # --- 지배 제어기 추적 -------------------------------------------------
     ('trace: 지배 제어기 이름을 안 말한다', '50_ui.js',
      ('        who.push((AXIS_NAME[ax] || ax) + ' + chr(39) + ' ← <b>제어기 #' + chr(39) + ' + by[ax] + ' + chr(39) + '</b>' + chr(39) + ');').encode('utf-8'),

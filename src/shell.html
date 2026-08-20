@@ -166,7 +166,7 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
 .qrow:hover{border-color:var(--stop)}
 .qrow .qx{color:var(--ink-2);font-family:var(--mono)}
 /* --- 문장(규칙) 편집기 ------------------------------------------------ */
-#rulePane{position:absolute;left:0;right:0;top:38px;bottom:0;overflow:auto;
+#rulePane{position:absolute;left:0;right:0;top:var(--lbar-h);bottom:0;overflow:auto;
   padding:14px 18px;background:var(--face);display:none}
 #rulePane.on{display:block}
 #logic.rules #pal,#logic.rules #graphWrap{display:none}
@@ -263,7 +263,11 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
 
 /* 노드 편집기 — 같은 반 위의 작업대 */
 #logic{position:absolute;inset:0;background:#c6c3bb;display:none;z-index:30}
-#logicBar{position:absolute;top:0;left:0;right:0;height:42px;
+/* 편집기 머리띠의 높이는 **변수**다. 폰에서는 버튼이 한 줄에 안 들어가 두 줄이
+   되는데(실기 스크린샷: '회로로 펼치 / 기', '닫기 / (ESC)'), 아래 팔레트·회로판이
+   42px 을 손으로 적고 있으면 머리띠가 그것들을 덮는다. */
+:root{--lbar-h:42px}
+#logicBar{position:absolute;top:0;left:0;right:0;height:var(--lbar-h);
   border-bottom:1px solid var(--edge);display:flex;align-items:center;gap:10px;padding:0 12px;
   background:linear-gradient(180deg,#e3dfd8,#cdc8bf);
   box-shadow:inset 0 1px 0 var(--face-hi),0 2px 6px rgba(0,0,0,.28)}
@@ -271,7 +275,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
   text-transform:uppercase;letter-spacing:.15em;font-size:11px;color:var(--ink-2);
   text-shadow:0 1px 0 rgba(255,255,255,.8)}
 #logicBar .hint{color:var(--ink-3);font-size:11px;flex:1}
-#pal{position:absolute;left:0;top:42px;bottom:0;width:196px;border-right:1px solid var(--edge);
+#pal{position:absolute;left:0;top:var(--lbar-h);bottom:0;width:196px;border-right:1px solid var(--edge);
   overflow-y:auto;background:linear-gradient(180deg,#ded9d2,#cfcac1)}
 .pcat{padding:5px 10px;font-family:var(--label);font-size:9px;letter-spacing:.16em;
   color:var(--ink-2);text-transform:uppercase;text-shadow:0 1px 0 rgba(255,255,255,.8);
@@ -281,7 +285,7 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
 .pitem:hover{background:rgba(255,255,255,.5);border-left-color:var(--stop)}
 .pitem.locked{opacity:.34;cursor:not-allowed}
 /* 작업대 표면: 미세 격자 방안 */
-#graphWrap{position:absolute;left:196px;top:42px;right:0;bottom:0;overflow:hidden;
+#graphWrap{position:absolute;left:196px;top:var(--lbar-h);right:0;bottom:0;overflow:hidden;
   background:
     linear-gradient(rgba(0,0,0,.055) 1px,transparent 1px) 0 0/24px 24px,
     linear-gradient(90deg,rgba(0,0,0,.055) 1px,transparent 1px) 0 0/24px 24px,
@@ -494,11 +498,11 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   .panel button{min-height:44px}
 
   /* 노드 편집기: 팔레트를 왼쪽 기둥에서 위쪽 띠로 눕힌다 */
-  #pal{left:0;right:0;top:42px;bottom:auto;width:auto;height:104px;
+  #pal{left:0;right:0;top:var(--lbar-h);bottom:auto;width:auto;height:104px;
        border-right:none;border-bottom:1px solid var(--edge);
        overflow-x:auto;overflow-y:hidden;white-space:nowrap}
   #pal .pitem{display:inline-block;min-height:44px}
-  #graphWrap{left:0;top:146px}
+  #graphWrap{left:0;top:calc(var(--lbar-h) + 104px)}
   /* 안내는 **튜토리얼 판 위**에 뜬다. 예전엔 고정 120px 이라 튜토리얼이 열려 있으면
      그 위에 겹쳐 판을 덮었다(실기 스크린샷). 판 높이를 알고 있으니 그만큼 올린다. */
   /* 좁은 화면에서는 가로로 꽉 채운다. **아래 위치는 여기서 정하지 않는다** —
@@ -533,6 +537,15 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   #toast{bottom:calc(64px + var(--safe-b) + var(--tutor-h, 0px) + var(--chip-h, 0px))}
   /* 손가락으로 이름을 고쳐야 하므로 줄과 입력칸을 키운다. **입력칸도 표적이다** —
      36px 로 뒀다가 내 탭 표적 게이트에 그 자리에서 걸렸다. */
+  /* **편집기 머리띠는 폰에서 두 줄이다.** 한 줄에 우겨넣으면 글자가 접혀
+     '회로로 펼치 / 기' 처럼 보인다(실기 스크린샷). 마우스용 안내 문구는 감추고,
+     버튼은 접히지 않게 한 뒤, 두 줄만큼 높이를 준다. */
+  :root{--lbar-h:84px}
+  #logicBar{height:var(--lbar-h);flex-wrap:wrap;align-content:center;gap:6px;padding:4px 8px}
+  #logicBar .hint{display:none}
+  #logicBar > *{white-space:nowrap;flex:0 0 auto}
+  #logicBar button{min-height:36px;font-size:12px;padding:0 8px}
+  #logicBar .ttl{font-size:10px}
   #busList .brow{padding:5px 8px;font-size:13px;min-height:48px}
   #busList .bname{min-height:44px}
   #sysRow button{min-height:44px;min-width:44px;font-size:13px;padding:4px}
