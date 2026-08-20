@@ -208,10 +208,22 @@ function updateToolChip() {
   // **실기 스크린샷에서 안내가 칩을 정확히 덮었다**('이미 뭔가 있다' 가 '채광기 놓는
   // 중 — 눌러서 그만두기' 위에 얹혔다). 지금 뭘 들고 있는지와 그만두는 길을 가리는
   // 것은 안내가 아니라 방해다. 튜토리얼 판에 쓰던 방법을 그대로 쓴다.
-  syncChipHeight(chip, on);
+  syncChipHeight();
 }
-function syncChipHeight(chip, on) {
-  var h = on ? Math.round(chip.getBoundingClientRect().height) : 0;
+// **칩은 시트 위에 뜨는 물건이다 — 그러니 시트가 칩만큼 비켜 앉아야 한다.**
+// 도구 칩만 이 값을 넘기고 튜토리얼 손잡이는 안 넘겼다. 그래서 인스펙터를 열면
+// [정지]·[복제]·[철거] 세 개가 '튜토리얼 다시 열기' 에 통째로 가렸다(실측:
+// 버튼 774~818 vs 칩 779~823). 누른 줄 알았는데 안 눌리는 부류의 고장이다.
+// **어느 칩이 떠 있든 여기 한 자리에서 잰다** — 손으로 둘을 따로 적으면 다음에
+// 만드는 칩이 또 빠진다(이 레포에서 손으로 적은 목록은 늘 그렇게 낡았다).
+function syncChipHeight() {
+  var ids = ['toolChip', 'tutorChip'], h = 0;
+  for (var i = 0; i < ids.length; i++) {
+    var el = document.getElementById(ids[i]);
+    if (!el || getComputedStyle(el).display === 'none') continue;
+    var q = Math.round(el.getBoundingClientRect().height);
+    if (q > h) h = q;
+  }
   document.documentElement.style.setProperty('--chip-h', h ? (h + 6) + 'px' : '0px');
 }
 

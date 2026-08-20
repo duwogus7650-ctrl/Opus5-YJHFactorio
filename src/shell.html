@@ -436,7 +436,7 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
      글자가 게임 화면 위에 떠 있는 것처럼 보였다. 데스크톱에서는 판이 지도 위에 떠
      있는 것이 맞지만, 시트로 접힐 때는 바닥을 깔아야 한 장으로 읽힌다. */
   #build,#right,#insp{
-    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px));top:auto;
+    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px) + var(--chip-h, 0px));top:auto;
     width:auto;max-width:100%;
     background:var(--face-lo);
     max-height:52vh;overflow-y:auto;border-radius:0;border-left:none;border-right:none;
@@ -454,10 +454,10 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
      왼쪽으로 잘려 나갔다. 게이트가 판 목록을 **손으로 적어 두는 바람에** 도움말만
      고치고 이건 지나갔다. 지금은 시험이 화면의 판을 스스로 훑는다. */
   #help,#tech{
-    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px));top:auto;
+    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px) + var(--chip-h, 0px));top:auto;
     width:auto;max-width:100%;transform:none;
-    max-height:calc(100vh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));
-    max-height:calc(100dvh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));
+    max-height:calc(100vh - 56px - 52px - var(--tutor-h, 0px) - var(--chip-h, 0px) - var(--safe-t) - var(--safe-b));
+    max-height:calc(100dvh - 56px - 52px - var(--tutor-h, 0px) - var(--chip-h, 0px) - var(--safe-t) - var(--safe-b));
     overflow-y:auto;border-radius:0;border-left:none;border-right:none;
     z-index:26}
   #help .pad,#tech .pad{padding:10px 12px}

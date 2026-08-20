@@ -200,6 +200,18 @@ MUTATIONS = [
      b'.panel:not(#top),#rulePane,#toast{word-break:keep-all}',
      ['mobile.koreanBreaksAtSpaces'], 'mobile.js'),
 
+    # 실제로 있었던 결함: 튜토리얼 손잡이가 인스펙터의 [정지]·[복제]·[철거]를 덮었다.
+    ('phone: 시트가 칩 아래로 다시 깔린다', 'shell.html',
+     b'    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px) + var(--chip-h, 0px));top:auto;\n    width:auto;max-width:100%;\n    background:var(--face-lo);',
+     b'    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px));top:auto;\n    width:auto;max-width:100%;\n    background:var(--face-lo);',
+     ['mobile.chipsDoNotCoverSheetButtons'], 'mobile.js'),
+
+    # 손잡이가 제 높이를 안 알리면 시트는 비켜 앉을 방법이 없다.
+    ('phone: 튜토리얼 손잡이가 제 높이를 안 알린다', '52_tutorial.js',
+     b"  if (typeof syncChipHeight === 'function') syncChipHeight();",
+     b'  if (false) syncChipHeight();',
+     ['mobile.chipsDoNotCoverSheetButtons'], 'mobile.js'),
+
     # --- 값 추이(파형) ----------------------------------------------------
     # 굵게 담으면 1틱 펄스가 사라진다 — 편집기 값창(140ms)이 놓치던 그 자리다.
     ('scope: 파형을 140ms 처럼 굵게 담는다', '35_logic.js',
@@ -1148,8 +1160,8 @@ MUTATIONS = [
     ("시트 높이를 다시 62vh 로 (상단 계기를 덮는다)", "shell.html",
      # dvh 짝이 뒤에 오므로 **두 줄을 함께** 바꿔야 실제 높이가 바뀐다.
      # 앞줄만 62vh 로 돌렸더니 뒤의 dvh 가 덮어써서 아무 일도 안 일어났다(MISS).
-     ("    max-height:calc(100vh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));" + chr(10) +
-      "    max-height:calc(100dvh - 56px - 52px - var(--tutor-h, 0px) - var(--safe-t) - var(--safe-b));").encode("utf-8"),
+     ("    max-height:calc(100vh - 56px - 52px - var(--tutor-h, 0px) - var(--chip-h, 0px) - var(--safe-t) - var(--safe-b));" + chr(10) +
+      "    max-height:calc(100dvh - 56px - 52px - var(--tutor-h, 0px) - var(--chip-h, 0px) - var(--safe-t) - var(--safe-b));").encode("utf-8"),
      ("    max-height:62vh;" + chr(10) + "    max-height:62dvh;").encode("utf-8"),
      ["mobile.sheetsKeepTopBarVisible"], "mobile.js"),
 
@@ -1194,7 +1206,7 @@ MUTATIONS = [
     # 앵커는 **유일해야 한다.** 처음엔 bottom:calc(...) 한 줄만 잡았다가 #build 무리와
     # #help 두 곳에 걸려 INVALID 가 났다. 선택자까지 포함해 한 곳으로 못 박는다.
     ("튜토리얼 높이를 건설 시트에 안 알려 준다 (둘이 같은 자리에 겹친다)", "shell.html",
-     ("  #build,#right,#insp{" + chr(10) + "    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px))").encode("utf-8"),
+     ("  #build,#right,#insp{" + chr(10) + "    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px) + var(--chip-h, 0px))").encode("utf-8"),
      ("  #build,#right,#insp{" + chr(10) + "    position:fixed;left:0;right:0;bottom:56px").encode("utf-8"),
      ["mobile.openSheetDoesNotCoverTutorial"], "mobile.js"),
 

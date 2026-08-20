@@ -1273,6 +1273,52 @@
         (probeOver || panelOver ? '판 밖으로 밀려남(break-word 가 빠졌다)' : '판 안에 담김'));
       G.ui.closeHelp();
 
+      // ---------- 8.995 칩이 시트의 버튼을 덮는가 ---------------------------
+      // 화면 아래에 떠 있는 칩(도구 취소 · 튜토리얼 다시 열기)은 시트보다 위에 앉는다.
+      // 도구 칩만 제 높이를 CSS 로 넘기고 튜토리얼 손잡이는 안 넘겨서, 인스펙터를 열면
+      // [정지]·[복제]·[철거] 세 개가 손잡이에 통째로 가렸다(실측: 버튼 774~818 vs
+      // 칩 779~823). **누른 줄 알았는데 안 눌리는** 부류라, 화면만 보면 멀쩡해 보인다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.giveAll(9999); G.powerCheat(true);
+      G.ui.closeTutor();                 // 손잡이를 띄운다
+      var chipEnt = G.place('assembler', 80, 80, 0);
+      G.ui.select(chipEnt);              // 인스펙터를 연다
+      var chipsUp = [], chipBoxes = [];
+      var chipIds = ['toolChip', 'tutorChip'];
+      for (var ci = 0; ci < chipIds.length; ci++) {
+        var cel = document.getElementById(chipIds[ci]);
+        if (!cel || getComputedStyle(cel).display === 'none') continue;
+        chipsUp.push(chipIds[ci]); chipBoxes.push(cel.getBoundingClientRect());
+      }
+      var sheetBtns = [], coveredBtns = [];
+      var sheetIds = ['insp', 'build', 'right', 'help', 'tech'];
+      for (var si2 = 0; si2 < sheetIds.length; si2++) {
+        var sel2 = document.getElementById(sheetIds[si2]);
+        if (!sel2 || getComputedStyle(sel2).display === 'none') continue;
+        var bl = sel2.querySelectorAll('button, select');
+        for (var bi2 = 0; bi2 < bl.length; bi2++) {
+          var bb2 = bl[bi2].getBoundingClientRect();
+          if (bb2.width < 1 || bb2.height < 1) continue;
+          sheetBtns.push(bl[bi2]);
+          for (var cj = 0; cj < chipBoxes.length; cj++) {
+            var cb2 = chipBoxes[cj];
+            if (bb2.left < cb2.right && bb2.right > cb2.left &&
+                bb2.top < cb2.bottom && bb2.bottom > cb2.top) {
+              coveredBtns.push((bl[bi2].textContent || bl[bi2].id || '?').trim().slice(0, 8));
+              break;
+            }
+          }
+        }
+      }
+      // **떠 있는 칩이 없거나 버튼을 못 찾았으면 아무것도 안 본 것이다.** 이 레포에서
+      // 판을 안 열어 둔 채 0개를 재고 GREEN 이 된 적이 이미 여러 번 있다.
+      chk('mobile.chipsDoNotCoverSheetButtons',
+        !NARROW || (chipsUp.length >= 1 && sheetBtns.length >= 3 && coveredBtns.length === 0),
+        (NARROW
+          ? ('떠 있는 칩 ' + (chipsUp.join(',') || '없음') + ' · 검사한 시트 버튼 ' +
+             sheetBtns.length + '개 · 칩에 가린 것 ' + (coveredBtns.join(',') || '없음') +
+             ' (가리면 누른 줄 알았는데 안 눌린다)')
+          : '(넓은 레이아웃 — 칩이 없다)'));
+      G.ui.select(-1);
 
       // ---------- 9. 탭 표적이 손가락 크기인가 ------------------------------
       // 접근성 지침의 최소 타깃은 44x44 CSS px 다. 그보다 작으면 오탭이 난다.
