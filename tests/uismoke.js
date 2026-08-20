@@ -544,6 +544,56 @@
         '부등호를 < 로 뒤집자 → "' + fixTxt + '" · 실제 기계 가동=' + G.ent(mAsm).enabled);
       G.ui.closeLogic();
 
+      // --- 18.9 파형 칸 — 지난 8초를 실제로 그리는가 ------------------------
+      // 캔버스가 상자 안에 있다는 것은 아무 보증이 아니다. **그려진 픽셀**로 판정한다.
+      // 그리고 '뭔가 그렸다' 로도 부족하다 — 아무 신호에나 같은 그림을 그리면 계기가
+      // 아니라 장식이다. 그래서 **펄스와 상수를 나란히 놓고** 두 그림이 다른지 본다.
+      G.reset(424242); G.clearEntities(); G.ui.closeHelp(); G.powerCheat(true);
+      G.giveAll(9999);
+      G.research('logic-mem'); G.research('logic-ctrl');
+      var spC = G.place('controller', 60, 60, 0);
+      var spT = G.gAdd(spC, 'timer', 40, 40);  G.gCfg(spC, spT, 'period', 1);
+      var spK = G.gAdd(spC, 'const', 40, 260); G.gCfg(spC, spK, 'value', 5);
+      G.ui.openLogic(spC);        // 여는 순간부터 담기 시작한다
+      G.ui.showGraph();
+      G.run(6);
+      G.ui.renderGraph(); G.ui.updateLive();
+      function waveInk(nid, port) {
+        var cv = document.querySelector('canvas[data-spark="' + nid + ':' + port + '"]');
+        if (!cv) return null;
+        var im = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+        var rows = {}, ink = 0;
+        for (var y = 0; y < cv.height; y++) {
+          for (var x = 0; x < cv.width; x++) {
+            var q = (y * cv.width + x) * 4;
+            // 파형 색(#e2b21c)만 센다 — 바탕이나 0선을 같이 세면 '그렸다' 가 보증이 안 된다
+            if (im[q] > 180 && im[q + 1] > 130 && im[q + 2] < 90) { rows[y] = 1; ink++; }
+          }
+        }
+        return { rows: Object.keys(rows).length, ink: ink, h: cv.height };
+      }
+      var wPul = waveInk(spT, 0), wCon = waveInk(spK, 0);
+      chk('ui.sparklineDrawsTheWave',
+        !!wPul && !!wCon && wPul.ink > 50 && wCon.ink > 10 &&
+        wPul.rows > wCon.rows * 3,
+        '1초 주기 펄스: 칠한 점 ' + (wPul ? wPul.ink : '?') + '개 · 세로로 ' +
+        (wPul ? wPul.rows : '?') + '줄 / 상수 5: 점 ' + (wCon ? wCon.ink : '?') +
+        '개 · ' + (wCon ? wCon.rows : '?') + '줄 (펄스가 3배 넘게 넓어야 한다 — 같으면 신호와 무관한 그림이다)');
+
+      // **파형은 담긴 것만 그린다.** 안 보는 제어기의 상자에는 빈 칸이 떠야 하고,
+      // 거기 뭔가 그려져 있으면 남의 회로를 제 것처럼 읽게 된다.
+      var spC2 = G.place('controller', 66, 60, 0);
+      var spT2 = G.gAdd(spC2, 'timer', 40, 40); G.gCfg(spC2, spT2, 'period', 1);
+      G.ui.openLogic(spC2);       // 여기서 담는 대상이 바뀐다 — 옛 파형은 버려야 한다
+      G.ui.showGraph(); G.ui.renderGraph(); G.ui.updateLive();
+      var wFresh = waveInk(spT2, 0);
+      chk('ui.sparklineStartsEmptyOnSwitch',
+        !!wFresh && wFresh.ink === 0 && G.scopeSeries(spT2, 0).length < 3,
+        '방금 연 제어기의 파형 칸에 칠한 점 ' + (wFresh ? wFresh.ink : '?') +
+        '개 · 담긴 표본 ' + G.scopeSeries(spT2, 0).length +
+        '개 (둘 다 0 이어야 — 남아 있으면 없어진 회로의 파형을 보고 있는 것이다)');
+      G.ui.closeLogic();
+
       // --- 19. 편집기 — 감사가 짚은 네 가지 ---------------------------------
       G.reset(424242); G.clearEntities(); G.ui.closeHelp(); G.powerCheat(true);
       G.giveAll(9999);

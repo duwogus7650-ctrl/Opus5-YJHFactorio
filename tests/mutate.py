@@ -200,6 +200,45 @@ MUTATIONS = [
      b'.panel:not(#top),#rulePane,#toast{word-break:keep-all}',
      ['mobile.koreanBreaksAtSpaces'], 'mobile.js'),
 
+    # --- 값 추이(파형) ----------------------------------------------------
+    # 굵게 담으면 1틱 펄스가 사라진다 — 편집기 값창(140ms)이 놓치던 그 자리다.
+    ('scope: 파형을 140ms 처럼 굵게 담는다', '35_logic.js',
+     b'  if (e.id === scopeCtrl) scopeRecord(g);',
+     b'  if (e.id === scopeCtrl && Math.round(gameTime * 60) % 8 === 0) scopeRecord(g);',
+     ['scope.capturesOneTickPulse'], 'driver.js'),
+
+    ('scope: 링이 안 감기고 계속 늘어난다', '35_logic.js',
+     b'  if (scopeFilled < SCOPE_LEN) scopeFilled++;',
+     b'  scopeFilled++;',
+     ['scope.ringStaysBounded'], 'driver.js'),
+
+    ('scope: 안 보는 제어기 것까지 담는다', '35_logic.js',
+     b'  if (e.id === scopeCtrl) scopeRecord(g);',
+     b'  if (scopeBuf) scopeRecord(g);',
+     ['scope.onlyWatchedController'], 'driver.js'),
+
+    # 실제로 있었던 결함: 판을 새로 깔면 번호가 되돌아와, 없어진 제어기의 파형이
+    # 같은 번호의 새 제어기 것으로 읽혔다.
+    ('scope: 새 판을 깔아도 옛 파형이 남는다', '60_game.js',
+     ('function newGame(seed) {' + chr(10) +
+      '  // 판이 갈리면 파형도 갈린다 — 안 비우면 없어진 제어기의 기록이 남는다.' + chr(10) +
+      '  scopeWatch(-1);').encode('utf-8'),
+     b'function newGame(seed) {',
+     ['scope.newWorldDropsOldWave'], 'driver.js'),
+
+    # 길이 0 인 선분은 캔버스가 안 그린다 — 상수 신호 칸이 통째로 비었다.
+    ('scope: 평평한 신호를 안 그린다', '55_logicui.js',
+     b'    if (Math.abs(yBot - yTop) < 1) { ctx.moveTo(x - 1, yTop); ctx.lineTo(x + 1, yTop); }',
+     b'    if (false) { ctx.moveTo(x - 1, yTop); ctx.lineTo(x + 1, yTop); }',
+     ['ui.sparklineDrawsTheWave'], 'uismoke.js'),
+
+    # 편집기를 열어도 담기 시작하지 않으면 파형 칸은 영원히 빈 칸이다.
+    ('scope: 편집기를 열어도 담지 않는다', '55_logicui.js',
+     b'  scopeWatch(e.id);',
+     b'  scopeWatch(-1);',
+     ['ui.sparklineDrawsTheWave'], 'uismoke.js'),
+
+
 
     # --- 지배 제어기 추적 -------------------------------------------------
     ('trace: 지배 제어기 이름을 안 말한다', '50_ui.js',

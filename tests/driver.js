@@ -4171,6 +4171,127 @@
         !!noVer && noVer.foreign === true && noVer.version === '(없음)',
         '판 표시가 없는 저장본 → ' + JSON.stringify(noVer) + ' (foreign 이 true 여야)');
 
+      // ================= 11.95 값 추이(파형) ==============================
+      // 이 게임에서 회로를 못 고치는 가장 큰 이유는 **회로가 방금 무엇을 했는지
+      // 볼 수 없다** 는 것이었다. 편집기 값창은 140ms 마다 표본을 뜨는데 펄스는
+      // 폭이 16.7ms 라, 지금까지는 '몇 번 올랐나(↑n)' 로 우회하고 있었다.
+      // 파형은 **매 틱** 담아서 그 구멍을 메운다. 여기서 재는 것은 넷이다:
+      // 펄스가 남는가 · 시뮬을 안 건드리는가 · 저장에 안 새는가 · 무한히 안 크는가.
+      labSetup();
+      G.research('logic-mem'); G.research('logic-ctrl');
+      var scCtrl = G.place('controller', 60, 60, 0);
+      var scTimer = G.gAdd(scCtrl, 'timer', 20, 20);
+      G.gCfg(scCtrl, scTimer, 'period', 1);          // 1초마다 1틱 펄스
+      chk('scope.offMeansEmpty', G.scopeSeries(scTimer, 0).length === 0,
+        '안 보고 있을 때 담긴 표본 ' + G.scopeSeries(scTimer, 0).length +
+        '개 (0 이어야 — 아무도 안 보는 파형을 담고 있으면 큰 판에서 헛돈다)');
+      G.scopeWatch(scCtrl);
+      G.run(4);
+      var ser = G.scopeSeries(scTimer, 0);
+      var fineHits = 0;
+      for (var si = 0; si < ser.length; si++) if (ser[si] >= 0.5) fineHits++;
+      // **같은 신호를 140ms 로 다시 훑는다**(편집기 값창이 하던 방식). 이게 놓치는
+      // 것을 파형이 잡는다는 것이 이 기능의 존재 이유다 — 둘을 나란히 재서 보인다.
+      var STEP140 = Math.round(0.140 * 60);          // 140ms = 8.4틱 -> 8
+      var coarseHits = 0;
+      for (var sj = 0; sj < ser.length; sj += STEP140) if (ser[sj] >= 0.5) coarseHits++;
+      chk('scope.capturesOneTickPulse',
+        ser.length >= 200 && fineHits >= 3 && coarseHits < fineHits,
+        '4초 담은 표본 ' + ser.length + '개 · 매 틱으로 본 펄스 ' + fineHits +
+        '회 (1초 주기이므로 3~4회여야) · 같은 신호를 140ms 로 훑으면 ' + coarseHits +
+        '회 (더 적어야 한다 — 적지 않으면 파형이 굵게 담긴 것이고 존재 이유가 없다)');
+
+      // **계기가 회로를 바꾸면 안 된다.** 담는 쪽이 시뮬을 건드리면 파형을 켠 판과
+      // 끈 판이 갈라진다 — 그러면 화면을 보는 것만으로 결과가 달라진다.
+      function scRun(watch) {
+        labSetup();
+        G.research('logic-mem'); G.research('logic-ctrl');
+        var c = G.place('controller', 60, 60, 0);
+        var t = G.gAdd(c, 'timer', 20, 20); G.gCfg(c, t, 'period', 0.5);
+        var ct = G.gAdd(c, 'counter', 20, 200);
+        G.gLink(c, t, 0, ct, 0);
+        G.scopeWatch(watch ? c : -1);
+        G.run(6);
+        return JSON.stringify(G.state());
+      }
+      var stOn = scRun(true), stOff = scRun(false);
+      chk('scope.doesNotChangeSimulation', stOn === stOff,
+        '파형 켠 판과 끈 판의 최종 상태가 ' + (stOn === stOff ? '같다' : '다르다') +
+        ' (길이 ' + stOn.length + ' vs ' + stOff.length + ')');
+
+      // **저장에 새면 안 된다.** 파형은 화물이 아니라 계기다 — 저장에 실리면
+      // 8초짜리 배열이 노드마다 붙어 저장이 한 판마다 불어난다.
+      labSetup();
+      G.research('logic-mem'); G.research('logic-ctrl');
+      var svCtrl = G.place('controller', 60, 60, 0);
+      var svN = G.gAdd(svCtrl, 'timer', 20, 20); G.gCfg(svCtrl, svN, 'period', 0.2);
+      // **같은 판을 두 번 저장해서 견준다.** 처음엔 '담기 전'과 '담은 뒤'를 견줬는데,
+      // 그 사이 10초를 더 돌렸으니 시각·카운터가 달라져 3바이트가 줄었다 — 버퍼가
+      // 아니라 세계가 달라진 것을 재고 있었다. 세계를 멈춰 두고 버퍼만 없앤다.
+      G.scopeWatch(svCtrl); G.run(10);
+      var filled = G.scopeSeries(svN, 0).length;
+      var sizeWarm = (G.saveRaw() || '').length;
+      G.scopeWatch(-1);                          // 세계는 그대로, 버퍼만 버린다
+      var sizeCold = (G.saveRaw() || '').length;
+      var rawTxt = G.saveRaw() || '';
+      chk('scope.staysOutOfSave',
+        filled >= 480 && sizeWarm === sizeCold && rawTxt.indexOf('scope') < 0,
+        '담긴 표본 ' + filled + '개 · 같은 판을 버퍼 있을 때 ' + sizeWarm +
+        ' 바이트, 버린 뒤 ' + sizeCold + ' 바이트 (같아야 한다) · 저장에 scope 라는 글자 ' +
+        (rawTxt.indexOf('scope') < 0 ? '없음' : '있음') +
+        ' (표본이 0개면 이 검사는 아무것도 안 본 것이다)');
+
+      // 링버퍼가 감기는가 — 안 감기면 오래 켜 둔 판에서 메모리가 계속 는다.
+      // 창(8초)의 두 배 넘게 돌린다: 1200틱을 담아도 480 이어야 감긴 것이다.
+      G.scopeWatch(svCtrl); G.run(20);
+      var longSer = G.scopeSeries(svN, 0);
+      chk('scope.ringStaysBounded', longSer.length === 480,
+        '30초 담은 뒤 표본 ' + longSer.length + '개 (창은 480 = 8초 · 늘어나면 안 감긴 것)');
+
+      // **보고 있는 제어기 것만 담는다.** 둘 다 담으면 같은 자리에 서로 덮어써서
+      // 화면에 남의 회로 파형이 뜬다 — 그 상태로는 디버깅이 오히려 틀려진다.
+      labSetup();
+      G.research('logic-mem'); G.research('logic-ctrl');
+      var wA = G.place('controller', 60, 60, 0);
+      var wB = G.place('controller', 64, 60, 0);
+      var nA = G.gAdd(wA, 'const', 20, 20); G.gCfg(wA, nA, 'value', 11);
+      var nB = G.gAdd(wB, 'const', 20, 20); G.gCfg(wB, nB, 'value', 22);
+      G.scopeWatch(wA);
+      G.run(2);
+      var wSer = G.scopeSeries(nA, 0);
+      var alien = 0;
+      for (var wi = 0; wi < wSer.length; wi++) if (wSer[wi] !== 11) alien++;
+      chk('scope.onlyWatchedController',
+        wSer.length >= 100 && alien === 0 && G.scopeWatching() === wA,
+        '표본 ' + wSer.length + '개 중 안 보는 제어기(22)의 값이 섞인 것 ' + alien +
+        '개 (0 이어야 · 두 제어기의 노드 번호가 같아 섞이면 여기서 드러난다)');
+      G.scopeWatch(-1);
+
+      // **같은 번호라고 같은 제어기가 아니다.** 판을 새로 깔거나 저장을 불러오면
+      // 엔티티 번호가 다시 1부터 붙는다. 번호가 같다고 옛 파형을 그대로 두면,
+      // 없어진 회로의 기록을 새 회로의 것으로 읽는다 — 실제로 그렇게 났고,
+      // 디버깅 계기가 거짓말을 하면 안 하느니만 못하다.
+      labSetup();
+      G.research('logic-mem'); G.research('logic-ctrl');
+      var oldC = G.place('controller', 60, 60, 0);
+      var oldN = G.gAdd(oldC, 'const', 20, 20); G.gCfg(oldC, oldN, 'value', 99);
+      G.scopeWatch(oldC); G.run(3);
+      var beforeLen = G.scopeSeries(oldN, 0).length;
+      labSetup();                       // 판을 새로 깐다 — 번호가 되돌아간다
+      G.research('logic-mem'); G.research('logic-ctrl');
+      var newC = G.place('controller', 60, 60, 0);
+      var newN = G.gAdd(newC, 'const', 20, 20); G.gCfg(newC, newN, 'value', 1);
+      G.run(0.5);                       // 새 판을 조금 돌린다 (아직 아무도 안 본다)
+      var afterSer = G.scopeSeries(newN, 0);
+      var staleN = 0;
+      for (var ai = 0; ai < afterSer.length; ai++) if (afterSer[ai] === 99) staleN++;
+      chk('scope.newWorldDropsOldWave',
+        newC === oldC && beforeLen > 100 && afterSer.length === 0 && staleN === 0,
+        '새 판의 제어기 번호 ' + newC + ' (옛 판은 ' + oldC +
+        ' — 같아야 이 검사가 성립한다) · 옛 판에서 담은 표본 ' + beforeLen +
+        '개 · 새 판에서 남아 있는 표본 ' + afterSer.length + '개(0 이어야) · 그중 옛 값(99) ' +
+        staleN + '개');
+
       // ================= 12. 런타임 오류 ==================================
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');

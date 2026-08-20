@@ -336,6 +336,9 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
 .port:hover .dot{background:var(--stop);border-color:var(--stop)}
 .dot.on{background:var(--run);border-color:var(--run)}
 /* 포트 값도 계기창 안에 */
+/* 파형 칸 — 노드 상자 안의 작은 계기. 어두운 바탕은 의도다: 밝은 판 위에서
+   여기만 계기판처럼 보여야 '값' 이 아니라 '기록' 임이 한눈에 갈린다. */
+.spark{display:block;margin:5px 0 1px;border:1px solid var(--edge);background:#1c2024}
 .pv{font-family:var(--mono);font-size:10px;min-width:30px;text-align:right;
   background:var(--well);color:var(--well-ink);border-radius:1px;padding:0 3px;
   box-shadow:inset 0 1px 3px rgba(0,0,0,.7)}

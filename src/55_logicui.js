@@ -27,11 +27,15 @@ function openLogic(e) {
   // 사람만 할 수 있고, 그게 이 게임에서 가장 높은 벽이었다. 회로를 손으로 고친
   // 제어기만 그래프로 연다.
   showRules(!e.handEdited);
+  // 파형은 **연 제어기 하나만** 담는다. 여는 순간부터 담기 시작하므로 8초쯤
+  // 지나야 창이 다 찬다 — 그 전에는 있는 만큼만 그린다.
+  scopeWatch(e.id);
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = setInterval(updateLive, 140);
 }
 function closeLogic() {
   logicOpen = false;
+  scopeWatch(-1);                       // 안 보는 파형을 계속 담을 이유가 없다
   document.getElementById('logic').style.display = 'none';
   if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
   curCtrl = null;
@@ -186,6 +190,79 @@ function outputMeaning(g, n) {
   return null;
 }
 
+var SPARK_W = 170, SPARK_H = 20;
+
+// 지난 8초를 한 줄로 그린다. **세로 눈금은 창 안의 최소~최대로 스스로 맞춘다** —
+// 0~100 으로 고정하면 전력 만족도(95~100)는 평평한 선이 되어 아무것도 안 보이고,
+// 그 미세한 흔들림이 바로 부하 차단에서 봐야 할 것이다. 대신 눈금이 바뀌면 같은
+// 높이가 다른 값을 뜻하므로, 오른쪽 위에 지금 창의 최대값을 적어 둔다.
+function drawSpark(cvs, series) {
+  var ctx = cvs.getContext('2d');
+  var W = cvs.width, H = cvs.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1c2024'; ctx.fillRect(0, 0, W, H);
+  if (!series || series.length < 2) {
+    ctx.fillStyle = '#5a636b'; ctx.font = '16px monospace';
+    ctx.fillText('…', 6, H - 8);
+    return;
+  }
+  var lo = series[0], hi = series[0];
+  for (var i = 1; i < series.length; i++) {
+    if (series[i] < lo) lo = series[i];
+    if (series[i] > hi) hi = series[i];
+  }
+  // 평평한 신호도 선이 보여야 한다 — 폭이 0 이면 가운데에 긋는다.
+  var span = hi - lo, flat = (span < 1e-9);
+  var pad = 6;
+  function yOf(v) { return flat ? H / 2 : (H - pad) - ((v - lo) / span) * (H - pad * 2); }
+  // 0 선 — 참/거짓 신호에서 바닥이 어디인지 알려 준다
+  if (!flat && lo <= 0 && hi >= 0) {
+    ctx.strokeStyle = '#3a424a'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, yOf(0)); ctx.lineTo(W, yOf(0)); ctx.stroke();
+  }
+  // **표본이 화면 폭보다 많다.** 480 표본을 170px 에 그리면 한 칸에 여러 개가 겹치는데,
+  // 그때 마지막 것만 찍으면 1틱 펄스가 사라진다 — 담아 놓고 그리다 잃는 것이다.
+  // 칸마다 최소·최대를 세로선으로 이어 **뾰족한 것이 남게** 한다.
+  ctx.strokeStyle = '#e2b21c'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  var cols = W / 2;                       // 그림 픽셀 2개당 한 칸
+  for (var c = 0; c < cols; c++) {
+    var a = Math.floor(c * series.length / cols);
+    var b = Math.floor((c + 1) * series.length / cols);
+    if (b <= a) b = a + 1;
+    if (a >= series.length) break;
+    var mn = series[a], mx = series[a];
+    for (var k = a + 1; k < b && k < series.length; k++) {
+      if (series[k] < mn) mn = series[k];
+      if (series[k] > mx) mx = series[k];
+    }
+    var x = c * 2 + 1, yTop = yOf(mx), yBot = yOf(mn);
+    // **길이 0 인 선분은 캔버스가 안 그린다.** 값이 안 변하는 칸은 위아래가 같은
+    // 자리라 세로선이 점 하나도 안 남기고 사라졌다 — 상수 신호의 파형 칸이 통째로
+    // 비어서, 화면에서 '평평하다' 와 '담긴 게 없다' 가 구분되지 않았다(게이트가 잡았다).
+    // 그런 칸은 가로로 눕혀 긋는다 — 평평한 것도 선으로 보여야 한다.
+    if (Math.abs(yBot - yTop) < 1) { ctx.moveTo(x - 1, yTop); ctx.lineTo(x + 1, yTop); }
+    else { ctx.moveTo(x, yTop); ctx.lineTo(x, yBot); }
+  }
+  ctx.stroke();
+  // **눈금이 자동이라 높이만으로는 값을 못 읽는다.** 창의 위·아래 값을 적어 둔다.
+  // 바닥이 0 이면 0선이 이미 말해 주므로 위쪽만 적는다 — 20px 안에 글자 둘은 빽빽하다.
+  // 처음엔 그냥 얹었더니 파형 위에 겹쳐 안 읽혔다(스크린샷에서 드러났다). 글자마다
+  // 어두운 판을 깔아 띄운다.
+  ctx.font = '14px monospace'; ctx.textAlign = 'right';
+  function tag(txt, y) {
+    var w = ctx.measureText(txt).width;
+    ctx.fillStyle = 'rgba(28,32,36,.82)';
+    ctx.fillRect(W - w - 6, y - 12, w + 6, 15);
+    ctx.fillStyle = '#b7bec4';
+    ctx.fillText(txt, W - 3, y);
+  }
+  function num(v) { return String(Math.round(v * 10) / 10); }
+  tag(num(hi), 14);
+  if (!flat && Math.abs(lo) > 1e-9) tag(num(lo), H - 3);
+  ctx.textAlign = 'left';
+}
+
 function buildNodeDom(inner, g, n) {
   var d = NODE_DEFS[n.kind];
   var el = document.createElement('div');
@@ -285,6 +362,18 @@ function buildNodeDom(inner, g, n) {
   }
   ports.appendChild(cin); ports.appendChild(cout);
   bodyEl.appendChild(ports);
+  // **파형.** 숫자 한 칸은 '지금' 만 말한다 — 부하 차단이 발진하는지, 래치가 언제
+  // 풀렸는지는 지난 8초를 봐야 안다. 출력마다 한 줄씩 깐다(대부분 출력은 하나다).
+  for (var sp = 0; sp < d.outs.length; sp++) {
+    var cvs = document.createElement('canvas');
+    cvs.className = 'spark';
+    cvs.setAttribute('data-spark', n.nid + ':' + sp);
+    // CSS 크기와 그림 크기를 따로 준다 — 같게 두면 고해상도 화면에서 뭉갠다.
+    cvs.width = SPARK_W * 2; cvs.height = SPARK_H * 2;
+    cvs.style.width = SPARK_W + 'px'; cvs.style.height = SPARK_H + 'px';
+    cvs.title = d.outs[sp] + ' — 지난 8초';
+    bodyEl.appendChild(cvs);
+  }
   // 출력 노드는 자기가 지금 하는 일을 한 줄로 말한다 (updateLive 가 매 140ms 갱신)
   if (d.cat === 'out') {
     var mrow = document.createElement('div');
@@ -484,6 +573,13 @@ function updateLive() {
         el.textContent = txt;
       }
     }
+  }
+  // 파형 — 담긴 표본을 그대로 그린다. 편집기가 연 제어기만 담기므로 다른
+  // 제어기의 노드는 빈 칸(…)으로 남는다.
+  var sparks = document.querySelectorAll('canvas[data-spark]');
+  for (var sk = 0; sk < sparks.length; sk++) {
+    var key = sparks[sk].getAttribute('data-spark').split(':');
+    drawSpark(sparks[sk], scopeSeries(parseInt(key[0], 10), parseInt(key[1], 10)));
   }
   // 활성 배선 강조
   var dots = document.querySelectorAll('.dot[data-out]');

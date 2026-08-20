@@ -16,6 +16,8 @@ var accumulator = 0;
 var uiTimer = 0, miniTimer = 0;
 
 function newGame(seed) {
+  // 판이 갈리면 파형도 갈린다 — 안 비우면 없어진 제어기의 기록이 남는다.
+  scopeWatch(-1);
   worldSeed = (seed === undefined || seed === null) ? worldSeed : (seed >>> 0);
   entities = {}; entOrder = []; nextEntId = 1;
   inventory = {}; techDone = {}; currentResearch = null; researchProgress = 0;
@@ -254,6 +256,8 @@ function saveGame() {
 var lastLoadVersion = null, lastLoadWasForeign = false;
 
 function loadGame(raw) {
+  // 판이 갈리면 파형도 갈린다 — 안 비우면 없어진 제어기의 기록이 남는다.
+  scopeWatch(-1);
   var data;
   try { data = typeof raw === 'string' ? JSON.parse(raw) : JSON.parse(localStorage.getItem('logic-foundry-save')); }
   catch (e) { toast('저장된 게임이 없다', 'bad'); return false; }
@@ -1269,6 +1273,11 @@ window.__GAME = {
   save: function () { return saveGame(); },
   load: function (raw) { return loadGame(raw); },
   saveRaw: function () { saveGame(); return localStorage.getItem('logic-foundry-save'); },
+  // 값 추이(파형) — 편집기가 열어 둔 제어기 하나만 담는다. 시험은 편집기를 안 열고
+  // 재야 하므로 담을 대상을 직접 지정할 수 있어야 한다.
+  scopeWatch: function (id) { return scopeWatch(id); },
+  scopeWatching: function () { return scopeWatching(); },
+  scopeSeries: function (nid, port) { return scopeSeries(nid, port); },
 
   state: function () {
     var counts = {};

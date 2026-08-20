@@ -740,6 +740,62 @@ function noteAxisWriter(target, axis, ctrl) {
   target.axisBy[axis] = ctrl.id;
 }
 
+// --- 값 추이 기록 (스코프) ---------------------------------------------------
+// **1틱 펄스는 표본으로 못 잡는다.** 그래서 지금까지 fires 로 '몇 번 올랐나' 만
+// 세어 왔는데, 횟수는 회로가 **언제 어떤 모양으로** 굴었는지는 말하지 않는다.
+// 부하 차단이 발진하는지, 래치가 언제 풀렸는지는 파형을 봐야 안다.
+// 여기서 **매 틱** 담으므로 폭 16.7ms 짜리 펄스도 남는다.
+//
+// 규율 셋:
+//  * 편집기가 열어 둔 제어기 **하나만** 담는다. 전부 담으면 큰 판에서 메모리가
+//    제어기 수에 비례해 늘고, 아무도 안 보는 파형을 위해 그럴 이유가 없다.
+//  * **저장에 안 들어간다.** 파형은 화물이 아니라 계기다. 그래서 노드에 붙이지
+//    않고 여기 모듈 변수에 둔다 — 붙이면 저장·청사진·되돌리기에 따라다닌다.
+//  * **시뮬은 이 버퍼를 절대 읽지 않는다.** 읽는 순간 계기가 회로를 바꾼다.
+var SCOPE_LEN = 480;             // 8초 (60 Hz)
+var scopeCtrl = -1;              // 담고 있는 제어기 id (-1 이면 안 담는다)
+var scopeBuf = null;             // { 'nid:port': Float64Array } 링버퍼
+var scopeHead = 0;               // 다음에 쓸 자리
+var scopeFilled = 0;             // 지금까지 담긴 표본 수 (SCOPE_LEN 에서 멈춘다)
+
+// **같은 번호라고 같은 제어기가 아니다.** 처음엔 id 가 그대로면 버퍼를 두고
+// 일찍 돌아왔는데, 새 판·불러오기 뒤에는 엔티티 번호가 다시 1부터 붙는다 —
+// 지워진 제어기의 파형이 새 제어기 상자에 그대로 떠 있었다(게이트가 잡았다).
+// 부를 때마다 비운다. 여는 동작은 드물고, 틀린 파형은 디버깅을 거꾸로 만든다.
+function scopeWatch(ctrlId) {
+  var id = (ctrlId === undefined || ctrlId === null) ? -1 : ctrlId;
+  scopeCtrl = id;
+  scopeBuf = (id < 0) ? null : {};
+  scopeHead = 0; scopeFilled = 0;
+  return scopeCtrl;
+}
+function scopeWatching() { return scopeCtrl; }
+
+function scopeRecord(g) {
+  if (!scopeBuf) return;
+  for (var i = 0; i < g.nodes.length; i++) {
+    var n = g.nodes[i];
+    for (var p = 0; p < n.out.length; p++) {
+      var key = n.nid + ':' + p;
+      var arr = scopeBuf[key];
+      if (!arr) { arr = new Float64Array(SCOPE_LEN); scopeBuf[key] = arr; }
+      arr[scopeHead] = n.out[p];
+    }
+  }
+  scopeHead = (scopeHead + 1) % SCOPE_LEN;
+  if (scopeFilled < SCOPE_LEN) scopeFilled++;
+}
+
+// 오래된 것부터 최신 순으로 펴서 돌려준다. **화면과 시험만 부른다.**
+function scopeSeries(nid, port) {
+  if (!scopeBuf) return [];
+  var arr = scopeBuf[nid + ':' + (port || 0)];
+  if (!arr) return [];
+  var out = [], start = (scopeFilled < SCOPE_LEN) ? 0 : scopeHead;
+  for (var i = 0; i < scopeFilled; i++) out.push(arr[(start + i) % SCOPE_LEN]);
+  return out;
+}
+
 function stepController(e, dt) {
   var g = e.graph;
   if (!g) return;
@@ -765,6 +821,8 @@ function stepController(e, dt) {
       if (fn.out[fp] >= TRUE_EPS && fn.prev[fp] < TRUE_EPS) fn.fires[fp]++;
     }
   }
+  // 파형은 fires 를 센 **뒤에** 담는다 — 이번 틱의 확정된 출력이라야 한다.
+  if (e.id === scopeCtrl) scopeRecord(g);
   e.lastEval = { nodes: g.nodes.length, links: g.links.length, cycles: g.cycles || 0 };
 }
 
