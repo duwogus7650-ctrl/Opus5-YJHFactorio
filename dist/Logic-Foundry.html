@@ -376,6 +376,10 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
 .disp{background:var(--well);color:var(--well-ink);border:1px solid var(--well-edge);
   padding:3px 9px;font-family:var(--mono);font-size:11.5px;border-radius:2px;
   box-shadow:inset 0 2px 6px rgba(0,0,0,.8)}
+/* 계기 칩 안의 작은 파형 — 숫자 옆에 눕는다. 숫자는 '지금', 파형은 '오는 방향'.
+   47% 가 내려가는 중인지 올라오는 중인지는 정반대 상황인데, 숫자만으로는 모른다. */
+.dspark{display:inline-block;vertical-align:middle;margin-left:6px;
+  width:38px;height:13px;border:1px solid var(--well-edge);border-radius:1px}
 .disp b{color:#f0c15a;font-weight:600}
 
 /* 도움말 */
@@ -721,7 +725,7 @@ var VERSION = '1.0.0';
 // 왜 있나: 폰이 캐시된 예전 사본을 열고 있어도 화면만 봐서는 알 수 없다 —
 // '복제 버튼이 안 보인다'가 코드 문제인지 사본 문제인지 가르는 데 반나절이 든다.
 // 도움말 맨 아래에 이 값을 찍어 두면 한 줄로 갈린다.
-var BUILD_ID = 'ba2e47f3';
+var BUILD_ID = 'af653c3f';
 
 var TILE = 32;            // 타일 한 변 픽셀 (레퍼런스 스크린샷과 동일 배율)
 var W = 160;              // 월드 가로 타일 수
@@ -936,7 +940,16 @@ var RECIPES = {
   // 상류이고 탄약은 방어의 목이라, 그 둘을 동시에 푸는 것이 석유를 뚫을 이유다.
   // (쓸 데 없는 산출물을 만들지 않는다 — 강철이 그 실수를 한 번 했다.)
   'ammo-plastic': { cat: 'craft', time: 1.0, inp: { 'plastic': 1, 'iron-plate': 4 },
-                    out: { 'ammo': 2 }, handOk: true, tech: 'oil' }
+                    out: { 'ammo': 2 }, handOk: true, tech: 'oil' },
+  // **석유의 두 번째 보상.** 탄창은 적이 올 때만 필요해서, 석유 사슬(건물 3대 + 720 kW)의
+  // 값어치가 판마다 달랐다. 회로는 조립기·연구소·터렛까지 어디에나 들어가는 물건이라
+  // 이쪽은 늘 이득이 된다.
+  //   기본  전선 3 + 철판 1 → 회로 1   (개당 전선 3 · 철 1)
+  //   이것  전선 3 + 플라스틱 1 → 회로 2 (개당 전선 1.5 · 철 0 · 플라스틱 0.5)
+  // **속도는 같게 둔다**(둘 다 초당 2개). 이득은 재료여야지 처리량이면 안 된다 —
+  // 처리량까지 주면 조립기 수가 반으로 줄어 전력·오염 계산이 통째로 흔들린다.
+  'circuit-plastic': { cat: 'craft', time: 1.0, inp: { 'wire': 3, 'plastic': 1 },
+                    out: { 'circuit': 2 }, handOk: true, tech: 'oil' }
 };
 var RECIPE_IDS = Object.keys(RECIPES);
 
@@ -1139,7 +1152,7 @@ var TECHS = {
                   unlock: ['기관총 터렛', '벽', '탄창 레시피'],
                   desc: '방어 시설. 적의 습격은 오염을 따라온다.' },
   'logic-mem':  { name: '논리 II — 기억소자', cost: { 'sci-red': 40 }, needs: ['logistics'],
-                  unlock: ['SR 래치', '카운터', '엣지 검출', '샘플 홀드', '최고·최저 기록', '지속 조건', '상태기계 (4단계)'],
+                  unlock: ['SR 래치', '카운터', '엣지 검출', '샘플 홀드', '최고·최저 기록', '지속 조건', '상태기계'],
                   desc: '제어기에 상태를 가진 노드가 추가된다. 여기서부터 진짜 프로그래밍.' },
   // 강철은 **쓸 데가 있어야 한다.** 예전엔 레시피만 있고 소비처가 한 곳도 없어서,
   // 적팩 50개를 들여 "철판 5개를 못 쓰는 물건 1개로 바꾸는 기능"을 여는 연구였다.
@@ -1158,8 +1171,8 @@ var TECHS = {
                   unlock: ['벨트 속도 x2'],
                   desc: '모든 벨트가 30개/s 로 빨라진다.' },
   'oil':        { name: '석유 처리', cost: { 'sci-red': 60, 'sci-green': 60 }, needs: ['steel', 'logistics'],
-                  unlock: ['펌프잭', '정제소', '화학공장', '탄창 레시피'],
-                  desc: '원유를 뽑아 플라스틱까지. 플라스틱을 섞으면 탄창이 철판 4개에 2개 나온다 — 철이 절반이다.' },
+                  unlock: ['펌프잭', '정제소', '화학공장', '탄창 레시피', '회로기판 레시피'],
+                  desc: '원유를 뽑아 플라스틱까지. 플라스틱을 섞으면 탄창이 철판 4개에 2개 나오고, 회로는 전선 3개에 2개 나온다 — 철은 안 들고 구리는 절반이다.' },
   'automation-2':{ name: '생산 효율', cost: { 'sci-red': 100, 'sci-green': 100 }, needs: ['steel', 'logic-ctrl'],
                   unlock: ['기계 속도 +50%', '전력 소비 -20%'],
                   desc: '전 기계가 빨라지고 전기를 덜 먹는다.' }
@@ -3260,7 +3273,19 @@ function pasteBlueprint(tx, ty) {
 var TRUE_EPS = 0.5;
 // 화면에 보이는 이름 → 유체망이 들고 있는 이름. 한글을 코드 안에서 바로 키로 쓰면
 // 이름 하나 바꿀 때 저장까지 깨진다.
-var OIL_KEY = { '원유': 'oil', '중유': 'heavy', '경유': 'light', '가스': 'gas' };      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
+var OIL_KEY = { '원유': 'oil', '중유': 'heavy', '경유': 'light', '가스': 'gas' };
+
+// 단계 → 그 단계에서 나가는 전이 입력의 번호. 위 노드 정의의 주석과 같은 표다.
+// 표로 두는 이유: 계산식으로 쓰면 '4는 예외' 를 코드 두 곳에 적게 된다.
+var FSM_PORT = [0, 0, 1, 2, 3, 5, 6, 7, 8];   // [_,1단계,2,3,4,5,6,7,8]
+function fsmStages(n) { return (n.cfg.stages === '8단계') ? 8 : 4; }
+// 4단계로 둔 노드에서 5~8단계 자리는 **아무 일도 하지 않는 자리**다. 화면에도
+// 그리지 않는다 — 있는데 안 되는 것이 없는 것보다 나쁘다.
+function fsmPortActive(n, dir, i) {
+  if (n.kind !== 'fsm') return true;
+  if (fsmStages(n) === 8) return true;
+  return i <= 4;
+}      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
 function truthy(v) { return v >= TRUE_EPS; }
 
 // --- 신호 버스 --------------------------------------------------------------
@@ -3441,9 +3466,19 @@ var NODE_DEFS = {
   // 4단계 상태기계(SFC). 전이는 **상승엣지**다 — 레벨로 하면 조건이 참인 동안
   // 60 Hz 로 단계가 돌아버린다. 카운터의 '증가' 입력이 이미 같은 규약이다.
   // 리셋은 레벨이고 전이보다 우선한다(SR 래치의 RESET 과 같다).
-  'fsm':     { label: '상태기계 (4단계)', cat: 'op',
-               ins: ['1→2', '2→3', '3→4', '4→1', '리셋'],
-               outs: ['단계', '1단계', '2단계', '3단계', '4단계'], cfg: [], tech: 'logic-mem' },
+  // **단계를 늘리되 앞의 자리는 건드리지 않는다.** 포트 번호가 곧 배선이라, 사이에
+  // 끼우면 예전 저장의 배선이 통째로 어긋난다(3→4 를 물던 선이 4→5 를 물게 된다).
+  // 그래서 5단계부터의 전이는 전부 **뒤에** 붙였다. 0~4번은 예전 그대로다.
+  //   0:1→2  1:2→3  2:3→4  3:(4단계면 4→1, 8단계면 4→5)  4:리셋
+  //   5:5→6  6:6→7  7:7→8  8:8→1
+  // 4·8 만 고를 수 있게 한 것도 이 때문이다 — 5~7단계면 마지막 전이가 4번(리셋)과
+  // 자리를 다툰다. 두 값만 두면 그 충돌이 아예 생기지 않는다.
+  'fsm':     { label: '상태기계', cat: 'op',
+               ins: ['1→2', '2→3', '3→4', '4→1', '리셋', '5→6', '6→7', '7→8', '8→1'],
+               outs: ['단계', '1단계', '2단계', '3단계', '4단계',
+                      '5단계', '6단계', '7단계', '8단계'],
+               cfg: [{ k: 'stages', t: 'opsel', label: '단계 수',
+                       opts: ['4단계', '8단계'], def: '4단계' }], tech: 'logic-mem' },
   'pid':     { label: 'PID 제어', cat: 'op', ins: ['목표', '측정'], outs: ['출력', '오차'],
                cfg: [{ k: 'kp', t: 'num', label: 'Kp', def: 1 }, { k: 'ki', t: 'num', label: 'Ki', def: 0 },
                      { k: 'kd', t: 'num', label: 'Kd', def: 0 }, { k: 'lim', t: 'num', label: '제한', def: 100 }],
@@ -3846,22 +3881,26 @@ function evalNode(g, n, dt, ctrl) {
       break;
     }
     case 'fsm': {
-      if (!(n.state.s >= 1 && n.state.s <= 4)) n.state.s = 1;
-      if (!n.state.pe || n.state.pe.length !== 4) n.state.pe = [false, false, false, false];
+      var fsmN = fsmStages(n);
+      if (!(n.state.s >= 1 && n.state.s <= fsmN)) n.state.s = 1;
+      if (!n.state.pe || n.state.pe.length !== 9) {
+        n.state.pe = [false, false, false, false, false, false, false, false, false];
+      }
       var rstF = truthy(readIn(g, n, 4));
-      // 엣지 기억은 **네 입력 모두** 매 틱 갱신한다. 현재 단계의 입력만 보면,
+      // 엣지 기억은 **전이 입력 전부** 매 틱 갱신한다. 현재 단계의 입력만 보면,
       // 다른 단계에 있는 동안 참이 된 조건이 그 단계로 돌아온 순간 '방금 올라간
       // 것'으로 읽혀 한 칸 더 튄다.
-      var fired = false;
-      for (var t4 = 0; t4 < 4; t4++) {
+      var fired = false, curPort = FSM_PORT[n.state.s];
+      for (var t4 = 0; t4 < 9; t4++) {
+        if (t4 === 4) continue;                         // 4번은 리셋이라 전이가 아니다
         var cur4 = truthy(readIn(g, n, t4));
-        if (t4 === n.state.s - 1 && cur4 && !n.state.pe[t4]) fired = true;
+        if (t4 === curPort && cur4 && !n.state.pe[t4]) fired = true;
         n.state.pe[t4] = cur4;
       }
-      if (rstF) n.state.s = 1;                          // 리셋 우선
-      else if (fired) n.state.s = (n.state.s % 4) + 1;  // 한 틱에 한 번만 전이
+      if (rstF) n.state.s = 1;                            // 리셋 우선
+      else if (fired) n.state.s = (n.state.s % fsmN) + 1; // 한 틱에 한 번만 전이
       n.out[0] = n.state.s;
-      for (var q4 = 1; q4 <= 4; q4++) n.out[q4] = (n.state.s === q4) ? 1 : 0;
+      for (var q4 = 1; q4 <= 8; q4++) n.out[q4] = (n.state.s === q4) ? 1 : 0;
       break;
     }
     case 'busrecv': n.out[0] = busRead(n.cfg.ch); break;
@@ -4055,6 +4094,41 @@ function scopeSeries(nid, port) {
   return out;
 }
 
+// --- 계기 줄 파형 ------------------------------------------------------------
+// 노드 파형은 편집기를 열어야 보인다. 그런데 실제로 오래 지켜봐야 하는 값(증기%,
+// 전력 만족도)은 **편집기를 닫아 놓고 공장을 짓는 동안** 흘러간다 — 숫자만 봐서는
+// 47% 가 내려가는 중인지 올라오는 중인지 알 수 없고, 그 둘은 정반대 상황이다.
+//
+// 노드 파형과 달리 **늘 담는다**: 계기는 플레이어가 스스로 화면에 띄워 둔 값이고
+// 라벨로 묶여 많아야 여덟 개다. 저장에는 안 들어간다 — 계기지 화물이 아니다.
+var DISP_LEN = 240;              // 4초 (60 Hz)
+var dispSpark = {};              // 라벨 -> { a, head, filled }
+
+function dispRecord() {
+  var seen = {};
+  for (var i = 0; i < displays.length; i++) {
+    var it = displays[i];
+    if (seen[it.label]) continue;          // 화면과 같은 규칙 — 같은 라벨은 첫 것만
+    seen[it.label] = 1;
+    var r = dispSpark[it.label];
+    if (!r) r = dispSpark[it.label] = { a: new Float64Array(DISP_LEN), head: 0, filled: 0 };
+    r.a[r.head] = it.value;
+    r.head = (r.head + 1) % DISP_LEN;
+    if (r.filled < DISP_LEN) r.filled++;
+  }
+  // 사라진 계기의 기록은 버린다 — 안 버리면 라벨을 고칠 때마다 유령이 쌓인다.
+  for (var k in dispSpark) if (!seen[k]) delete dispSpark[k];
+}
+
+function dispSeries(label) {
+  var r = dispSpark[label];
+  if (!r) return [];
+  var out = [], start = (r.filled < DISP_LEN) ? 0 : r.head;
+  for (var i = 0; i < r.filled; i++) out.push(r.a[(start + i) % DISP_LEN]);
+  return out;
+}
+function dispClear() { dispSpark = {}; }
+
 function stepController(e, dt) {
   var g = e.graph;
   if (!g) return;
@@ -4115,6 +4189,8 @@ function stepLogic(dt) {
   // 뒤에 한 번만 — 중간에 바꾸면 먼저 평가된 제어기와 나중 제어기가 서로 다른
   // 값을 보게 되어 순서 의존이 되살아난다.
   busSwap();
+  // 계기 파형은 **모든 제어기가 돈 뒤**에 담는다 — displays 가 그때 완성된다.
+  dispRecord();
   logicDirty = false;
 }
 
@@ -6798,6 +6874,19 @@ function lockLabel(techId) {
   return '🔒 ' + T.name + (blocked ? ' ← ' + blocked.name : '');
 }
 
+// 레시피 한 줄 — "회로 ×2 ← 전선 3 플라스틱 1 (1s)".
+// 같은 물건을 내는 레시피가 여럿일 때 **무엇이 다른지가 곧 이름**이 되어야 한다.
+function recipeLabel(rid) {
+  var R = RECIPES[rid];
+  var outId = Object.keys(R.out)[0], outN = R.out[outId];
+  var inp = [];
+  for (var k in R.inp) inp.push(ITEMS[k].name + ' ' + R.inp[k]);
+  return ITEMS[outId].name + (outN > 1 ? ' \u00d7' + outN : '') +
+         ' \u2190 ' + inp.join(' ') + ' (' + R.time + 's)';
+}
+
+var lastDispSig = null;   // 계기 줄을 다시 지을지 판정하는 서명
+
 function renderBuildList() {
   var host = document.getElementById('buildList');
   if (!host) return;
@@ -6981,14 +7070,28 @@ function renderAlarms() {
   a.innerHTML = ks.map(function (m) { return '<div class="alarm">⚠ ' + m + '</div>'; }).join('');
   var d = document.getElementById('dispRow');
   d.style.top = ks.length ? '100px' : '70px';
-  var seen = {}, out = [];
+  var seen = {}, out = [], labels = [];
   for (var j = 0; j < displays.length; j++) {
     var it = displays[j];
     if (seen[it.label]) continue;
     seen[it.label] = 1;
-    out.push('<div class="disp">' + it.label + ' <b>' + fmt(it.value, 1) + '</b></div>');
+    labels.push(it.label);
+    out.push('<div class="disp">' + escAttr(it.label) +
+      ' <b data-dv="' + escAttr(it.label) + '">' + fmt(it.value, 1) + '</b>' +
+      '<canvas class="dspark" data-dl="' + escAttr(it.label) + '" width="76" height="26"></canvas></div>');
   }
-  d.innerHTML = out.join('');
+  // **판을 매 프레임 다시 만들지 않는다.** 캔버스를 새로 만들면 그린 것이 곧바로
+  // 버려지고, 계기 여덟 개면 초당 480개의 캔버스를 만들었다 버리는 셈이 된다.
+  // 계기 목록이 바뀔 때만 다시 짓고, 값과 파형은 그 위에 덧그린다.
+  var sig = labels.join('|');
+  if (sig !== lastDispSig) { d.innerHTML = out.join(''); lastDispSig = sig; }
+  for (var v = 0; v < labels.length; v++) {
+    var lb = labels[v];
+    var bEl = d.querySelector('[data-dv="' + escAttr(lb) + '"]');
+    if (bEl) bEl.textContent = fmt(displays[v].value, 1);
+    var cEl = d.querySelector('canvas[data-dl="' + escAttr(lb) + '"]');
+    if (cEl && typeof drawSpark === 'function') drawSpark(cEl, dispSeries(lb));
+  }
 }
 
 // --- 인스펙터 ----------------------------------------------------------------
@@ -7041,8 +7144,11 @@ function refreshInsp() {
         RECIPE_IDS.filter(function (r) {
           return RECIPES[r].cat === 'craft' && (!RECIPES[r].tech || techDone[RECIPES[r].tech]);
         }).map(function (r) {
+          // **산출 이름만 적으면 같은 것을 내는 레시피가 구분이 안 된다.** 탄창은
+          // 이미 두 갈래(철판만 / 플라스틱 섞기)인데 목록에는 둘 다 '탄창 (1s)' 로
+          // 떠 있었다 — 무엇을 고르는지 모르는 채 고르는 것이다. 재료를 함께 적는다.
           return '<option value="' + r + '"' + (e.recipe === r ? ' selected' : '') + '>' +
-            ITEMS[Object.keys(RECIPES[r].out)[0]].name + ' (' + RECIPES[r].time + 's)</option>';
+            recipeLabel(r) + '</option>';
         }).join('') + '</select></div>');
     }
     // 화학공장은 **가스를 무엇으로 만들지** 고른다. 조립기와 달리 재료가 유체라
@@ -7417,6 +7523,10 @@ function fillHelp() {
     '세로 눈금은 창 안의 최소~최대로 <b>스스로 맞춘다</b> — 95~100% 처럼 좁은 범위도 흔들림이 보이게',
     '하기 위해서다. 그래서 오른쪽 위에 그 창의 최대값을 적어 둔다. 담는 것은 <b>지금 열어 둔 제어기',
     '하나뿐</b>이고, 저장에는 들어가지 않는다 — 파형은 화물이 아니라 계기다.</p>',
+    '<p><b>편집기를 닫아도 볼 수 있다.</b> <code>[계기 표시]</code> 노드로 화면 위쪽에 띄운 값에는',
+    '숫자 옆에 <b>지난 4초의 파형</b>이 함께 붙는다. 공장을 짓는 동안 증기%가 47이라는 것만으로는',
+    '<b>내려가는 중인지 올라오는 중인지</b> 알 수 없는데, 그 둘은 정반대 상황이다.',
+    '노드 파형과 달리 이쪽은 늘 담는다 — 계기는 당신이 스스로 띄워 둔 값이고 그 수는 많지 않다.</p>',
     '<ul>',
     '<li><b>재고 히스테리시스</b> — 상자 재고가 50 미만이면 SET, 200 초과면 RESET 인 SR 래치를 만들어',
     '탄약 라인의 조립기를 켜고 끈다. 철을 탄약과 연구팩에 나눠 쓰는 문제가 저절로 풀린다.</li>',
@@ -7463,6 +7573,11 @@ function fillHelp() {
     '"중유가 60% 넘으면 분해를 켜고 20% 아래로 내려가면 끈다" 가 된다 — 부하 차단과 같은',
     '히스테리시스이고, 이 게임에서 배운 것을 그대로 다시 쓰는 자리다.',
     '노드에 깔린 <b>파형</b>을 보면 그 회로가 발진하는지 한눈에 보인다.</p>',
+    '<p><b>플라스틱은 어디에 쓰는가.</b> 둘이다. <b>탄창</b>은 철판 4개에 2개가 나오고(철이 절반),',
+    '<b>회로기판</b>은 전선 3개에 2개가 나온다 — <b>철은 안 들고 구리는 절반</b>이다.',
+    '회로는 조립기·연구소·터렛까지 어디에나 들어가므로, 탄창과 달리 <b>적이 안 와도 늘 이득</b>이다.',
+    '조립기 레시피 목록에 재료가 함께 적혀 있으니 두 갈래를 그 자리에서 견주면 된다.',
+    '<b>속도는 같다</b>(둘 다 초당 2개) — 이득은 재료지 처리량이 아니다.</p>',
     '<p><b>경유는 태울 수도 있다.</b> 고체 연료를 <b>가스 20 → 0.5개/s</b> 로도, <b>경유 10 → 1개/s</b>',
     '로도 만든다 — 경유 쪽이 두 배 낫다. 가스는 플라스틱에도 쓰이니 태우기 아깝고, 경유는',
     '분해해서 가스로 만들 수도 있다. <b>태울 것인가 분해할 것인가</b> — 그 저울질이 이 층의 결정이다.</p>',
@@ -7526,6 +7641,11 @@ function fillHelp() {
     '전이보다 우선한다. 단계별 출구 <code>1단계~4단계</code>가 그 단계에서만 1이므로,',
     '거기에 기계를 물리면 "지금은 이것만 만든다"가 된다. 타이머를 입력에 물리면 순서 반복이 되고,',
     '재고 조건을 물리면 재고가 이끄는 공정이 된다.</p>',
+    '<p><b>단계는 4 또는 8로 고른다.</b> 기동 절차는 네 단계로 잘 안 끝난다 —',
+    '물 채우고 → 보일러 붙이고 → 발전 넣고 → 부하 잇고 → 확인하고… 8단계로 바꾸면',
+    '<code>4→1</code> 자리가 <code>4→5</code>로 바뀌고 뒤에 네 자리가 더 열린다.',
+    '<b>앞의 자리는 그대로다</b> — 이미 그려 둔 회로의 배선이 어긋나지 않게 새 자리를 뒤에 붙였다.',
+    '다시 4단계로 줄이면 없어지는 자리의 배선은 지워지고, 몇 개를 지웠는지 알려 준다.</p>',
     '<p class="dim"><b>평활 필터와 신호 버스는 문장으로도 쓸 수 있다.</b>',
     '읽을 것 옆의 <code>(그대로)</code> 를 <code>초로 눅인 값</code> 으로 바꾸면 그 값이 눅고,',
     '행동에서 <code>다른 제어기에 신호를 보낸다</code> 를 고르면 잰 값이 채널로 나간다.',
@@ -8609,23 +8729,50 @@ function drawSpark(cvs, series) {
   // 바닥이 0 이면 0선이 이미 말해 주므로 위쪽만 적는다 — 20px 안에 글자 둘은 빽빽하다.
   // 처음엔 그냥 얹었더니 파형 위에 겹쳐 안 읽혔다(스크린샷에서 드러났다). 글자마다
   // 어두운 판을 깔아 띄운다.
-  ctx.font = '14px monospace'; ctx.textAlign = 'right';
-  function tag(txt, y) {
-    var w = ctx.measureText(txt).width;
-    ctx.fillStyle = 'rgba(28,32,36,.82)';
-    ctx.fillRect(W - w - 6, y - 12, w + 6, 15);
-    ctx.fillStyle = '#b7bec4';
-    ctx.fillText(txt, W - 3, y);
+  // **작은 칸에는 눈금을 안 적는다.** 같은 함수가 노드 상자(340px)와 계기 칩(76px)
+  // 둘 다를 그리는데, 글자 크기를 고정해 두면 칩에서는 숫자가 파형을 덮는다.
+  // 칩에는 바로 옆에 현재값이 큰 글씨로 적혀 있으니, 거기서는 모양만 보이면 된다.
+  if (W >= 120) {
+    var fs = Math.max(9, Math.round(H * 0.36));
+    ctx.font = fs + 'px monospace'; ctx.textAlign = 'right';
+    var pad = Math.round(fs * 0.4);
+    function tag(txt, y) {
+      var w = ctx.measureText(txt).width;
+      ctx.fillStyle = 'rgba(28,32,36,.82)';
+      ctx.fillRect(W - w - pad * 2, y - fs + 1, w + pad * 2, fs + 2);
+      ctx.fillStyle = '#b7bec4';
+      ctx.fillText(txt, W - pad, y);
+    }
+    function num(v) { return String(Math.round(v * 10) / 10); }
+    tag(num(hi), fs);
+    if (!flat && Math.abs(lo) > 1e-9) tag(num(lo), H - 3);
+    ctx.textAlign = 'left';
   }
-  function num(v) { return String(Math.round(v * 10) / 10); }
-  tag(num(hi), 14);
-  if (!flat && Math.abs(lo) > 1e-9) tag(num(lo), H - 3);
-  ctx.textAlign = 'left';
 }
 
 // **출구 이름이 설정을 따라간다.** [유체 잔량] 의 석유 출구는 무엇을 고르느냐에 따라
 // '중유%' 도 되고 '가스%' 도 된다. 늘 '석유%' 라고만 적혀 있으면 배선을 보고도
 // 무엇을 읽는 선인지 알 수 없어, 설정을 하나하나 열어 봐야 한다.
+// 지금 그리지 않는 자리에 물려 있는 배선을 걷어낸다. 몇 개를 걷었는지 돌려준다.
+function pruneHiddenLinks(g, node) {
+  var d = NODE_DEFS[node.kind], gone = 0;
+  for (var i = g.links.length - 1; i >= 0; i--) {
+    var lk = g.links[i];
+    if (lk.tn === node.nid && !fsmPortActive(node, 'in', lk.tp)) { g.links.splice(i, 1); gone++; continue; }
+    if (lk.fn === node.nid && !fsmPortActive(node, 'out', lk.fp)) { g.links.splice(i, 1); gone++; }
+  }
+  if (gone) g.dirty = true;
+  void d;
+  return gone;
+}
+
+function inPortName(n, d, pi) {
+  // 4단계 상태기계의 3번 입력은 '4→1' 이지만, 8단계로 바꾸면 같은 자리가 '4→5' 가 된다.
+  // 자리는 그대로 두고 뜻만 바뀌므로(예전 배선을 지키려고 그렇게 했다) 이름이 따라가야 한다.
+  if (n.kind === 'fsm' && pi === 3) return (n.cfg.stages === '8단계') ? '4→5' : '4→1';
+  return d.ins[pi];
+}
+
 function outPortName(n, d, po) {
   if (n.kind === 'fluid' && (po === 4 || po === 5)) {
     var k = n.cfg.oil || '중유';
@@ -8675,7 +8822,16 @@ function buildNodeDom(inner, g, n) {
         if (n.cfg[cf.k] === cf.opts[o]) op.selected = true;
         sel.appendChild(op);
       }
-      sel.onchange = (function (node, key, el2) { return function () { node.cfg[key] = el2.value; }; })(n, cf.k, sel);
+      sel.onchange = (function (node, key, el2) {
+        return function () {
+          node.cfg[key] = el2.value;
+          // **단계를 줄이면 없어지는 자리가 생긴다.** 거기 물려 있던 배선을 그냥 두면
+          // 화면에 보이지도 않는 선이 회로를 움직인다 — 지우고, 몇 개를 지웠는지 말한다.
+          var gone = pruneHiddenLinks(curCtrl.graph, node);
+          if (gone > 0) toast('없어진 자리의 배선 ' + gone + '개를 지웠다', 'warn');
+          if (node.kind === 'fsm') renderGraph();      // 자리 수가 바뀌면 다시 그린다
+        };
+      })(n, cf.k, sel);
       row.appendChild(sel);
     } else if (cf.t === 'item') {
       var isel = document.createElement('select');
@@ -8713,15 +8869,18 @@ function buildNodeDom(inner, g, n) {
   ports.className = 'ports';
   var cin = document.createElement('div'); cin.className = 'pcol i';
   for (var pi = 0; pi < d.ins.length; pi++) {
+    if (!fsmPortActive(n, 'in', pi)) continue;    // 안 쓰는 자리는 그리지 않는다
     var pr = document.createElement('div'); pr.className = 'port in';
     var dot = document.createElement('div'); dot.className = 'dot';
     dot.setAttribute('data-in', String(pi));
-    var nm = document.createElement('span'); nm.textContent = d.ins[pi];
+    var nm = document.createElement('span'); nm.textContent = inPortName(n, d, pi);
+    nm.setAttribute('data-pn-in', n.nid + ':' + pi);
     pr.appendChild(dot); pr.appendChild(nm);
     cin.appendChild(pr);
   }
   var cout = document.createElement('div'); cout.className = 'pcol o';
   for (var po = 0; po < d.outs.length; po++) {
+    if (!fsmPortActive(n, 'out', po)) continue;
     var pr2 = document.createElement('div'); pr2.className = 'port out';
     var dot2 = document.createElement('div'); dot2.className = 'dot';
     dot2.setAttribute('data-out', String(po));
@@ -8737,6 +8896,7 @@ function buildNodeDom(inner, g, n) {
   // **파형.** 숫자 한 칸은 '지금' 만 말한다 — 부하 차단이 발진하는지, 래치가 언제
   // 풀렸는지는 지난 8초를 봐야 안다. 출력마다 한 줄씩 깐다(대부분 출력은 하나다).
   for (var sp = 0; sp < d.outs.length; sp++) {
+    if (!fsmPortActive(n, 'out', sp)) continue;
     var cvs = document.createElement('canvas');
     cvs.className = 'spark';
     cvs.setAttribute('data-spark', n.nid + ':' + sp);
@@ -8947,6 +9107,14 @@ function updateLive() {
     }
   }
   // 출구 이름 — 설정을 바꾸면 따라 바뀌어야 한다(그래프를 다시 그리지 않고도).
+  var pnIn = document.querySelectorAll('[data-pn-in]');
+  for (var pq = 0; pq < pnIn.length; pq++) {
+    var pk2 = pnIn[pq].getAttribute('data-pn-in').split(':');
+    var pnode2 = graphNode(g, parseInt(pk2[0], 10));
+    if (!pnode2) continue;
+    var want2 = inPortName(pnode2, NODE_DEFS[pnode2.kind], parseInt(pk2[1], 10));
+    if (pnIn[pq].textContent !== want2) pnIn[pq].textContent = want2;
+  }
   var pns = document.querySelectorAll('[data-pn]');
   for (var pn = 0; pn < pns.length; pn++) {
     var pk = pns[pn].getAttribute('data-pn').split(':');
@@ -9539,6 +9707,7 @@ var uiTimer = 0, miniTimer = 0;
 function newGame(seed) {
   // 판이 갈리면 파형도 갈린다 — 안 비우면 없어진 제어기의 기록이 남는다.
   scopeWatch(-1);
+  dispClear();
   worldSeed = (seed === undefined || seed === null) ? worldSeed : (seed >>> 0);
   entities = {}; entOrder = []; nextEntId = 1;
   inventory = {}; techDone = {}; currentResearch = null; researchProgress = 0;
@@ -9779,6 +9948,7 @@ var lastLoadVersion = null, lastLoadWasForeign = false;
 function loadGame(raw) {
   // 판이 갈리면 파형도 갈린다 — 안 비우면 없어진 제어기의 기록이 남는다.
   scopeWatch(-1);
+  dispClear();
   var data;
   try { data = typeof raw === 'string' ? JSON.parse(raw) : JSON.parse(localStorage.getItem('logic-foundry-save')); }
   catch (e) { toast('저장된 게임이 없다', 'bad'); return false; }
@@ -10121,6 +10291,14 @@ window.__GAME = {
   // fillChest 의 짝. 상자는 600 에서 차고, 차면 인서터가 못 놓고, 그러면 기계가
   // 버퍼에 막혀 멈춘다 — 오래 도는 시험에서는 **계기 자신이 포화**해서 '생산 0' 이라는
   // 거짓 신호를 낸다(실제로 그랬다). 재기 직전에 비워 '물류가 실어 갔다' 를 흉내 낸다.
+  // 기계의 **산출 버퍼**를 비운다. 상자와 같은 이유다 — 버퍼가 차면 기계가 멈추고,
+  // 그러면 오래 도는 시험에서 '생산이 느리다' 는 거짓 신호가 난다(실제로 회로 산출이
+  // 2/s 여야 하는데 1.5/s 로 찍혔다). 인서터가 실어 간 셈 친다.
+  emptyOut: function (id) {
+    var e = entities[id]; if (!e) return -1;
+    for (var k in e.out) delete e.out[k];
+    return 0;
+  },
   emptyChest: function (id) {
     var e = entities[id]; if (!e) return -1;
     for (var k in e.inv) delete e.inv[k];
@@ -10213,6 +10391,11 @@ window.__GAME = {
   },
   // 배선을 끊는다. 시험이 "끊었다 다시 이었을 때" 를 재려면 필요한데, 화면에는
   // 이미 있는 동작(선을 잡아 떼기)이고 모델 쪽 훅만 없었다.
+  // 배선 목록 — 시험이 '없어진 자리의 배선이 걷혔는가' 를 물을 창구다.
+  gLinks: function (ctrlId) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return [];
+    return e.graph.links.map(function (l) { return { fn: l.fn, fp: l.fp, tn: l.tn, tp: l.tp }; });
+  },
   gUnlink: function (ctrlId, tn, tp) {
     var e = entities[ctrlId]; if (!e || !e.graph) return false;
     graphUnlink(e.graph, tn, tp); return true;
@@ -10245,6 +10428,8 @@ window.__GAME = {
              name: B.name, desc: B.desc || '', takeable: !!B.takeable };
   },
   recipeIds: function () { return Object.keys(RECIPES); },
+  // 목록에 실제로 찍히는 이름 — 시험이 '구분되는가' 를 물을 창구다.
+  recipeLabel: function (rid) { return RECIPES[rid] ? recipeLabel(rid) : null; },
   recipeInfo: function (rid) {
     var r = RECIPES[rid]; if (!r) return null;
     return { cat: r.cat, time: r.time, inp: JSON.parse(JSON.stringify(r.inp)),
@@ -10807,6 +10992,8 @@ window.__GAME = {
   scopeWatch: function (id) { return scopeWatch(id); },
   scopeWatching: function () { return scopeWatching(); },
   scopeSeries: function (nid, port) { return scopeSeries(nid, port); },
+  // 계기 줄 파형 — 시험이 '담기는가·안 새는가' 를 물을 창구다.
+  dispSeries: function (label) { return dispSeries(label); },
 
   state: function () {
     var counts = {};

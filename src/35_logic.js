@@ -15,7 +15,19 @@
 var TRUE_EPS = 0.5;
 // 화면에 보이는 이름 → 유체망이 들고 있는 이름. 한글을 코드 안에서 바로 키로 쓰면
 // 이름 하나 바꿀 때 저장까지 깨진다.
-var OIL_KEY = { '원유': 'oil', '중유': 'heavy', '경유': 'light', '가스': 'gas' };      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
+var OIL_KEY = { '원유': 'oil', '중유': 'heavy', '경유': 'light', '가스': 'gas' };
+
+// 단계 → 그 단계에서 나가는 전이 입력의 번호. 위 노드 정의의 주석과 같은 표다.
+// 표로 두는 이유: 계산식으로 쓰면 '4는 예외' 를 코드 두 곳에 적게 된다.
+var FSM_PORT = [0, 0, 1, 2, 3, 5, 6, 7, 8];   // [_,1단계,2,3,4,5,6,7,8]
+function fsmStages(n) { return (n.cfg.stages === '8단계') ? 8 : 4; }
+// 4단계로 둔 노드에서 5~8단계 자리는 **아무 일도 하지 않는 자리**다. 화면에도
+// 그리지 않는다 — 있는데 안 되는 것이 없는 것보다 나쁘다.
+function fsmPortActive(n, dir, i) {
+  if (n.kind !== 'fsm') return true;
+  if (fsmStages(n) === 8) return true;
+  return i <= 4;
+}      // >= 0.5 를 참으로 본다 (정수 신호가 대부분이라)
 function truthy(v) { return v >= TRUE_EPS; }
 
 // --- 신호 버스 --------------------------------------------------------------
@@ -196,9 +208,19 @@ var NODE_DEFS = {
   // 4단계 상태기계(SFC). 전이는 **상승엣지**다 — 레벨로 하면 조건이 참인 동안
   // 60 Hz 로 단계가 돌아버린다. 카운터의 '증가' 입력이 이미 같은 규약이다.
   // 리셋은 레벨이고 전이보다 우선한다(SR 래치의 RESET 과 같다).
-  'fsm':     { label: '상태기계 (4단계)', cat: 'op',
-               ins: ['1→2', '2→3', '3→4', '4→1', '리셋'],
-               outs: ['단계', '1단계', '2단계', '3단계', '4단계'], cfg: [], tech: 'logic-mem' },
+  // **단계를 늘리되 앞의 자리는 건드리지 않는다.** 포트 번호가 곧 배선이라, 사이에
+  // 끼우면 예전 저장의 배선이 통째로 어긋난다(3→4 를 물던 선이 4→5 를 물게 된다).
+  // 그래서 5단계부터의 전이는 전부 **뒤에** 붙였다. 0~4번은 예전 그대로다.
+  //   0:1→2  1:2→3  2:3→4  3:(4단계면 4→1, 8단계면 4→5)  4:리셋
+  //   5:5→6  6:6→7  7:7→8  8:8→1
+  // 4·8 만 고를 수 있게 한 것도 이 때문이다 — 5~7단계면 마지막 전이가 4번(리셋)과
+  // 자리를 다툰다. 두 값만 두면 그 충돌이 아예 생기지 않는다.
+  'fsm':     { label: '상태기계', cat: 'op',
+               ins: ['1→2', '2→3', '3→4', '4→1', '리셋', '5→6', '6→7', '7→8', '8→1'],
+               outs: ['단계', '1단계', '2단계', '3단계', '4단계',
+                      '5단계', '6단계', '7단계', '8단계'],
+               cfg: [{ k: 'stages', t: 'opsel', label: '단계 수',
+                       opts: ['4단계', '8단계'], def: '4단계' }], tech: 'logic-mem' },
   'pid':     { label: 'PID 제어', cat: 'op', ins: ['목표', '측정'], outs: ['출력', '오차'],
                cfg: [{ k: 'kp', t: 'num', label: 'Kp', def: 1 }, { k: 'ki', t: 'num', label: 'Ki', def: 0 },
                      { k: 'kd', t: 'num', label: 'Kd', def: 0 }, { k: 'lim', t: 'num', label: '제한', def: 100 }],
@@ -601,22 +623,26 @@ function evalNode(g, n, dt, ctrl) {
       break;
     }
     case 'fsm': {
-      if (!(n.state.s >= 1 && n.state.s <= 4)) n.state.s = 1;
-      if (!n.state.pe || n.state.pe.length !== 4) n.state.pe = [false, false, false, false];
+      var fsmN = fsmStages(n);
+      if (!(n.state.s >= 1 && n.state.s <= fsmN)) n.state.s = 1;
+      if (!n.state.pe || n.state.pe.length !== 9) {
+        n.state.pe = [false, false, false, false, false, false, false, false, false];
+      }
       var rstF = truthy(readIn(g, n, 4));
-      // 엣지 기억은 **네 입력 모두** 매 틱 갱신한다. 현재 단계의 입력만 보면,
+      // 엣지 기억은 **전이 입력 전부** 매 틱 갱신한다. 현재 단계의 입력만 보면,
       // 다른 단계에 있는 동안 참이 된 조건이 그 단계로 돌아온 순간 '방금 올라간
       // 것'으로 읽혀 한 칸 더 튄다.
-      var fired = false;
-      for (var t4 = 0; t4 < 4; t4++) {
+      var fired = false, curPort = FSM_PORT[n.state.s];
+      for (var t4 = 0; t4 < 9; t4++) {
+        if (t4 === 4) continue;                         // 4번은 리셋이라 전이가 아니다
         var cur4 = truthy(readIn(g, n, t4));
-        if (t4 === n.state.s - 1 && cur4 && !n.state.pe[t4]) fired = true;
+        if (t4 === curPort && cur4 && !n.state.pe[t4]) fired = true;
         n.state.pe[t4] = cur4;
       }
-      if (rstF) n.state.s = 1;                          // 리셋 우선
-      else if (fired) n.state.s = (n.state.s % 4) + 1;  // 한 틱에 한 번만 전이
+      if (rstF) n.state.s = 1;                            // 리셋 우선
+      else if (fired) n.state.s = (n.state.s % fsmN) + 1; // 한 틱에 한 번만 전이
       n.out[0] = n.state.s;
-      for (var q4 = 1; q4 <= 4; q4++) n.out[q4] = (n.state.s === q4) ? 1 : 0;
+      for (var q4 = 1; q4 <= 8; q4++) n.out[q4] = (n.state.s === q4) ? 1 : 0;
       break;
     }
     case 'busrecv': n.out[0] = busRead(n.cfg.ch); break;
@@ -810,6 +836,41 @@ function scopeSeries(nid, port) {
   return out;
 }
 
+// --- 계기 줄 파형 ------------------------------------------------------------
+// 노드 파형은 편집기를 열어야 보인다. 그런데 실제로 오래 지켜봐야 하는 값(증기%,
+// 전력 만족도)은 **편집기를 닫아 놓고 공장을 짓는 동안** 흘러간다 — 숫자만 봐서는
+// 47% 가 내려가는 중인지 올라오는 중인지 알 수 없고, 그 둘은 정반대 상황이다.
+//
+// 노드 파형과 달리 **늘 담는다**: 계기는 플레이어가 스스로 화면에 띄워 둔 값이고
+// 라벨로 묶여 많아야 여덟 개다. 저장에는 안 들어간다 — 계기지 화물이 아니다.
+var DISP_LEN = 240;              // 4초 (60 Hz)
+var dispSpark = {};              // 라벨 -> { a, head, filled }
+
+function dispRecord() {
+  var seen = {};
+  for (var i = 0; i < displays.length; i++) {
+    var it = displays[i];
+    if (seen[it.label]) continue;          // 화면과 같은 규칙 — 같은 라벨은 첫 것만
+    seen[it.label] = 1;
+    var r = dispSpark[it.label];
+    if (!r) r = dispSpark[it.label] = { a: new Float64Array(DISP_LEN), head: 0, filled: 0 };
+    r.a[r.head] = it.value;
+    r.head = (r.head + 1) % DISP_LEN;
+    if (r.filled < DISP_LEN) r.filled++;
+  }
+  // 사라진 계기의 기록은 버린다 — 안 버리면 라벨을 고칠 때마다 유령이 쌓인다.
+  for (var k in dispSpark) if (!seen[k]) delete dispSpark[k];
+}
+
+function dispSeries(label) {
+  var r = dispSpark[label];
+  if (!r) return [];
+  var out = [], start = (r.filled < DISP_LEN) ? 0 : r.head;
+  for (var i = 0; i < r.filled; i++) out.push(r.a[(start + i) % DISP_LEN]);
+  return out;
+}
+function dispClear() { dispSpark = {}; }
+
 function stepController(e, dt) {
   var g = e.graph;
   if (!g) return;
@@ -870,5 +931,7 @@ function stepLogic(dt) {
   // 뒤에 한 번만 — 중간에 바꾸면 먼저 평가된 제어기와 나중 제어기가 서로 다른
   // 값을 보게 되어 순서 의존이 되살아난다.
   busSwap();
+  // 계기 파형은 **모든 제어기가 돈 뒤**에 담는다 — displays 가 그때 완성된다.
+  dispRecord();
   logicDirty = false;
 }

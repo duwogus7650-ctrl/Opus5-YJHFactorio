@@ -249,23 +249,50 @@ function drawSpark(cvs, series) {
   // 바닥이 0 이면 0선이 이미 말해 주므로 위쪽만 적는다 — 20px 안에 글자 둘은 빽빽하다.
   // 처음엔 그냥 얹었더니 파형 위에 겹쳐 안 읽혔다(스크린샷에서 드러났다). 글자마다
   // 어두운 판을 깔아 띄운다.
-  ctx.font = '14px monospace'; ctx.textAlign = 'right';
-  function tag(txt, y) {
-    var w = ctx.measureText(txt).width;
-    ctx.fillStyle = 'rgba(28,32,36,.82)';
-    ctx.fillRect(W - w - 6, y - 12, w + 6, 15);
-    ctx.fillStyle = '#b7bec4';
-    ctx.fillText(txt, W - 3, y);
+  // **작은 칸에는 눈금을 안 적는다.** 같은 함수가 노드 상자(340px)와 계기 칩(76px)
+  // 둘 다를 그리는데, 글자 크기를 고정해 두면 칩에서는 숫자가 파형을 덮는다.
+  // 칩에는 바로 옆에 현재값이 큰 글씨로 적혀 있으니, 거기서는 모양만 보이면 된다.
+  if (W >= 120) {
+    var fs = Math.max(9, Math.round(H * 0.36));
+    ctx.font = fs + 'px monospace'; ctx.textAlign = 'right';
+    var pad = Math.round(fs * 0.4);
+    function tag(txt, y) {
+      var w = ctx.measureText(txt).width;
+      ctx.fillStyle = 'rgba(28,32,36,.82)';
+      ctx.fillRect(W - w - pad * 2, y - fs + 1, w + pad * 2, fs + 2);
+      ctx.fillStyle = '#b7bec4';
+      ctx.fillText(txt, W - pad, y);
+    }
+    function num(v) { return String(Math.round(v * 10) / 10); }
+    tag(num(hi), fs);
+    if (!flat && Math.abs(lo) > 1e-9) tag(num(lo), H - 3);
+    ctx.textAlign = 'left';
   }
-  function num(v) { return String(Math.round(v * 10) / 10); }
-  tag(num(hi), 14);
-  if (!flat && Math.abs(lo) > 1e-9) tag(num(lo), H - 3);
-  ctx.textAlign = 'left';
 }
 
 // **출구 이름이 설정을 따라간다.** [유체 잔량] 의 석유 출구는 무엇을 고르느냐에 따라
 // '중유%' 도 되고 '가스%' 도 된다. 늘 '석유%' 라고만 적혀 있으면 배선을 보고도
 // 무엇을 읽는 선인지 알 수 없어, 설정을 하나하나 열어 봐야 한다.
+// 지금 그리지 않는 자리에 물려 있는 배선을 걷어낸다. 몇 개를 걷었는지 돌려준다.
+function pruneHiddenLinks(g, node) {
+  var d = NODE_DEFS[node.kind], gone = 0;
+  for (var i = g.links.length - 1; i >= 0; i--) {
+    var lk = g.links[i];
+    if (lk.tn === node.nid && !fsmPortActive(node, 'in', lk.tp)) { g.links.splice(i, 1); gone++; continue; }
+    if (lk.fn === node.nid && !fsmPortActive(node, 'out', lk.fp)) { g.links.splice(i, 1); gone++; }
+  }
+  if (gone) g.dirty = true;
+  void d;
+  return gone;
+}
+
+function inPortName(n, d, pi) {
+  // 4단계 상태기계의 3번 입력은 '4→1' 이지만, 8단계로 바꾸면 같은 자리가 '4→5' 가 된다.
+  // 자리는 그대로 두고 뜻만 바뀌므로(예전 배선을 지키려고 그렇게 했다) 이름이 따라가야 한다.
+  if (n.kind === 'fsm' && pi === 3) return (n.cfg.stages === '8단계') ? '4→5' : '4→1';
+  return d.ins[pi];
+}
+
 function outPortName(n, d, po) {
   if (n.kind === 'fluid' && (po === 4 || po === 5)) {
     var k = n.cfg.oil || '중유';
@@ -315,7 +342,16 @@ function buildNodeDom(inner, g, n) {
         if (n.cfg[cf.k] === cf.opts[o]) op.selected = true;
         sel.appendChild(op);
       }
-      sel.onchange = (function (node, key, el2) { return function () { node.cfg[key] = el2.value; }; })(n, cf.k, sel);
+      sel.onchange = (function (node, key, el2) {
+        return function () {
+          node.cfg[key] = el2.value;
+          // **단계를 줄이면 없어지는 자리가 생긴다.** 거기 물려 있던 배선을 그냥 두면
+          // 화면에 보이지도 않는 선이 회로를 움직인다 — 지우고, 몇 개를 지웠는지 말한다.
+          var gone = pruneHiddenLinks(curCtrl.graph, node);
+          if (gone > 0) toast('없어진 자리의 배선 ' + gone + '개를 지웠다', 'warn');
+          if (node.kind === 'fsm') renderGraph();      // 자리 수가 바뀌면 다시 그린다
+        };
+      })(n, cf.k, sel);
       row.appendChild(sel);
     } else if (cf.t === 'item') {
       var isel = document.createElement('select');
@@ -353,15 +389,18 @@ function buildNodeDom(inner, g, n) {
   ports.className = 'ports';
   var cin = document.createElement('div'); cin.className = 'pcol i';
   for (var pi = 0; pi < d.ins.length; pi++) {
+    if (!fsmPortActive(n, 'in', pi)) continue;    // 안 쓰는 자리는 그리지 않는다
     var pr = document.createElement('div'); pr.className = 'port in';
     var dot = document.createElement('div'); dot.className = 'dot';
     dot.setAttribute('data-in', String(pi));
-    var nm = document.createElement('span'); nm.textContent = d.ins[pi];
+    var nm = document.createElement('span'); nm.textContent = inPortName(n, d, pi);
+    nm.setAttribute('data-pn-in', n.nid + ':' + pi);
     pr.appendChild(dot); pr.appendChild(nm);
     cin.appendChild(pr);
   }
   var cout = document.createElement('div'); cout.className = 'pcol o';
   for (var po = 0; po < d.outs.length; po++) {
+    if (!fsmPortActive(n, 'out', po)) continue;
     var pr2 = document.createElement('div'); pr2.className = 'port out';
     var dot2 = document.createElement('div'); dot2.className = 'dot';
     dot2.setAttribute('data-out', String(po));
@@ -377,6 +416,7 @@ function buildNodeDom(inner, g, n) {
   // **파형.** 숫자 한 칸은 '지금' 만 말한다 — 부하 차단이 발진하는지, 래치가 언제
   // 풀렸는지는 지난 8초를 봐야 안다. 출력마다 한 줄씩 깐다(대부분 출력은 하나다).
   for (var sp = 0; sp < d.outs.length; sp++) {
+    if (!fsmPortActive(n, 'out', sp)) continue;
     var cvs = document.createElement('canvas');
     cvs.className = 'spark';
     cvs.setAttribute('data-spark', n.nid + ':' + sp);
@@ -587,6 +627,14 @@ function updateLive() {
     }
   }
   // 출구 이름 — 설정을 바꾸면 따라 바뀌어야 한다(그래프를 다시 그리지 않고도).
+  var pnIn = document.querySelectorAll('[data-pn-in]');
+  for (var pq = 0; pq < pnIn.length; pq++) {
+    var pk2 = pnIn[pq].getAttribute('data-pn-in').split(':');
+    var pnode2 = graphNode(g, parseInt(pk2[0], 10));
+    if (!pnode2) continue;
+    var want2 = inPortName(pnode2, NODE_DEFS[pnode2.kind], parseInt(pk2[1], 10));
+    if (pnIn[pq].textContent !== want2) pnIn[pq].textContent = want2;
+  }
   var pns = document.querySelectorAll('[data-pn]');
   for (var pn = 0; pn < pns.length; pn++) {
     var pk = pns[pn].getAttribute('data-pn').split(':');

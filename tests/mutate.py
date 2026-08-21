@@ -262,6 +262,76 @@ MUTATIONS = [
      b'    if (false) { ctx.moveTo(x - 1, yTop); ctx.lineTo(x + 1, yTop); }',
      ['ui.sparklineDrawsTheWave'], 'uismoke.js'),
 
+    # --- 계기 줄 파형 -----------------------------------------------------
+    # 굵게 담으면 오르내림이 사라진다 — 계기 옆 파형의 존재 이유가 그 오르내림이다.
+    ('hud: 계기 파형을 여덟 틱에 한 번만 담는다', '35_logic.js',
+     b'  dispRecord();',
+     b'  if (Math.round(gameTime * 60) % 8 === 0) dispRecord();',
+     ['logic.hudWaveRecordsEveryTick'], 'driver.js'),
+
+    # 사라진 계기의 기록을 안 버리면 라벨을 고칠 때마다 유령이 쌓인다.
+    ('hud: 없어진 계기의 기록을 그대로 둔다', '35_logic.js',
+     b'  for (var k in dispSpark) if (!seen[k]) delete dispSpark[k];',
+     b'  void seen;',
+     ['logic.hudWaveDropsRemovedGauges'], 'driver.js'),
+
+    # 매 프레임 판을 다시 지으면 그린 것이 곧바로 버려진다.
+    ('hud: 계기 줄을 매 프레임 다시 짓는다', '50_ui.js',
+     b'  if (sig !== lastDispSig) { d.innerHTML = out.join(\'\'); lastDispSig = sig; }',
+     b'  d.innerHTML = out.join(\'\'); lastDispSig = sig;',
+     ['ui.hudChipIsNotRebuiltEveryFrame'], 'uismoke.js'),
+
+    # 파형을 안 그리면 칩은 예전처럼 숫자 하나짜리로 되돌아간다.
+    ('hud: 계기 칩에 파형을 안 그린다', '50_ui.js',
+     b"    if (cEl && typeof drawSpark === 'function') drawSpark(cEl, dispSeries(lb));",
+     b'    if (cEl && false) drawSpark(cEl, dispSeries(lb));',
+     ['ui.hudChipDrawsTheWave'], 'uismoke.js'),
+
+    # --- 다단 상태기계 ----------------------------------------------------
+    # 자리표가 틀리면 8단계에서 엉뚱한 입력을 본다.
+    ('fsm: 5단계부터의 전이 자리를 잘못 짚는다', '35_logic.js',
+     b'var FSM_PORT = [0, 0, 1, 2, 3, 5, 6, 7, 8];',
+     b'var FSM_PORT = [0, 0, 1, 2, 3, 4, 5, 6, 7];',
+     ['logic.fsmEightStagesCycleAndWrap'], 'driver.js'),
+
+    # 단계 수를 안 읽으면 8단계로 골라도 4에서 되돌아온다.
+    ('fsm: 단계 수를 무시하고 늘 4단계로 돈다', '35_logic.js',
+     ("function fsmStages(n) { return (n.cfg.stages === '8\ub2e8\uacc4') ? 8 : 4; }").encode('utf-8'),
+     b'function fsmStages(n) { void n; return 4; }',
+     ['logic.fsmEightStagesCycleAndWrap'], 'driver.js'),
+
+    # 안 쓰는 자리를 그리면, 물려도 아무 일이 없는 자리가 화면에 남는다.
+    ('fsm: 4단계인데 8단계 자리까지 보여 준다', '35_logic.js',
+     b"  if (fsmStages(n) === 8) return true;\n  return i <= 4;",
+     b'  void dir; void i; return true;',
+     ['ui.fsmShowsOnlyTheStagesInUse'], 'uismoke.js'),
+
+    # 없어진 자리의 배선을 안 걷으면 화면에 없는 선이 회로를 움직인다.
+    ('fsm: 없어진 자리의 배선을 그대로 둔다', '55_logicui.js',
+     b'          var gone = pruneHiddenLinks(curCtrl.graph, node);',
+     b'          var gone = 0;',
+     ['ui.fsmDropsWiresToRemovedStages'], 'uismoke.js'),
+
+    # --- 플라스틱 회로 ----------------------------------------------------
+    # 철을 다시 먹으면 '철은 안 든다' 는 약속이 깨진다.
+    ('oil: 플라스틱 회로가 철판도 먹는다', '05_data.js',
+     b"  'circuit-plastic': { cat: 'craft', time: 1.0, inp: { 'wire': 3, 'plastic': 1 },",
+     b"  'circuit-plastic': { cat: 'craft', time: 1.0, inp: { 'wire': 3, 'plastic': 1, 'iron-plate': 1 },",
+     ['oil.plasticCircuitHalvesCopperAndDropsIron'], 'driver.js'),
+
+    # 처리량까지 좋아지면 조립기 수가 반으로 줄어 전력·오염 계산이 흔들린다.
+    ('oil: 플라스틱 회로가 두 배로 빠르다', '05_data.js',
+     b"  'circuit-plastic': { cat: 'craft', time: 1.0, inp: { 'wire': 3, 'plastic': 1 },",
+     b"  'circuit-plastic': { cat: 'craft', time: 0.5, inp: { 'wire': 3, 'plastic': 1 },",
+     ['oil.plasticCircuitKeepsTheSameThroughput'], 'driver.js'),
+
+    # 같은 물건을 내는 레시피가 목록에서 같은 이름이면 무엇을 고르는지 알 수 없다.
+    ('ui: 레시피 이름이 산출만 보여 준다', '50_ui.js',
+     ('  return ITEMS[outId].name + (outN > 1 ? \' \\u00d7\' + outN : \'\') +' + chr(10) +
+      "         ' \\u2190 ' + inp.join(' ') + ' (' + R.time + 's)';").encode('utf-8'),
+     ("  return ITEMS[outId].name + ' (' + R.time + 's)';").encode('utf-8'),
+     ['ui.recipeLabelsDistinguishSameOutput'], 'driver.js'),
+
     # --- 석유 분해 --------------------------------------------------------
     # 정제소가 예전처럼 가스만 내면 이 층의 문제 자체가 사라진다.
     ('oil: 정제소가 셋이 아니라 가스만 낸다', '32_fluid.js',
@@ -1391,18 +1461,18 @@ MUTATIONS = [
      ['smooth.stepResponseMatchesAnalytic']),
 
     ('상태기계가 상승엣지가 아니라 레벨로 전이한다', '35_logic.js',
-     b'        if (t4 === n.state.s - 1 && cur4 && !n.state.pe[t4]) fired = true;',
-     b'        if (t4 === n.state.s - 1 && cur4) fired = true;',
+     b'        if (t4 === curPort && cur4 && !n.state.pe[t4]) fired = true;',
+     b'        if (t4 === curPort && cur4) fired = true;',
      ['fsm.advancesOnceWhileHeld']),
 
     ('상태기계에서 전이가 리셋을 이긴다', '35_logic.js',
      b'      if (rstF) n.state.s = 1;',
-     b'      if (fired) n.state.s = (n.state.s % 4) + 1;\n      else if (rstF) n.state.s = 1;\n      else if (false) n.state.s = 1;',
+     b'      if (fired) n.state.s = (n.state.s % fsmN) + 1;\n      else if (rstF) n.state.s = 1;\n      else if (false) n.state.s = 1;',
      ['fsm.resetDominates']),
 
     ('상태기계의 단계 출구가 전부 켜진다', '35_logic.js',
-     b'      for (var q4 = 1; q4 <= 4; q4++) n.out[q4] = (n.state.s === q4) ? 1 : 0;',
-     b'      for (var q4 = 1; q4 <= 4; q4++) n.out[q4] = 1;',
+     b'      for (var q4 = 1; q4 <= 8; q4++) n.out[q4] = (n.state.s === q4) ? 1 : 0;',
+     b'      for (var q4 = 1; q4 <= 8; q4++) n.out[q4] = 1;',
      ['fsm.oneHotOutputs']),
 
     ('신호 버스가 합산하지 않고 마지막 값으로 덮어쓴다', '35_logic.js',
@@ -1437,12 +1507,12 @@ MUTATIONS = [
      ['smooth.seedsFromRealInputWhenWired']),
 
     ('상태기계가 4단계에서 멈춘다 (고리가 안 돈다)', '35_logic.js',
-     b'      else if (fired) n.state.s = (n.state.s % 4) + 1;',
-     b'      else if (fired) n.state.s = Math.min(n.state.s + 1, 4);',
+     b'      else if (fired) n.state.s = (n.state.s % fsmN) + 1; // \xed\x95\x9c \xed\x8b\xb1\xec\x97\x90 \xed\x95\x9c \xeb\xb2\x88\xeb\xa7\x8c \xec\xa0\x84\xec\x9d\xb4',
+     b'      else if (fired) n.state.s = Math.min(n.state.s + 1, fsmN);',
      ['fsm.ringWrapsAtFour']),
 
     ('상태기계가 현재 단계를 안 보고 아무 입력에나 전이한다', '35_logic.js',
-     b'        if (t4 === n.state.s - 1 && cur4 && !n.state.pe[t4]) fired = true;',
+     b'        if (t4 === curPort && cur4 && !n.state.pe[t4]) fired = true;',
      b'        if (cur4 && !n.state.pe[t4]) fired = true;',
      ['fsm.inputsAreStageScoped']),
 

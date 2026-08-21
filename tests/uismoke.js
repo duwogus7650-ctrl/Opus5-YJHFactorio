@@ -544,6 +544,101 @@
         '부등호를 < 로 뒤집자 → "' + fixTxt + '" · 실제 기계 가동=' + G.ent(mAsm).enabled);
       G.ui.closeLogic();
 
+      // --- 18.88 계기 줄 파형 -----------------------------------------------
+      // 캔버스가 있다는 것은 보증이 아니다. **그려진 픽셀**로 보고, 변하는 값과
+      // 상수를 나란히 놓아 두 그림이 다른지까지 본다.
+      G.reset(424242); G.clearEntities(); G.ui.closeHelp(); G.powerCheat(true);
+      G.giveAll(9999); G.research('logistics'); G.research('logic-mem');
+      var hdC = G.place('controller', 60, 60, 0);
+      var hdT = G.gAdd(hdC, 'timer', 20, 20); G.gCfg(hdC, hdT, 'period', 1);
+      var hdD = G.gAdd(hdC, 'display', 20, 200); G.gCfg(hdC, hdD, 'label', '위상');
+      G.gLink(hdC, hdT, 1, hdD, 0);
+      var hdK = G.gAdd(hdC, 'const', 20, 400); G.gCfg(hdC, hdK, 'value', 7);
+      var hdD2 = G.gAdd(hdC, 'display', 20, 560); G.gCfg(hdC, hdD2, 'label', '상수');
+      G.gLink(hdC, hdK, 0, hdD2, 0);
+      G.run(5);
+      G.ui.refresh();
+      function chipInk(label) {
+        var cv = document.querySelector('#dispRow canvas[data-dl="' + label + '"]');
+        if (!cv) return null;
+        var im = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+        var rows = {}, ink = 0;
+        for (var y = 0; y < cv.height; y++) {
+          for (var x = 0; x < cv.width; x++) {
+            var q = (y * cv.width + x) * 4;
+            if (im[q] > 180 && im[q + 1] > 130 && im[q + 2] < 90) { rows[y] = 1; ink++; }
+          }
+        }
+        return { ink: ink, rows: Object.keys(rows).length, el: cv };
+      }
+      var hdWave = chipInk('위상'), hdFlat = chipInk('상수');
+      chk('ui.hudChipDrawsTheWave',
+        !!hdWave && !!hdFlat && hdWave.ink > 30 && hdFlat.ink > 5 &&
+        hdWave.rows > hdFlat.rows * 3,
+        '오르내리는 계기: 칠한 점 ' + (hdWave ? hdWave.ink : '?') + '개 · 세로 ' +
+        (hdWave ? hdWave.rows : '?') + '줄 / 상수 계기: ' + (hdFlat ? hdFlat.ink : '?') +
+        '개 · ' + (hdFlat ? hdFlat.rows : '?') +
+        '줄 (변하는 쪽이 3배 넘게 넓어야 한다 — 같으면 값과 무관한 그림이다)');
+
+      // **매 프레임 판을 다시 만들지 않는다.** 캔버스를 새로 만들면 그린 것이 곧바로
+      // 버려지고, 계기 여덟이면 초당 480개를 만들었다 버리는 셈이 된다.
+      var beforeEl = hdWave ? hdWave.el : null;
+      G.run(0.5); G.ui.refresh(); G.run(0.5); G.ui.refresh();
+      var afterEl = document.querySelector('#dispRow canvas[data-dl="위상"]');
+      chk('ui.hudChipIsNotRebuiltEveryFrame',
+        !!beforeEl && beforeEl === afterEl,
+        '계기 목록이 그대로일 때 캔버스가 같은 것인가 = ' + (beforeEl === afterEl) +
+        ' (다르면 매 프레임 새로 만들었다 버리는 것이다)');
+
+      // --- 18.89 상태기계 단계 수 — 안 쓰는 자리는 안 보인다 -----------------
+      // 4단계로 둔 노드에 5~8단계 자리가 보이면, 거기 무엇을 물려도 아무 일이 없다.
+      // **있는데 안 되는 것이 없는 것보다 나쁘다** — 플레이어는 배선을 의심하지 않고
+      // 자기 회로를 의심하게 된다.
+      G.reset(424242); G.clearEntities(); G.ui.closeHelp(); G.powerCheat(true);
+      G.giveAll(9999); G.research('logistics'); G.research('logic-mem');
+      var fsC = G.place('controller', 60, 60, 0);
+      var fsN = G.gAdd(fsC, 'fsm', 40, 40);
+      var fsSrc = G.gAdd(fsC, 'const', 40, 420);
+      G.ui.openLogic(fsC); G.ui.showGraph(); G.ui.renderGraph();
+      function portCount(nid) {
+        var host = document.querySelector('.node[data-nid="' + nid + '"]');
+        if (!host) return { i: -1, o: -1 };
+        return { i: host.querySelectorAll('.dot[data-in]').length,
+                 o: host.querySelectorAll('.dot[data-out]').length };
+      }
+      function portLabel(nid, idx) {
+        var el = document.querySelector('[data-pn-in="' + nid + ':' + idx + '"]');
+        return el ? el.textContent.trim() : null;
+      }
+      var p4 = portCount(fsN), lab4 = portLabel(fsN, 3);
+      // 8단계로 바꾼다 — 사람이 하는 길(드롭다운)로.
+      var fsSel = document.querySelector('.node[data-nid="' + fsN + '"] select');
+      if (fsSel) { fsSel.value = '8단계'; fsSel.onchange(); }
+      G.run(0.1); G.ui.updateLive();
+      var p8 = portCount(fsN), lab8 = portLabel(fsN, 3);
+      chk('ui.fsmShowsOnlyTheStagesInUse',
+        p4.i === 5 && p4.o === 5 && p8.i === 9 && p8.o === 9 &&
+        lab4 === '4→1' && lab8 === '4→5',
+        '4단계 — 입력 ' + p4.i + '개 · 출력 ' + p4.o + '개 · 3번 입력 "' + lab4 + '" / ' +
+        '8단계 — 입력 ' + p8.i + '개 · 출력 ' + p8.o + '개 · 3번 입력 "' + lab8 +
+        '" (자리가 안 늘거나 이름이 안 바뀌면, 뜻이 바뀐 자리를 옛 이름으로 부르는 것이다)');
+
+      // **단계를 줄이면 없어지는 자리의 배선을 걷어내야 한다.** 그냥 두면 화면에
+      // 보이지도 않는 선이 회로를 움직인다.
+      G.gLink(fsC, fsSrc, 0, fsN, 8);          // 8→1 자리에 물린다
+      G.ui.renderGraph();
+      var linksBefore = G.gLinks(fsC).length;
+      var fsSel2 = document.querySelector('.node[data-nid="' + fsN + '"] select');
+      if (fsSel2) { fsSel2.value = '4단계'; fsSel2.onchange(); }
+      var linksAfter = G.gLinks(fsC).length;
+      var stillThere = G.gLinks(fsC).filter(function (q) { return q.tn === fsN && q.tp === 8; }).length;
+      chk('ui.fsmDropsWiresToRemovedStages',
+        linksBefore === 1 && linksAfter === 0 && stillThere === 0,
+        '8→1 자리에 배선 하나를 물린 뒤 4단계로 되돌림 — 배선 ' + linksBefore + '개 → ' +
+        linksAfter + '개 · 없어진 자리에 남은 것 ' + stillThere +
+        '개 (0 이어야 · 남으면 화면에 없는 선이 회로를 움직인다)');
+      G.ui.closeLogic();
+
       // --- 18.9 파형 칸 — 지난 8초를 실제로 그리는가 ------------------------
       // 캔버스가 상자 안에 있다는 것은 아무 보증이 아니다. **그려진 픽셀**로 판정한다.
       // 그리고 '뭔가 그렸다' 로도 부족하다 — 아무 신호에나 같은 그림을 그리면 계기가

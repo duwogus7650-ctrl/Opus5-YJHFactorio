@@ -3857,6 +3857,159 @@
           ') · 둘이 같으면 고르는 것이 안 먹는 것이다');
       }
 
+      // ================= 11.873 계기 줄 파형 ==============================
+      // 노드 파형은 편집기를 열어야 보인다. 그런데 오래 지켜봐야 하는 값(증기%,
+      // 전력 만족도)은 **편집기를 닫아 놓고 공장을 짓는 동안** 흘러간다 —
+      // 47% 가 내려가는 중인지 올라오는 중인지는 정반대 상황인데 숫자만으로는 모른다.
+      labSetup();
+      G.research('logistics'); G.research('logic-mem');
+      var hc = G.place('controller', 60, 60, 0);
+      var hTimer = G.gAdd(hc, 'timer', 20, 20); G.gCfg(hc, hTimer, 'period', 1);
+      var hDisp = G.gAdd(hc, 'display', 20, 200); G.gCfg(hc, hDisp, 'label', '위상');
+      G.gLink(hc, hTimer, 1, hDisp, 0);         // 진행% — 톱니처럼 오르내린다
+      G.run(5);
+      var hSer = G.dispSeries('위상');
+      var hUniq = {}; for (var hu = 0; hu < hSer.length; hu++) hUniq[Math.round(hSer[hu])] = 1;
+      chk('logic.hudWaveRecordsEveryTick',
+        hSer.length === 240 && Object.keys(hUniq).length > 20,
+        '4초 창에 담긴 표본 ' + hSer.length + '개(240 이어야 · 창이 4초 x 60Hz 다) · ' +
+        '서로 다른 값 ' + Object.keys(hUniq).length +
+        '가지 (한 가지뿐이면 값이 아니라 상수를 담고 있는 것이다)');
+
+      // **저장에 새면 안 된다** — 계기는 화물이 아니다. 세계를 멈춰 두고 견준다.
+      var hWarm = (G.saveRaw() || '').length;
+      var hRaw = G.saveRaw() || '';
+      chk('logic.hudWaveStaysOutOfSave',
+        hSer.length > 100 && hRaw.indexOf('dispSpark') < 0 && hRaw.indexOf('위상\\":[') < 0,
+        '표본 ' + hSer.length + '개를 담은 채 저장 ' + hWarm + ' 바이트 · 저장에 파형 배열이 ' +
+        (hRaw.indexOf('dispSpark') < 0 ? '없음' : '있음'));
+
+      // 계기를 지우면 그 기록도 사라져야 한다 — 안 그러면 라벨을 고칠 때마다 유령이 쌓인다.
+      G.gRemove(hc, hDisp);
+      G.run(0.2);
+      chk('logic.hudWaveDropsRemovedGauges', G.dispSeries('위상').length === 0,
+        '계기 노드를 지운 뒤 남은 표본 ' + G.dispSeries('위상').length + '개 (0 이어야)');
+
+      // ================= 11.874 다단 상태기계 ==============================
+      // 기동 절차는 대개 네 단계로 안 끝난다(물 채우고 → 보일러 붙이고 → 발전 넣고 →
+      // 부하 잇고 → 확인하고 …). 단계를 여덟까지 늘리되, **앞의 자리는 그대로** 둔다 —
+      // 포트 번호가 곧 배선이라 사이에 끼우면 예전 저장의 회로가 통째로 어긋난다.
+      labSetup();
+      G.research('logistics'); G.research('logic-mem');
+      function fsmWalk(stageCfg, ports, steps) {
+        var c = G.place('controller', 60, 60, 0);
+        var f = G.gAdd(c, 'fsm', 20, 20);
+        G.gCfg(c, f, 'stages', stageCfg);
+        var pv = G.gAdd(c, 'const', 20, 400); G.gCfg(c, pv, 'value', 0);
+        for (var q = 0; q < ports.length; q++) G.gLink(c, pv, 0, f, ports[q]);
+        G.run(0.1);
+        var seq = [G.gOut(c, f, 0)];
+        for (var st = 0; st < steps; st++) {
+          G.gCfg(c, pv, 'value', 1); G.run(0.05);      // 상승 엣지 한 번 = 한 칸
+          G.gCfg(c, pv, 'value', 0); G.run(0.05);
+          seq.push(G.gOut(c, f, 0));
+        }
+        var lamps = [];
+        for (var lp = 1; lp <= 8; lp++) lamps.push(G.gOut(c, f, lp));
+        G.clearEntities();
+        return { seq: seq, lamps: lamps };
+      }
+      var w8 = fsmWalk('8단계', [0, 1, 2, 3, 5, 6, 7, 8], 9);
+      var uniq8 = {}; for (var u8 = 0; u8 < w8.seq.length; u8++) uniq8[w8.seq[u8]] = 1;
+      chk('logic.fsmEightStagesCycleAndWrap',
+        w8.seq.join(',') === '1,2,3,4,5,6,7,8,1,2' && Object.keys(uniq8).length === 8,
+        '8단계 전이 순서 ' + w8.seq.join(',') + ' (1..8 을 다 돌고 1 로 돌아와야 한다) · ' +
+        '거친 단계 ' + Object.keys(uniq8).length + '가지');
+
+      // **예전 회로는 그대로 돌아야 한다.** 4단계로 두면 3번 입력은 여전히 4→1 이고,
+      // 5단계로 넘어가는 일이 있어서는 안 된다.
+      var w4 = fsmWalk('4단계', [0, 1, 2, 3], 6);
+      var over4 = w4.seq.filter(function (q) { return q > 4; }).length;
+      chk('logic.fsmFourStageWiringUnchanged',
+        w4.seq.join(',') === '1,2,3,4,1,2,3' && over4 === 0,
+        '4단계 전이 순서 ' + w4.seq.join(',') + ' (4 다음은 1 이어야 한다) · ' +
+        '5단계 이상으로 넘어간 횟수 ' + over4 + ' · 램프 ' + w4.lamps.join(',') +
+        ' (뒤쪽 넷은 늘 0 이어야 한다)');
+      chk('logic.fsmFourStageLeavesLateLampsOff',
+        w4.lamps[4] === 0 && w4.lamps[5] === 0 && w4.lamps[6] === 0 && w4.lamps[7] === 0,
+        '4단계에서 5~8단계 램프 ' + w4.lamps.slice(4).join(',') + ' (전부 0 이어야 한다)');
+
+      // ================= 11.875 플라스틱 회로 ==============================
+      // **석유의 두 번째 보상.** 탄창은 적이 올 때만 필요해서 석유 사슬의 값어치가
+      // 판마다 달랐다. 회로는 어디에나 들어가므로 이쪽은 늘 이득이다.
+      // 재는 것은 둘: **재료는 줄고 처리량은 그대로**. 처리량까지 좋아지면 조립기 수가
+      // 반으로 줄어 전력·오염 계산이 통째로 흔들린다.
+      labSetup();
+      G.research('oil');
+      // **산출을 비워 가며 길게 잰다.** 짧게 재면 두 가지가 섞인다 —
+      //  · 산출 버퍼가 차서 기계가 멈춘다(둘 다 1.5/s 로 찍혔다. 실제 상한은 2/s)
+      //  · 아직 안 끝난 작업 한 건이 재료만 먹은 채로 남아 개당 비율을 부풀린다
+      //    (전선 1.5 여야 할 것이 1.61 로 나왔다)
+      // 길게 돌리면 진행 중 한 건의 몫이 묻히고, 비워 주면 버퍼에 안 막힌다.
+      var CIRC_SECS = 300;
+      function circuitRun(recipe, feed) {
+        var a = G.place('assembler', 60, 60, 0);
+        G.setRecipe(a, recipe);
+        for (var k in feed) G.fillChest(a, k, feed[k]);
+        var e0 = G.ent(a);
+        var before = {}; for (var k2 in e0.inv) before[k2] = e0.inv[k2];
+        var made = 0;
+        for (var t = 0; t < CIRC_SECS / 10; t++) {
+          G.run(10);
+          made += (G.ent(a).out['circuit'] || 0);
+          G.emptyOut(a);
+        }
+        var e1 = G.ent(a);
+        var used = {};
+        for (var k3 in before) used[k3] = before[k3] - (e1.inv[k3] || 0);
+        G.remove(a, false);
+        return { used: used, made: made, rate: made / CIRC_SECS };
+      }
+      var cBase = circuitRun('circuit', { 'iron-plate': 5000, 'wire': 5000 });
+      var cPla  = circuitRun('circuit-plastic', { 'wire': 5000, 'plastic': 5000 });
+      var basePerC = cBase.made > 0 ? (cBase.used['wire'] || 0) / cBase.made : 0;
+      var plaPerC  = cPla.made  > 0 ? (cPla.used['wire']  || 0) / cPla.made  : 0;
+      var baseIron = cBase.made > 0 ? (cBase.used['iron-plate'] || 0) / cBase.made : 0;
+      chk('oil.plasticCircuitHalvesCopperAndDropsIron',
+        cBase.made > 10 && cPla.made > 10 &&
+        near(basePerC, 3, 0.05, 0.05) && near(plaPerC, 1.5, 0.05, 0.05) &&
+        near(baseIron, 1, 0.05, 0.05) && (cPla.used['iron-plate'] || 0) === 0,
+        '기본 회로 개당 전선 ' + r2(basePerC) + ' · 철판 ' + r2(baseIron) +
+        ' / 플라스틱 회로 개당 전선 ' + r2(plaPerC) + ' · 철판 ' +
+        r2((cPla.used['iron-plate'] || 0) / (cPla.made || 1)) + ' · 플라스틱 ' +
+        r2((cPla.used['plastic'] || 0) / (cPla.made || 1)) +
+        ' (구리는 절반, 철은 0 이어야 한다 — 그 대가가 플라스틱 0.5다)');
+      chk('oil.plasticCircuitKeepsTheSameThroughput',
+        near(cPla.rate, cBase.rate, 0.05, 0.05) && cBase.rate > 0.5,
+        '초당 회로 — 기본 ' + r2(cBase.rate) + '개 vs 플라스틱 ' + r2(cPla.rate) +
+        '개 (같아야 한다 · 처리량까지 좋아지면 조립기 수가 줄어 전력·오염이 흔들린다)');
+
+      // **같은 물건을 내는 레시피는 목록에서 서로 달라 보여야 한다.** 탄창은 이미
+      // 두 갈래인데 둘 다 '탄창 (1s)' 로 떠 있었다 — 무엇을 고르는지 모르고 고르는 것이다.
+      var byOut = {}, dupPairs = 0, sameLabel = [];
+      var rIds = G.recipeIds();
+      for (var ri = 0; ri < rIds.length; ri++) {
+        var rinfo = G.recipeInfo(rIds[ri]);
+        if (!rinfo || rinfo.cat !== 'craft') continue;
+        var oid = Object.keys(rinfo.out)[0];
+        if (!byOut[oid]) byOut[oid] = [];
+        byOut[oid].push(rIds[ri]);
+      }
+      for (var ok in byOut) {
+        if (byOut[ok].length < 2) continue;
+        dupPairs++;
+        var labs = byOut[ok].map(function (q) { return G.recipeLabel(q); });
+        for (var li = 0; li < labs.length; li++) {
+          for (var lj = li + 1; lj < labs.length; lj++) {
+            if (labs[li] === labs[lj]) sameLabel.push(ok + ': "' + labs[li] + '"');
+          }
+        }
+      }
+      chk('ui.recipeLabelsDistinguishSameOutput',
+        dupPairs >= 2 && sameLabel.length === 0,
+        '같은 물건을 내는 레시피 묶음 ' + dupPairs + '개(2개 이상이어야 · 0이면 아무것도 안 본 것이다)' +
+        ' · 이름이 같아 구분이 안 되는 것 ' + (sameLabel.join(' | ') || '없음'));
+
       // ================= 11.88 설명이 약속한 반출 =========================
       // **실제로 있었던 결함.** 화학공장 설명과 도움말은 '인서터로 빼낸다' 라고 적혀
       // 있었는데, 인서터의 반출 대상은 chest/miner/furnace/assembler 를 **손으로 적은

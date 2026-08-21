@@ -774,6 +774,19 @@ function lockLabel(techId) {
   return '🔒 ' + T.name + (blocked ? ' ← ' + blocked.name : '');
 }
 
+// 레시피 한 줄 — "회로 ×2 ← 전선 3 플라스틱 1 (1s)".
+// 같은 물건을 내는 레시피가 여럿일 때 **무엇이 다른지가 곧 이름**이 되어야 한다.
+function recipeLabel(rid) {
+  var R = RECIPES[rid];
+  var outId = Object.keys(R.out)[0], outN = R.out[outId];
+  var inp = [];
+  for (var k in R.inp) inp.push(ITEMS[k].name + ' ' + R.inp[k]);
+  return ITEMS[outId].name + (outN > 1 ? ' \u00d7' + outN : '') +
+         ' \u2190 ' + inp.join(' ') + ' (' + R.time + 's)';
+}
+
+var lastDispSig = null;   // 계기 줄을 다시 지을지 판정하는 서명
+
 function renderBuildList() {
   var host = document.getElementById('buildList');
   if (!host) return;
@@ -957,14 +970,28 @@ function renderAlarms() {
   a.innerHTML = ks.map(function (m) { return '<div class="alarm">⚠ ' + m + '</div>'; }).join('');
   var d = document.getElementById('dispRow');
   d.style.top = ks.length ? '100px' : '70px';
-  var seen = {}, out = [];
+  var seen = {}, out = [], labels = [];
   for (var j = 0; j < displays.length; j++) {
     var it = displays[j];
     if (seen[it.label]) continue;
     seen[it.label] = 1;
-    out.push('<div class="disp">' + it.label + ' <b>' + fmt(it.value, 1) + '</b></div>');
+    labels.push(it.label);
+    out.push('<div class="disp">' + escAttr(it.label) +
+      ' <b data-dv="' + escAttr(it.label) + '">' + fmt(it.value, 1) + '</b>' +
+      '<canvas class="dspark" data-dl="' + escAttr(it.label) + '" width="76" height="26"></canvas></div>');
   }
-  d.innerHTML = out.join('');
+  // **판을 매 프레임 다시 만들지 않는다.** 캔버스를 새로 만들면 그린 것이 곧바로
+  // 버려지고, 계기 여덟 개면 초당 480개의 캔버스를 만들었다 버리는 셈이 된다.
+  // 계기 목록이 바뀔 때만 다시 짓고, 값과 파형은 그 위에 덧그린다.
+  var sig = labels.join('|');
+  if (sig !== lastDispSig) { d.innerHTML = out.join(''); lastDispSig = sig; }
+  for (var v = 0; v < labels.length; v++) {
+    var lb = labels[v];
+    var bEl = d.querySelector('[data-dv="' + escAttr(lb) + '"]');
+    if (bEl) bEl.textContent = fmt(displays[v].value, 1);
+    var cEl = d.querySelector('canvas[data-dl="' + escAttr(lb) + '"]');
+    if (cEl && typeof drawSpark === 'function') drawSpark(cEl, dispSeries(lb));
+  }
 }
 
 // --- 인스펙터 ----------------------------------------------------------------
@@ -1017,8 +1044,11 @@ function refreshInsp() {
         RECIPE_IDS.filter(function (r) {
           return RECIPES[r].cat === 'craft' && (!RECIPES[r].tech || techDone[RECIPES[r].tech]);
         }).map(function (r) {
+          // **산출 이름만 적으면 같은 것을 내는 레시피가 구분이 안 된다.** 탄창은
+          // 이미 두 갈래(철판만 / 플라스틱 섞기)인데 목록에는 둘 다 '탄창 (1s)' 로
+          // 떠 있었다 — 무엇을 고르는지 모르는 채 고르는 것이다. 재료를 함께 적는다.
           return '<option value="' + r + '"' + (e.recipe === r ? ' selected' : '') + '>' +
-            ITEMS[Object.keys(RECIPES[r].out)[0]].name + ' (' + RECIPES[r].time + 's)</option>';
+            recipeLabel(r) + '</option>';
         }).join('') + '</select></div>');
     }
     // 화학공장은 **가스를 무엇으로 만들지** 고른다. 조립기와 달리 재료가 유체라
@@ -1393,6 +1423,10 @@ function fillHelp() {
     '세로 눈금은 창 안의 최소~최대로 <b>스스로 맞춘다</b> — 95~100% 처럼 좁은 범위도 흔들림이 보이게',
     '하기 위해서다. 그래서 오른쪽 위에 그 창의 최대값을 적어 둔다. 담는 것은 <b>지금 열어 둔 제어기',
     '하나뿐</b>이고, 저장에는 들어가지 않는다 — 파형은 화물이 아니라 계기다.</p>',
+    '<p><b>편집기를 닫아도 볼 수 있다.</b> <code>[계기 표시]</code> 노드로 화면 위쪽에 띄운 값에는',
+    '숫자 옆에 <b>지난 4초의 파형</b>이 함께 붙는다. 공장을 짓는 동안 증기%가 47이라는 것만으로는',
+    '<b>내려가는 중인지 올라오는 중인지</b> 알 수 없는데, 그 둘은 정반대 상황이다.',
+    '노드 파형과 달리 이쪽은 늘 담는다 — 계기는 당신이 스스로 띄워 둔 값이고 그 수는 많지 않다.</p>',
     '<ul>',
     '<li><b>재고 히스테리시스</b> — 상자 재고가 50 미만이면 SET, 200 초과면 RESET 인 SR 래치를 만들어',
     '탄약 라인의 조립기를 켜고 끈다. 철을 탄약과 연구팩에 나눠 쓰는 문제가 저절로 풀린다.</li>',
@@ -1439,6 +1473,11 @@ function fillHelp() {
     '"중유가 60% 넘으면 분해를 켜고 20% 아래로 내려가면 끈다" 가 된다 — 부하 차단과 같은',
     '히스테리시스이고, 이 게임에서 배운 것을 그대로 다시 쓰는 자리다.',
     '노드에 깔린 <b>파형</b>을 보면 그 회로가 발진하는지 한눈에 보인다.</p>',
+    '<p><b>플라스틱은 어디에 쓰는가.</b> 둘이다. <b>탄창</b>은 철판 4개에 2개가 나오고(철이 절반),',
+    '<b>회로기판</b>은 전선 3개에 2개가 나온다 — <b>철은 안 들고 구리는 절반</b>이다.',
+    '회로는 조립기·연구소·터렛까지 어디에나 들어가므로, 탄창과 달리 <b>적이 안 와도 늘 이득</b>이다.',
+    '조립기 레시피 목록에 재료가 함께 적혀 있으니 두 갈래를 그 자리에서 견주면 된다.',
+    '<b>속도는 같다</b>(둘 다 초당 2개) — 이득은 재료지 처리량이 아니다.</p>',
     '<p><b>경유는 태울 수도 있다.</b> 고체 연료를 <b>가스 20 → 0.5개/s</b> 로도, <b>경유 10 → 1개/s</b>',
     '로도 만든다 — 경유 쪽이 두 배 낫다. 가스는 플라스틱에도 쓰이니 태우기 아깝고, 경유는',
     '분해해서 가스로 만들 수도 있다. <b>태울 것인가 분해할 것인가</b> — 그 저울질이 이 층의 결정이다.</p>',
@@ -1502,6 +1541,11 @@ function fillHelp() {
     '전이보다 우선한다. 단계별 출구 <code>1단계~4단계</code>가 그 단계에서만 1이므로,',
     '거기에 기계를 물리면 "지금은 이것만 만든다"가 된다. 타이머를 입력에 물리면 순서 반복이 되고,',
     '재고 조건을 물리면 재고가 이끄는 공정이 된다.</p>',
+    '<p><b>단계는 4 또는 8로 고른다.</b> 기동 절차는 네 단계로 잘 안 끝난다 —',
+    '물 채우고 → 보일러 붙이고 → 발전 넣고 → 부하 잇고 → 확인하고… 8단계로 바꾸면',
+    '<code>4→1</code> 자리가 <code>4→5</code>로 바뀌고 뒤에 네 자리가 더 열린다.',
+    '<b>앞의 자리는 그대로다</b> — 이미 그려 둔 회로의 배선이 어긋나지 않게 새 자리를 뒤에 붙였다.',
+    '다시 4단계로 줄이면 없어지는 자리의 배선은 지워지고, 몇 개를 지웠는지 알려 준다.</p>',
     '<p class="dim"><b>평활 필터와 신호 버스는 문장으로도 쓸 수 있다.</b>',
     '읽을 것 옆의 <code>(그대로)</code> 를 <code>초로 눅인 값</code> 으로 바꾸면 그 값이 눅고,',
     '행동에서 <code>다른 제어기에 신호를 보낸다</code> 를 고르면 잰 값이 채널로 나간다.',

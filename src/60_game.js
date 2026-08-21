@@ -18,6 +18,7 @@ var uiTimer = 0, miniTimer = 0;
 function newGame(seed) {
   // 판이 갈리면 파형도 갈린다 — 안 비우면 없어진 제어기의 기록이 남는다.
   scopeWatch(-1);
+  dispClear();
   worldSeed = (seed === undefined || seed === null) ? worldSeed : (seed >>> 0);
   entities = {}; entOrder = []; nextEntId = 1;
   inventory = {}; techDone = {}; currentResearch = null; researchProgress = 0;
@@ -258,6 +259,7 @@ var lastLoadVersion = null, lastLoadWasForeign = false;
 function loadGame(raw) {
   // 판이 갈리면 파형도 갈린다 — 안 비우면 없어진 제어기의 기록이 남는다.
   scopeWatch(-1);
+  dispClear();
   var data;
   try { data = typeof raw === 'string' ? JSON.parse(raw) : JSON.parse(localStorage.getItem('logic-foundry-save')); }
   catch (e) { toast('저장된 게임이 없다', 'bad'); return false; }
@@ -600,6 +602,14 @@ window.__GAME = {
   // fillChest 의 짝. 상자는 600 에서 차고, 차면 인서터가 못 놓고, 그러면 기계가
   // 버퍼에 막혀 멈춘다 — 오래 도는 시험에서는 **계기 자신이 포화**해서 '생산 0' 이라는
   // 거짓 신호를 낸다(실제로 그랬다). 재기 직전에 비워 '물류가 실어 갔다' 를 흉내 낸다.
+  // 기계의 **산출 버퍼**를 비운다. 상자와 같은 이유다 — 버퍼가 차면 기계가 멈추고,
+  // 그러면 오래 도는 시험에서 '생산이 느리다' 는 거짓 신호가 난다(실제로 회로 산출이
+  // 2/s 여야 하는데 1.5/s 로 찍혔다). 인서터가 실어 간 셈 친다.
+  emptyOut: function (id) {
+    var e = entities[id]; if (!e) return -1;
+    for (var k in e.out) delete e.out[k];
+    return 0;
+  },
   emptyChest: function (id) {
     var e = entities[id]; if (!e) return -1;
     for (var k in e.inv) delete e.inv[k];
@@ -692,6 +702,11 @@ window.__GAME = {
   },
   // 배선을 끊는다. 시험이 "끊었다 다시 이었을 때" 를 재려면 필요한데, 화면에는
   // 이미 있는 동작(선을 잡아 떼기)이고 모델 쪽 훅만 없었다.
+  // 배선 목록 — 시험이 '없어진 자리의 배선이 걷혔는가' 를 물을 창구다.
+  gLinks: function (ctrlId) {
+    var e = entities[ctrlId]; if (!e || !e.graph) return [];
+    return e.graph.links.map(function (l) { return { fn: l.fn, fp: l.fp, tn: l.tn, tp: l.tp }; });
+  },
   gUnlink: function (ctrlId, tn, tp) {
     var e = entities[ctrlId]; if (!e || !e.graph) return false;
     graphUnlink(e.graph, tn, tp); return true;
@@ -724,6 +739,8 @@ window.__GAME = {
              name: B.name, desc: B.desc || '', takeable: !!B.takeable };
   },
   recipeIds: function () { return Object.keys(RECIPES); },
+  // 목록에 실제로 찍히는 이름 — 시험이 '구분되는가' 를 물을 창구다.
+  recipeLabel: function (rid) { return RECIPES[rid] ? recipeLabel(rid) : null; },
   recipeInfo: function (rid) {
     var r = RECIPES[rid]; if (!r) return null;
     return { cat: r.cat, time: r.time, inp: JSON.parse(JSON.stringify(r.inp)),
@@ -1286,6 +1303,8 @@ window.__GAME = {
   scopeWatch: function (id) { return scopeWatch(id); },
   scopeWatching: function () { return scopeWatching(); },
   scopeSeries: function (nid, port) { return scopeSeries(nid, port); },
+  // 계기 줄 파형 — 시험이 '담기는가·안 새는가' 를 물을 창구다.
+  dispSeries: function (label) { return dispSeries(label); },
 
   state: function () {
     var counts = {};
