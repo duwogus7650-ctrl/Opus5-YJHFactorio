@@ -134,7 +134,18 @@ canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block;curso
   border-left:3px solid transparent;border-bottom:1px solid rgba(0,0,0,.055)}
 .bitem:hover{background:rgba(255,255,255,.4)}
 .bitem.sel{background:rgba(178,58,16,.13);border-left-color:var(--stop)}
-.bitem.locked{opacity:.36;cursor:not-allowed}
+/* **잠긴 줄은 흐리되, 무엇을 연구해야 하는지는 읽혀야 한다.**
+   예전엔 줄 전체에 opacity:.36 을 걸었는데, opacity 는 자식이 되돌릴 수 없어서
+   그 위에 적은 연구 이름까지 같이 지워졌다 — 실측 대비 1.43:1 로, 정보를 넣은
+   자리에 정보가 안 보이는 상태였다(넣은 의미가 없다).
+   그래서 투명도 대신 **색으로** 흐리게 하고, 연구 이름만 읽히는 색으로 남긴다.
+   흐린 것은 '지금은 못 짓는다' 를 말하고, 또렷한 것은 '이걸 연구하면 된다' 를 말한다. */
+.bitem.locked{cursor:not-allowed}
+.bitem.locked .bn{color:var(--ink-3)}
+.bitem.locked .bkey{opacity:.3}
+/* 색은 재서 고른다 — --steel 은 이 바탕에서 4.3:1 로 AA(4.5) 에 못 미쳤다.
+     짙은 청사진 강철로 내리면 5.7:1 이다. 9.5px 짜리 글자라 여유가 필요하다. */
+.bitem.locked .bc{color:#1d3f63;opacity:1}
 .bitem.poor .bn{color:var(--stop)}
 .bkey{font-family:var(--mono);font-size:9.5px;color:var(--well-ink);background:var(--well);
   width:15px;text-align:center;border-radius:1px;padding:1px 0;flex:none;

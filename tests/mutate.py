@@ -200,6 +200,24 @@ MUTATIONS = [
      b'.panel:not(#top),#rulePane,#toast{word-break:keep-all}',
      ['mobile.koreanBreaksAtSpaces'], 'mobile.js'),
 
+    # 자물쇠만 있고 무엇을 연구해야 하는지 안 말하면, 알아내는 길은 하나씩 눌러 보는 것뿐이다.
+    ('phone: 잠긴 줄이 자물쇠만 보여 준다', '50_ui.js',
+     b"      '<span class=\"bc\">' + (locked ? lockLabel(B.tech) : costStr(B.cost)) + '</span></div>');",
+     b"      '<span class=\"bc\">' + (locked ? '\\uD83D\\uDD12' : costStr(B.cost)) + '</span></div>');",
+     ['mobile.lockedRowsSayWhatUnlocksThem'], 'mobile.js'),
+
+    # 줄 전체를 다시 흐리게 하면 그 위의 연구 이름까지 같이 지워진다(대비 1.43:1).
+    ('phone: 잠긴 줄을 통째로 흐리게 되돌린다', 'shell.html',
+     b'.bitem.locked{cursor:not-allowed}',
+     b'.bitem.locked{opacity:.36;cursor:not-allowed}',
+     ['mobile.lockedRowsSayWhatUnlocksThem'], 'mobile.js'),
+
+    # 엉뚱한 연구를 가리키는 쪽이 자물쇠만 있는 것보다 나쁘다 — 이름을 표와 대조한다.
+    ('phone: 잠긴 줄이 늘 같은 연구를 가리킨다', '50_ui.js',
+     b'  var T = TECHS[techId];',
+     b"  var T = TECHS['logistics'];",
+     ['mobile.lockedRowsSayWhatUnlocksThem'], 'mobile.js'),
+
     # 실제로 있었던 결함: 튜토리얼 손잡이가 인스펙터의 [정지]·[복제]·[철거]를 덮었다.
     ('phone: 시트가 칩 아래로 다시 깔린다', 'shell.html',
      b'    position:fixed;left:0;right:0;bottom:calc(56px + var(--tutor-h, 0px) + var(--chip-h, 0px));top:auto;\n    width:auto;max-width:100%;\n    background:var(--face-lo);',

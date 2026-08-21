@@ -1273,6 +1273,103 @@
         (probeOver || panelOver ? '판 밖으로 밀려남(break-word 가 빠졌다)' : '판 안에 담김'));
       G.ui.closeHelp();
 
+      // ---------- 8.994 잠긴 줄이 무엇을 연구해야 열리는지 말하는가 ----------
+      // 예전엔 자물쇠만 있어서 **눌러 봐야** 알았다. 잠긴 것이 열다섯 줄이면 지도를
+      // 그리는 데 열다섯 번을 눌러야 한다는 뜻이고, 실제로 사용자가 정제소를 눌러 보고
+      // 나서야 '석유 처리가 필요하다' 를 알았다.
+      // **이름을 게임 자신의 표와 대조한다** — 글자가 있다는 것만 보면 아무 이름이나
+      // 적어 놓아도 통과한다(엉뚱한 연구를 가리키는 쪽이 자물쇠만 있는 것보다 나쁘다).
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.powerCheat(true);
+      var bBtn = document.getElementById('btnSheetBuild');
+      var bbr = bBtn.getBoundingClientRect();
+      tap(bBtn, bbr.left + bbr.width / 2, bbr.top + bbr.height / 2);
+      var lkRows = document.querySelectorAll('#buildList .bitem');
+      var lkSeen = 0, lkBad = [], lkWrap = [], openHasLock = [], lkDim = [];
+      // 글자가 실제로 어떤 색으로 보이는지 — **조상의 투명도까지 곱해서** 잰다.
+      // opacity 는 자식이 되돌릴 수 없으므로, 요소의 color 만 보면 거짓말이 된다.
+      function effContrast(el) {
+        function rgbOf(str) {
+          var t = String(str).trim();
+          if (t.charAt(0) === '#') {                 // #rgb / #rrggbb
+            if (t.length === 4) t = '#' + t[1] + t[1] + t[2] + t[2] + t[3] + t[3];
+            return [1, 3, 5].map(function (i) { return parseInt(t.substr(i, 2), 16); });
+          }
+          var m = t.match(/[\d.]+/g); return m ? m.slice(0, 3).map(Number) : null;
+        }
+        var fg = rgbOf(getComputedStyle(el).color);
+        var a = 1, n = el;
+        while (n && n.nodeType === 1) { a *= parseFloat(getComputedStyle(n).opacity || '1'); n = n.parentElement; }
+        var bg = null, m2 = el;
+        while (m2 && !bg) {
+          var st2 = getComputedStyle(m2);
+          var c = st2.backgroundColor;
+          if (c && c.indexOf('rgba(0, 0, 0, 0)') < 0) { bg = rgbOf(c); break; }
+          // **그라디언트는 backgroundColor 로 안 잡힌다.** 넓은 화면에서 판(.panel)은
+          // 위아래 그라데이션이라 여기서 못 읽고 계속 올라가다 문서의 검은 바탕에
+          // 닿았다 — 밝은 판 위의 글자를 검정과 견주어 1.74:1 이라는 거짓 RED 가 났다.
+          // 그럴 때는 그 판이 쓰는 기본 면 색(--face)을 바탕으로 본다.
+          if (st2.backgroundImage && st2.backgroundImage !== 'none') {
+            bg = rgbOf(getComputedStyle(document.documentElement).getPropertyValue('--face'));
+            break;
+          }
+          m2 = m2.parentElement;
+        }
+        if (!fg || !bg) return null;
+        var eff = [0, 1, 2].map(function (i) { return fg[i] * a + bg[i] * (1 - a); });
+        function lum(c) {
+          var q = c.map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+          return 0.2126 * q[0] + 0.7152 * q[1] + 0.0722 * q[2];
+        }
+        var L1 = lum(eff), L2 = lum(bg);
+        return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+      }
+      for (var lr = 0; lr < lkRows.length; lr++) {
+        var bid = lkRows[lr].getAttribute('data-b');
+        var bcEl = lkRows[lr].querySelector('.bc');
+        if (!bcEl) continue;
+        var txt = (bcEl.textContent || '').trim();
+        var info = G.buildingInfo(bid);
+        var needTech = info ? info.tech : null;
+        var isLocked = txt.indexOf('\uD83D\uDD12') >= 0;
+        if (!isLocked) {
+          // **음성 대조군** — 열려 있는 줄에 자물쇠가 붙어 있으면 안 된다.
+          continue;
+        }
+        lkSeen++;
+        var wantName = needTech ? (G.techInfo(needTech) || {}).name : null;
+        if (!wantName || txt.indexOf(wantName) < 0) {
+          lkBad.push(bid + ': "' + txt + '" (기대 "' + wantName + '")');
+        }
+        var rgb = document.createRange(); rgb.selectNodeContents(bcEl);
+        if (rgb.getClientRects().length > 1) lkWrap.push(bid);
+        if (bcEl.scrollWidth > bcEl.clientWidth + 1) lkWrap.push(bid + '(잘림)');
+        // **읽히는지도 잰다.** 잠긴 줄은 흐리게 칠하는데, 그 흐림이 이 글자까지
+        // 지워 버리면 정보를 넣은 자리에 정보가 없는 것이다 — 실제로 줄 전체에
+        // opacity:.36 이 걸려 있어 대비가 1.43:1 이었다(사실상 안 보인다).
+        var cr = effContrast(bcEl);
+        if (cr !== null && cr < 4.5) lkDim.push(bid + ':' + cr.toFixed(2) + ':1');
+      }
+      // 열려 있는 건물에 자물쇠가 붙었는지 따로 본다 — 전부 잠긴 것으로 칠하면
+      // 위 검사는 통과하면서 목록은 쓸모없어진다.
+      var doneList = (G.state().research && G.state().research.done) || [];
+      for (var lo = 0; lo < lkRows.length; lo++) {
+        var oid = lkRows[lo].getAttribute('data-b');
+        var oinfo = G.buildingInfo(oid);
+        var oc = lkRows[lo].querySelector('.bc');
+        if (!oinfo || !oc) continue;
+        var openNow = !oinfo.tech || doneList.indexOf(oinfo.tech) >= 0;
+        if (openNow && (oc.textContent || '').indexOf('\uD83D\uDD12') >= 0) openHasLock.push(oid);
+      }
+      chk('mobile.lockedRowsSayWhatUnlocksThem',
+        lkSeen >= 5 && lkBad.length === 0 && lkWrap.length === 0 &&
+        openHasLock.length === 0 && lkDim.length === 0,
+        '잠긴 줄 ' + lkSeen + '개(5개 이상이어야 · 0개면 아무것도 안 본 것이다) · 연구 이름이 ' +
+        '게임 표와 어긋난 줄 ' + (lkBad.slice(0, 2).join(' | ') || '없음') +
+        ' · 접히거나 잘린 줄 ' + (lkWrap.join(',') || '없음') +
+        ' · 열려 있는데 자물쇠가 붙은 줄 ' + (openHasLock.join(',') || '없음') +
+        ' · 대비 4.5:1 에 못 미쳐 안 읽히는 줄 ' + (lkDim.slice(0, 2).join(',') || '없음'));
+      tap(bBtn, bbr.left + bbr.width / 2, bbr.top + bbr.height / 2);   // 시트를 닫는다
+
       // ---------- 8.995 칩이 시트의 버튼을 덮는가 ---------------------------
       // 화면 아래에 떠 있는 칩(도구 취소 · 튜토리얼 다시 열기)은 시트보다 위에 앉는다.
       // 도구 칩만 제 높이를 CSS 로 넘기고 튜토리얼 손잡이는 안 넘겨서, 인스펙터를 열면

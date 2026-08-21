@@ -756,6 +756,24 @@ function costStr(cost) {
   for (var k in cost) s.push(cost[k] + ITEMS[k].name.slice(0, 2));
   return s.join(' ');
 }
+// 잠긴 줄이 **무엇을 연구해야 열리는지** 스스로 말한다. 예전엔 자물쇠만 있어서
+// 눌러 봐야 알았는데, 목록을 훑는 동안에는 그 한 번의 탭이 없다 — 사용자가 실제로
+// 정제소를 눌러 보고 나서야 '석유 처리가 필요하다' 를 알았다. 잠긴 것이 아홉 줄이면
+// 아홉 번 눌러야 지도가 그려진다는 뜻이다.
+//
+// **그 연구 자체가 막혀 있으면 그것도 말한다.** '석유 처리' 만 적어 두면 연구 판에
+// 가서 다시 막히고, 그러면 한 칸 옮겼을 뿐 같은 자리다. 아직 못 하는 연구라면
+// 지금 눌러야 할 앞의 연구를 함께 적는다.
+function lockLabel(techId) {
+  var T = TECHS[techId];
+  if (!T) return '🔒';
+  var blocked = null;
+  for (var i = 0; i < (T.needs || []).length; i++) {
+    if (!techDone[T.needs[i]]) { blocked = TECHS[T.needs[i]]; break; }
+  }
+  return '🔒 ' + T.name + (blocked ? ' ← ' + blocked.name : '');
+}
+
 function renderBuildList() {
   var host = document.getElementById('buildList');
   if (!host) return;
@@ -770,7 +788,7 @@ function renderBuildList() {
       (poor ? ' poor' : '') + '" data-b="' + id + '" title="' + B.desc + '">' +
       '<span class="bkey">' + key + '</span>' +
       '<span class="bn">' + B.name + '</span>' +
-      '<span class="bc">' + (locked ? '🔒' : costStr(B.cost)) + '</span></div>');
+      '<span class="bc">' + (locked ? lockLabel(B.tech) : costStr(B.cost)) + '</span></div>');
   }
   host.innerHTML = html.join('');
   var items = host.querySelectorAll('.bitem');
