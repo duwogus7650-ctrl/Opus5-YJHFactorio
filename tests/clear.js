@@ -1737,12 +1737,36 @@
     }
     if (oilParts.pipeB && !oilParts.chem && afford('chemplant')) {
       oilParts.chem = G.build('chemplant', o.x + 8, o.y, 0);
-      if (oilParts.chem) markBuilt('chemplant');
+      if (oilParts.chem) { markBuilt('chemplant'); G.setRecipe(oilParts.chem, 'plastic'); }
     }
-    if (!oilParts.pj || !oilParts.ref || !oilParts.chem) {
+    // **분해까지 지어야 사슬이 끝까지 산다.** 정제소는 중유·경유·가스를 한 덩어리로 내는데,
+    // 중유와 경유는 그대로는 쓸 데가 없어 쌓이고, 한 출구만 차도 정제소가 통째로 선다.
+    // 여기서 안 지으면 이 주행은 **언젠가 막힐 공장**을 완주라고 부르게 된다.
+    // 순서는 아래부터다 — 경유를 먼저 뚫어야 중유 분해가 내놓을 자리가 생긴다.
+    if (oilParts.chem && !oilParts.pipeC) {
+      var n3 = 0;
+      for (var p3 = 0; p3 < 3; p3++) if (G.build('pipe', o.x + 11, o.y + p3, 0)) n3++;
+      if (n3) { markBuilt('pipe'); oilParts.pipeC = 1; }
+    }
+    if (oilParts.pipeC && !oilParts.crackL && afford('chemplant')) {
+      oilParts.crackL = G.build('chemplant', o.x + 12, o.y, 0);
+      if (oilParts.crackL) { markBuilt('chemplant'); G.setRecipe(oilParts.crackL, 'crack-light'); }
+    }
+    if (oilParts.crackL && !oilParts.pipeD) {
+      var n4 = 0;
+      for (var p4 = 0; p4 < 3; p4++) if (G.build('pipe', o.x + 15, o.y + p4, 0)) n4++;
+      if (n4) { markBuilt('pipe'); oilParts.pipeD = 1; }
+    }
+    if (oilParts.pipeD && !oilParts.crackH && afford('chemplant')) {
+      oilParts.crackH = G.build('chemplant', o.x + 16, o.y, 0);
+      if (oilParts.crackH) { markBuilt('chemplant'); G.setRecipe(oilParts.crackH, 'crack-heavy'); }
+    }
+    if (!oilParts.pj || !oilParts.ref || !oilParts.chem || !oilParts.crackL || !oilParts.crackH) {
       return oilSay('부품 대기 — 펌프잭 ' + (oilParts.pj ? 'O' : 'X') +
                     ' 정제소 ' + (oilParts.ref ? 'O' : 'X') +
                     ' 화학공장 ' + (oilParts.chem ? 'O' : 'X') +
+                    ' 경유분해 ' + (oilParts.crackL ? 'O' : 'X') +
+                    ' 중유분해 ' + (oilParts.crackH ? 'O' : 'X') +
                     ' · 강철 ' + (invNow()['steel'] || 0) + ' 회로 ' + (invNow()['circuit'] || 0) +
                     ' 톱니 ' + (invNow()['gear'] || 0));
     }
@@ -1970,6 +1994,7 @@
   // 증기 발전소와 노선이 **실제로 돌았는가** — 배치 사실과 따로 잰다
   var steamPeak = 0, trainTravel = 0, trainLastX = null, trainMoved = false;
   var plasticMade = 0;
+  var crackLRan = false, crackHRan = false;
   // **궤적 지문 — 사이클마다 찍는다.** 처음엔 배치(pump)가 끝날 때 찍었는데,
   // 그러면 배치 크기가 찍는 시각을 바꾼다(12면 t=72, 4면 t=64에 t=60 자리를 채운다).
   // 그 상태로 배치 12 와 4 를 비교했더니 t=60 부터 갈리는 것처럼 보였다 — 시뮬이
@@ -2019,6 +2044,9 @@
         var pinv = (st.inventory['plastic'] || 0);
         if (pinv > plasticMade) plasticMade = pinv;
       }
+      // 분해가 **실제로 돈 적이 있는가.** 지어 놓고 서 있기만 하면 사슬은 여전히 막힌다.
+      if (oilParts.crackL && G.ent(oilParts.crackL) && G.ent(oilParts.crackL).working) crackLRan = true;
+      if (oilParts.crackH && G.ent(oilParts.crackH) && G.ent(oilParts.crackH).working) crackHRan = true;
       if (trainId) {
         var tl = G.trainList();
         for (var ti = 0; ti < tl.length; ti++) {
@@ -2283,6 +2311,44 @@
     chk('clear.stillDrewFrames', drewN >= 1,
       '이 주행에서 실제로 그린 프레임 ' + drewN + '장 (0 이면 솎기가 지나쳐 화면이 ' +
       '통째로 멈춘 것이다 · 렌더러의 진짜 검사는 driver/uismoke/mobile 이 한다)');
+    // **한 번 나왔다는 것과 아직 돌고 있다는 것은 다르다.** 정제소가 셋으로 쪼개진 뒤로는
+    // 중유·경유가 쌓여 사슬이 서는데, 그 전에 나온 플라스틱 몇 개로 이 검사는 통과한다 —
+    // 그러면 40분 주행이 **막혀 죽은 공장**을 모델로 삼고도 GREEN 이 된다.
+    // 주행이 끝난 시점에 정제소가 실제로 돌고 있는지, 어느 출구가 막혔는지 함께 본다.
+    var oilLive = null;
+    if (oilParts.pj) {
+      var of2 = G.fluid(oilParts.pj);
+      var refE = oilParts.ref ? G.ent(oilParts.ref) : null;
+      oilLive = { heavy: Math.round(of2.heavy), light: Math.round(of2.light),
+                  gas: Math.round(of2.gas), cap: of2.cap,
+                  working: refE ? refE.working : null };
+    }
+    var jammed = !!oilLive && oilLive.cap > 0 &&
+                 (oilLive.heavy >= oilLive.cap - 1 || oilLive.light >= oilLive.cap - 1);
+    // **돌았다는 것만으로는 부족하다.** 레시피를 안 걸면 기본값(플라스틱)으로 도는데,
+    // 그것도 '가동 중' 이라 이 검사를 통과한다 — 정작 중유·경유는 그대로 쌓인다.
+    // 무엇을 하고 있었는지까지 본다.
+    //
+    // 이 게이트는 **손으로 두 번 깨뜨려 확인했다**(2026-08-22). 이 파일은 돌연변이
+    // 하네스의 복구 스냅샷(src/ 만 뜬다) 밖이라 자동 돌연변이를 걸지 않는다.
+    //   · 분해 화학공장을 안 지음        → 경유 분해 X · 중유 분해 X       → RED
+    //   · 지었지만 레시피를 안 걸어 둠   → 가동 O 인데 레시피 null        → RED
+    // 두 번째가 이 검사를 조인 이유다 — '가동 중' 만 봤다면 통과했을 것이다.
+    var crackLRec = oilParts.crackL && G.ent(oilParts.crackL) ? G.ent(oilParts.crackL).recipe : null;
+    var crackHRec = oilParts.crackH && G.ent(oilParts.crackH) ? G.ent(oilParts.crackH).recipe : null;
+    chk('clear.crackingRanInTheFullPlay',
+      crackLRan && crackHRan && crackLRec === 'crack-light' && crackHRec === 'crack-heavy',
+      '주행 중 분해가 실제로 돈 적 — 경유 분해 ' + (crackLRan ? 'O' : 'X') +
+      ' · 중유 분해 ' + (crackHRan ? 'O' : 'X') + ' · 걸린 레시피 ' + crackLRec + ' / ' + crackHRec +
+      ' (지어만 놓고 서 있거나, 기본 레시피로 돌면 중유·경유는 그대로 쌓인다)');
+    chk('clear.oilChainStillRunningAtTheEnd',
+      !!oilLive && oilLive.working === true && !jammed,
+      oilLive
+        ? ('주행 끝 — 정제소 가동=' + oilLive.working + ' · 중유 ' + oilLive.heavy + ' · 경유 ' +
+           oilLive.light + ' · 가스 ' + oilLive.gas + ' / ' + oilLive.cap +
+           (jammed ? ' · **한 출구가 가득 차 사슬이 서 있다**' : '') +
+           ' (한 번 나왔다는 것과 아직 돌고 있다는 것은 다르다)')
+        : '석유 설비 미건설: ' + oilWhy);
     chk('clear.oilChainRan', plasticMade > 0,
       oilParts.chem
         ? ('플라스틱 최대 ' + plasticMade + '개 (0 이면 세 대가 서 있기만 한 것 — ' +
