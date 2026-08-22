@@ -544,6 +544,25 @@
         '부등호를 < 로 뒤집자 → "' + fixTxt + '" · 실제 기계 가동=' + G.ent(mAsm).enabled);
       G.ui.closeLogic();
 
+      // --- 18.87 넓은 화면에서는 키보드가 먼저 -------------------------------
+      // 폰을 앞세우려고 데스크톱을 뒤집으면 안 된다 — 같은 판을 PC 로도 연다.
+      // 그리고 접어 둔 조각을 **지우지 않았는지**도 여기서 본다.
+      G.ui.openHelp();
+      var dkKids = document.getElementById('helpBody').children, dkH = null;
+      for (var dk = 0; dk < dkKids.length; dk++) {
+        if (dkKids[dk].tagName === 'H4' && dkKids[dk].textContent.indexOf('조작') >= 0) { dkH = dk; break; }
+      }
+      var dkFirst = (dkH !== null) ? dkKids[dkH + 1] : null;
+      var dkTxt = dkFirst ? dkFirst.textContent : '';
+      var dkFold = document.querySelector('#helpBody details.kbdfold');
+      var dkTouch = document.getElementById('helpBody').textContent.indexOf('두 손가락으로 벌리면') >= 0;
+      chk('ui.helpLeadsWithKeyboardOnDesktop',
+        !!dkFirst && dkTxt.indexOf('WASD') >= 0 && !dkFold && dkTouch,
+        '넓은 화면 조작 절 첫 블록에 WASD 가 있나=' + (dkTxt.indexOf('WASD') >= 0) +
+        ' · 접는 상자가 있나=' + !!dkFold + '(없어야) · 손가락 설명도 남아 있나=' + dkTouch +
+        ' (한쪽을 앞세우면서 다른 쪽을 지우면 그 화면에서는 설명이 사라진 것이다)');
+      G.ui.closeHelp();
+
       // --- 18.88 계기 줄 파형 -----------------------------------------------
       // 캔버스가 있다는 것은 보증이 아니다. **그려진 픽셀**로 보고, 변하는 값과
       // 상수를 나란히 놓아 두 그림이 다른지까지 본다.

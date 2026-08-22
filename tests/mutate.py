@@ -262,6 +262,25 @@ MUTATIONS = [
      b'    if (false) { ctx.moveTo(x - 1, yTop); ctx.lineTo(x + 1, yTop); }',
      ['ui.sparklineDrawsTheWave'], 'uismoke.js'),
 
+    # 접기 표시가 사라지면 그냥 흐린 글자라, 눌러서 펼 수 있다는 것을 아무도 모른다.
+    ('help: 접기 표시를 안 그린다', 'shell.html',
+     ("#help .kbdfold summary::before{content:'▸';display:inline-block;").encode('utf-8'),
+     ("#help .kbdfold summary::before{content:'';display:inline-block;").encode('utf-8'),
+     ['mobile.helpLeadsWithTouch'], 'mobile.js'),
+
+    # --- 도움말 순서 ------------------------------------------------------
+    # 좁은 화면에서도 키보드부터 읽히면, 폰 사용자는 자기가 할 수 없는 것만 다섯 줄을 읽는다.
+    ('help: 좁은 화면에서도 키보드 조작이 먼저 나온다', '50_ui.js',
+     b"    narrowUI() ? (TOUCH_HELP + '<details class=\"kbdfold\"><summary>",
+     b"    false ? (TOUCH_HELP + '<details class=\"kbdfold\"><summary>",
+     ['mobile.helpLeadsWithTouch'], 'mobile.js'),
+
+    # 넓은 화면까지 손가락 우선으로 뒤집으면 PC 에서 읽던 순서가 깨진다.
+    ('help: 넓은 화면도 손가락 조작을 앞세운다', '50_ui.js',
+     b'  return document.documentElement.clientWidth <= 720;',
+     b'  return true;',
+     ['ui.helpLeadsWithKeyboardOnDesktop'], 'uismoke.js'),
+
     # --- 계기 줄 파형 -----------------------------------------------------
     # 굵게 담으면 오르내림이 사라진다 — 계기 옆 파형의 존재 이유가 그 오르내림이다.
     ('hud: 계기 파형을 여덟 틱에 한 번만 담는다', '35_logic.js',

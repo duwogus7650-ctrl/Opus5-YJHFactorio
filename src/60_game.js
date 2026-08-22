@@ -1227,6 +1227,7 @@ window.__GAME = {
     // 안내(토스트)는 화면 한복판을 차지한다 — 쌓임·합치기를 시험이 직접 재게 연다
     toast: function (msg, kind) { toast(msg, kind); return true; },
     openHelp: function () {
+      fillHelpIfLayoutChanged();       // 폭이 바뀌었으면 다시 짠다
       document.getElementById('help').style.display = 'block';
       refreshOfflineStatus();          // 사람이 여는 길과 같은 것을 보여준다
     },

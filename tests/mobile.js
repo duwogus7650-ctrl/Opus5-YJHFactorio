@@ -1273,6 +1273,43 @@
         (probeOver || panelOver ? '판 밖으로 밀려남(break-word 가 빠졌다)' : '판 안에 담김'));
       G.ui.closeHelp();
 
+      // ---------- 8.993 도움말이 폰에게 먼저 말하는가 ------------------------
+      // 예전에는 조작 절이 WASD·휠·우클릭·R·Q·F2 다섯 줄로 시작하고, **여섯 번째 줄**
+      // 에서야 '폰에는 키보드가 없다' 가 나왔다. 폰으로 연 사람은 자기가 할 수 없는 것만
+      // 다섯 줄을 읽고서야 자기 줄에 닿는다 — 그 다섯 줄은 폰에 아예 없는 조작이다.
+      G.ui.openHelp();
+      var opH = null, kids = document.getElementById('helpBody').children;
+      for (var oh = 0; oh < kids.length; oh++) {
+        if (kids[oh].tagName === 'H4' && kids[oh].textContent.indexOf('조작') >= 0) { opH = oh; break; }
+      }
+      var firstBlock = (opH !== null) ? kids[opH + 1] : null;
+      var firstLi = firstBlock ? firstBlock.querySelector('li') : null;
+      var firstTxt = firstLi ? firstLi.textContent : '';
+      var fold = document.querySelector('#helpBody details.kbdfold');
+      var kbdLis = fold ? fold.querySelectorAll('li').length : 0;
+      // 키보드 조각이 첫 블록에 섞여 있으면 안 된다 — 폰에 없는 조작이다.
+      var kbdInFirst = firstBlock ? (firstBlock.textContent.indexOf('WASD') >= 0 ||
+                                     firstBlock.textContent.indexOf('우클릭') >= 0) : true;
+      var touchFirst = firstTxt.indexOf('손가락') >= 0 || firstTxt.indexOf('누르면') >= 0;
+      // **눌러서 펼 수 있다는 것이 보여야 한다.** summary 에 display:flex 를 주면 브라우저가
+      // 기본으로 그리던 삼각형이 사라진다 — 그러면 그냥 흐린 글자라 아무도 안 누른다.
+      var foldSum = fold ? fold.querySelector('summary') : null;
+      var mark = foldSum ? getComputedStyle(foldSum, '::before').content : 'none';
+      // **'뭔가 있다' 로는 부족하다.** CSS 이스케이프가 잘못 파싱돼 쓰레기 글자가 찍혔는데도
+      // 비어 있지 않다는 이유로 통과했다 — 기대하는 글자와 같은지 본다.
+      var mk = String(mark).replace(/["']/g, '');
+      var hasMark = (mk === '▸');
+      chk('mobile.helpLeadsWithTouch',
+        !NARROW || (!!firstLi && touchFirst && !kbdInFirst &&
+                    !!fold && fold.open === false && kbdLis >= 5 && hasMark),
+        (NARROW
+          ? ('조작 절 첫 줄 "' + firstTxt.slice(0, 34) + '…" · 손가락 이야기인가=' + touchFirst +
+             ' · 첫 블록에 키보드가 섞였나=' + kbdInFirst + ' · 접어 둔 키보드 조작 ' + kbdLis +
+             '줄(5줄 이상이어야 · 0이면 지워 버린 것이다) · 접혀 있나=' + (fold ? !fold.open : '없음') +
+             ' · 펼 수 있다는 표시 ' + (hasMark ? mark : '없음(그냥 흐린 글자라 아무도 안 누른다)'))
+          : '(넓은 레이아웃 — 키보드가 먼저인 것이 맞다)'));
+      G.ui.closeHelp();
+
       // ---------- 8.994 잠긴 줄이 무엇을 연구해야 열리는지 말하는가 ----------
       // 예전엔 자물쇠만 있어서 **눌러 봐야** 알았다. 잠긴 것이 열다섯 줄이면 지도를
       // 그리는 데 열다섯 번을 눌러야 한다는 뜻이고, 실제로 사용자가 정제소를 눌러 보고
@@ -1609,9 +1646,16 @@
       // **한 번 재고 판정하지 않는다.** 같은 판이 5.3~7.6 ms/Mpx 로 흔들렸다 —
       // 다른 프로그램·다른 시험이 같은 기계를 쓰는 동안 찍힌 값이 섞인다. 세 번 재고
       // 가운데 값으로 판정하고, 세 값을 전부 적어 흔들림이 보이게 둔다.
-      var runs = [G.frameCost(30), G.frameCost(30), G.frameCost(30)];
+      // **가운데 값이 아니라 가장 빠른 값으로 판정한다.** 소음은 늘 한 방향으로만 붙는다 —
+      // 다른 프로그램이 CPU 를 쓰면 느려지지, 빨라지는 일은 없다. 그래서 여러 번 재고
+      // **가장 빠른 것**이 이 코드의 진짜 비용에 가장 가깝다.
+      // 가운데 값으로 판정하다가 태블릿에서 6.42 / 6.92 / 7.16 이 나와 문턱(7)을 사이에 두고
+      // 판정이 뒤집혔다 — 같은 코드가 돌 때마다 GREEN 도 RED 도 되는 게이트는, 진짜 RED 를
+      // 가리는 쪽으로만 작동한다(문턱은 그대로 두었다. 흔들림을 없앤 것이지 낮춘 것이 아니다).
+      var runs = [G.frameCost(30), G.frameCost(30), G.frameCost(30),
+                  G.frameCost(30), G.frameCost(30)];
       var sorted = runs.slice().sort(function (a2, b2) { return a2.totalMs - b2.totalMs; });
-      var cost = sorted[1];
+      var cost = sorted[0];
       // **절대 시간으로 문턱을 잡으면 안 된다.** 처음엔 10ms 로 뒀다가 태블릿에서
       // 빨개졌다 — 화면이 넓으면 그릴 픽셀이 많아 당연히 오래 걸린다(폰 6.8ms /
       // 1.32Mpx, 태블릿 17.0ms / 3.15Mpx). 둘 다 **5.2~5.4 ms/Mpx** 로 같다.
@@ -1619,6 +1663,7 @@
       var cvPerf = document.getElementById('view');
       var mpx = (cvPerf.width * cvPerf.height) / 1e6;
       var perMpx = cost.totalMs / mpx;
+      // 다섯 값을 다 적는다 — 흔들림의 폭이 보여야 '문턱에 붙어 있다' 를 알아챈다.
       var allPer = runs.map(function (r2) { return (r2.totalMs / mpx).toFixed(2); }).join(' / ');
       chk('mobile.frameCostFitsBudget',
         perfN > 250 && onBelt > 100 && mpx > 0.5 && perMpx <= 7,
@@ -1628,7 +1673,7 @@
         cost.totalMs.toFixed(2) + 'ms → ' + perMpx.toFixed(2) +
         ' ms/Mpx (문턱 7 · 60fps 예산 16.7ms 는 이 화면에서 ' +
         (16.7 / mpx).toFixed(1) + ' ms/Mpx 에 해당)' +
-        ' · 3회 측정 ' + allPer + ' ms/Mpx (가운데 값으로 판정)');
+        ' · 5회 측정 ' + allPer + ' ms/Mpx (가장 빠른 값으로 판정 — 소음은 느려지는 쪽으로만 붙는다)');
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', VW < 0, '뷰포트 폭이 음수일 리 없다', true);

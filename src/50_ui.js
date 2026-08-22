@@ -1370,30 +1370,69 @@ function closeSheets() {
 function toggleHelp() {
   var t = document.getElementById('help');
   var opening = t.style.display !== 'block';
-  if (opening) closeSheets();
+  if (opening) { fillHelpIfLayoutChanged(); closeSheets(); }   // 폭이 바뀌었으면 다시 짠다
   t.style.display = opening ? 'block' : 'none';
   // 열 때마다 새로 묻는다 — 저장은 백그라운드에서 끝나므로 한 번 그려 둔 값은 곧 낡는다
   if (opening) refreshOfflineStatus();
 }
 function closeHelp() { document.getElementById('help').style.display = 'none'; }
 
+// 조작 설명의 두 갈래. **문장은 한 번만 적는다** — 두 벌로 적어 두면 한쪽만 고쳐진다.
+var KBD_HELP = [
+  '<li><code>WASD</code> / 방향키 — 이동 &nbsp; <code>휠</code> — 확대 &nbsp; <code>우클릭 드래그</code> — 화면 끌기</li>',
+  '<li><code>좌클릭</code> — 배치 / 선택 &nbsp; <code>드래그</code> — 벨트 이어 깔기(방향 자동)</li>',
+  '<li><code>우클릭</code> — 철거(자원 전액 환급) &nbsp; <code>R</code> — 회전 &nbsp; <code>Q</code> — 커서 아래 건물 복제</li>',
+  '<li><code>1~0</code> — 건설 단축키 &nbsp; <code>T</code> — 연구 &nbsp; <code>P</code> — 오염 표시 &nbsp; <code>H</code> — 이 창</li>',
+  '<li><code>F2</code> 저장 &nbsp; <code>F3</code> 불러오기 (창고 패널의 버튼과 같다). 저장 칸은 하나다.</li>',
+  '<li><b>제어기를 좌클릭하면 노드 편집기가 열린다.</b></li>'
+].join(' ');
+
+var TOUCH_HELP = [
+  '<ul>',
+  '<li><b>지도를 손가락으로 끌어</b> 옮기고, <b>두 손가락으로 벌리면</b> 확대된다.</li>',
+  '<li><b>[건설]</b>에서 고른 뒤 지도를 누르면 지어진다. 벨트는 <b>누른 채 끌면</b> 이어 깔린다.</li>',
+  '<li><b>건물을 누르면 창이 뜬다</b> — 거기에 <b>[정지]·[복제]·[철거]</b>가 있다.</li>',
+  '<li>아래 바에 <b>[회전]·[철거]·[청사진]·[연구]·[도움말]</b>, <b>[자재]</b> 시트 맨 윗줄에',
+  '<b>저장·불러오기·오염 보기</b>가 있다.</li>',
+  '<li>도구를 든 채로는 화면 아래 <b>취소 칩</b>을 눌러 그만둔다 — 폰에는 ESC 가 없다.</li>',
+  '<li><b>제어기를 누르면 노드 편집기가 열린다.</b> 이 게임의 본체다.</li>',
+  '</ul>'
+].join(' ');
+
+// 화면이 좁거나 손가락으로 쓰는 판인가. CSS 의 두 기준(max-width 720 · pointer coarse)과
+// **같은 기준**이어야 한다 — 어긋나면 시트로 접힌 화면에 키보드 설명이 먼저 나온다.
+function narrowUI() {
+  try {
+    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
+  } catch (e) { void e; }
+  return document.documentElement.clientWidth <= 720;
+}
+
+// 마지막으로 도움말을 짤 때의 배치. **열 때마다 통째로 다시 짓지 않는다** —
+// 다시 지으면 그 안의 오프라인 상태 문구가 '확인 중…' 으로 되돌아가고, 그 값은
+// 비동기로 채워지므로 곧바로 읽으면 옛 글자를 보게 된다(게이트가 잡았다).
+// 배치가 실제로 바뀌었을 때만 다시 짠다.
+var lastHelpNarrow = null;
+function fillHelpIfLayoutChanged() {
+  if (lastHelpNarrow !== narrowUI()) fillHelp();
+}
+
 function fillHelp() {
+  lastHelpNarrow = narrowUI();
   document.getElementById('helpBody').innerHTML = [
     '<p class="dim" style="font-size:11px;margin:0 0 8px">빌드 <b id="buildStamp">' + BUILD_ID + '</b> · v' + VERSION +
     ' — 폰이 예전 사본을 열고 있는지 여기서 갈린다.<br>오프라인 준비: <b id="swStat">확인 중…</b></p>',
     '<p>여기서 당신은 공장을 <b>짓는 사람</b>이 아니라 <b>공장의 제어계를 설계하는 사람</b>이다.',
     '벨트와 조립기는 다른 게임에도 있다. 이 게임에만 있는 것은 <b>제어기</b>다 —',
     '노드를 끌어다 배선해서 공장이 스스로 판단하게 만든다. 정답 배선은 없다.</p>',
-    '<h4>조작</h4><ul>',
-    '<li><code>WASD</code> / 방향키 — 이동 &nbsp; <code>휠</code> — 확대 &nbsp; <code>우클릭 드래그</code> — 화면 끌기</li>',
-    '<li><code>좌클릭</code> — 배치 / 선택 &nbsp; <code>드래그</code> — 벨트 이어 깔기(방향 자동)</li>',
-    '<li><code>우클릭</code> — 철거(자원 전액 환급) &nbsp; <code>R</code> — 회전 &nbsp; <code>Q</code> — 커서 아래 건물 복제</li>',
-    '<li><code>1~0</code> — 건설 단축키 &nbsp; <code>T</code> — 연구 &nbsp; <code>P</code> — 오염 표시 &nbsp; <code>H</code> — 이 창</li>',
-    '<li><code>F2</code> 저장 &nbsp; <code>F3</code> 불러오기 (창고 패널의 버튼과 같다). 저장 칸은 하나다.</li>',
-    '<li><b>폰에는 키보드가 없다.</b> [자재] 시트 맨 윗줄에 <b>저장·불러오기·오염 보기</b>가 있고,',
-    '건물을 눌러 뜬 창의 <b>[복제]</b> 가 <code>Q</code>(같은 건물을 손에 들기)다.</li>',
-    '<li><b>제어기를 좌클릭하면 노드 편집기가 열린다.</b></li>',
-    '</ul>',
+    '<h4>조작</h4>',
+    // **폰으로 연 사람에게 없는 조작을 먼저 읽히지 않는다.** 예전에는 WASD·휠·우클릭·
+    // R·Q·F2 다섯 줄을 지난 뒤에야 '폰에는 키보드가 없다' 가 나왔다 — 폰 사용자는
+    // 자기에게 해당하는 줄에 닿기까지 자기가 할 수 없는 것만 다섯 줄을 읽는다.
+    // 화면이 좁으면 손가락 조작을 앞에 놓고 키보드 쪽은 접어 둔다. 지우지는 않는다 —
+    // 같은 판을 PC 에서도 열고, 접힌 것은 눌러서 펼 수 있다.
+    narrowUI() ? (TOUCH_HELP + '<details class="kbdfold"><summary>키보드·마우스 조작 (PC에서)</summary><ul>' + KBD_HELP + '</ul></details>')
+              : ('<ul>' + KBD_HELP + '</ul>' + TOUCH_HELP),
     '<h4>10분 안에 돌아가는 공장 만들기</h4><ul>',
     '<li>① <b>발전기</b>를 놓고 <b>전주</b>로 잇는다. 전주 5×5 안에 든 기계만 전기를 받는다.</li>',
     '<li>② <b>채광기</b>를 석탄 위에 놓고 벨트로 발전기까지 잇는다. 발전기에 넣는 건 <b>인서터</b>다.</li>',
