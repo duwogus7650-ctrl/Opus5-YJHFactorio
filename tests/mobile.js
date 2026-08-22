@@ -1679,7 +1679,9 @@
         cx.getImageData(0, 0, 1, 1);          // 실제로 그려질 때까지 기다린다
         return performance.now() - t0;
       }
-      var refMs = Math.min(refDraw(), refDraw());
+      // 기준값도 소음을 타므로 여러 번 재고 가장 빠른 것을 쓴다 — 두 번으로는
+      // 한가한 판에서도 23.8ms 가 찍혀 '바쁜 것' 과 구분이 안 됐다.
+      var refMs = Math.min(refDraw(), refDraw(), refDraw());
       var sorted = runs.slice().sort(function (a2, b2) { return a2.totalMs - b2.totalMs; });
       var cost = sorted[0];
       // **절대 시간으로 문턱을 잡으면 안 된다.** 처음엔 10ms 로 뒀다가 태블릿에서
@@ -1701,9 +1703,11 @@
         (16.7 / mpx).toFixed(1) + ' ms/Mpx 에 해당)' +
         ' · 5회 측정 ' + allPer + ' ms/Mpx (가장 빠른 값으로 판정 — 소음은 느려지는 쪽으로만 붙는다)' +
         ' · 이 기계의 고정 그리기 ' + refMs.toFixed(1) + 'ms' +
-        ' (판정에는 안 쓴다 · 렌더와 **같은 자원**을 재는 값이라, 이것이 크면 렌더가 ' +
-        '느려진 것이 아니라 이 PC 가 지금 화면을 나눠 쓰고 있는 것이다. ' +
-        '기준값 실측: 게임이 돌던 중 21~24ms — 한가한 판에서의 값은 아직 안 재 봤다)');
+        ' (판정에는 안 쓴다 · 렌더와 **같은 자원**을 재는 값이다. 이 PC 실측: ' +
+        '한가할 때 16.6~20.2ms · 게임이 돌 때 21~24ms — **구간이 겹치므로 이 값 하나로는 ' +
+        '판정하지 못한다.** 쓰는 법은 렌더 값과 함께 보는 것이다: 둘이 같이 오르면 이 PC 가 ' +
+        '화면을 나눠 쓰는 것이고, 렌더만 오르면 코드가 느려진 것이다. ' +
+        '실제로 게임을 끄자 렌더 7.87 → 5.25, 그리기 21.4 → 20.2 로 같이 내려왔다)');
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', VW < 0, '뷰포트 폭이 음수일 리 없다', true);
