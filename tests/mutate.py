@@ -268,6 +268,25 @@ MUTATIONS = [
      ("#help .kbdfold summary::before{content:'';display:inline-block;").encode('utf-8'),
      ['mobile.helpLeadsWithTouch'], 'mobile.js'),
 
+    # --- 문장으로 읽는 석유 --------------------------------------------------
+    # 컴파일러가 어느 기름인지 안 넘기면, 무엇을 골라도 늘 같은 것을 읽는다.
+    ('rule: 문장이 고른 기름을 회로에 안 넘긴다', '37_rules.js',
+     ("  if (s.needs.indexOf('oil') >= 0) src.cfg.oil = w.oil || '중유';").encode('utf-8'),
+     b"  if (s.needs.indexOf('oil') >= 0) src.cfg.oil = null;",
+     ['rule.oilSentenceMovesTheWorld'], 'driver.js'),
+
+    # 주어가 '석유 잔량' 으로만 읽히면 무엇을 보는 문장인지 알 수 없다.
+    ('rule: 되읽기가 어느 기름인지 안 말한다', '37_rules.js',
+     ("    subj = entName(w.ent) + ' 의 ' + (w.oil || '중유') + (s.unit === '%' ? ' 비율' : '');").encode('utf-8'),
+     b"    subj = subj;",
+     ['rule.oilIsReadableAsASentence'], 'driver.js'),
+
+    # 화면에 고를 자리가 없으면 표에만 있는 기능이다.
+    ('rule: 문장 화면에 기름 고르개가 없다', '57_ruleui.js',
+     b"      h.push(selHtml('', 'when.oil', r.id,",
+     b"      if (false) h.push(selHtml('', 'when.oil', r.id,",
+     ['ui.sentenceCanPickWhichOil'], 'uismoke.js'),
+
     # --- 도움말 순서 ------------------------------------------------------
     # 좁은 화면에서도 키보드부터 읽히면, 폰 사용자는 자기가 할 수 없는 것만 다섯 줄을 읽는다.
     ('help: 좁은 화면에서도 키보드 조작이 먼저 나온다', '50_ui.js',

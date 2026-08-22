@@ -544,6 +544,31 @@
         '부등호를 < 로 뒤집자 → "' + fixTxt + '" · 실제 기계 가동=' + G.ent(mAsm).enabled);
       G.ui.closeLogic();
 
+      // --- 18.86 문장 화면에서 기름을 고를 수 있는가 -------------------------
+      // 표에만 있고 **화면에 고를 자리가 없으면** 그 기능은 없는 것이다 — 이 레포에서
+      // 이미 두 번 그랬다('숫자를 띄운다' 가 참/거짓을 띄웠고, 계산 한 단은 고를 자리가
+      // 아예 없었다). 목록에 있는지가 아니라 **드롭다운이 실제로 떠 있는지** 본다.
+      G.reset(424242); G.clearEntities(); G.ui.closeHelp(); G.powerCheat(true);
+      G.giveAll(9999);
+      G.research('steel'); G.research('logistics'); G.research('logic-mem'); G.research('oil');
+      var roC = G.place('controller', 60, 60, 0);
+      var roId = G.ruleAdd(roC, { name: '기름', when: { src: 'oilPct', oil: '경유', cmp: '>', value: 5 },
+        then: { act: 'lamp', text: '기름많음' } });
+      G.ui.openLogic(roC); G.ui.showRules(true);
+      var oilSel = document.querySelector('#rulePane select[data-k="when.oil"]');
+      var oilOpts = oilSel ? [].map.call(oilSel.options, function (o) { return o.value; }) : [];
+      // 고른 값이 실제로 문장에 반영되는가 — 드롭다운만 있고 안 먹으면 장식이다.
+      var oilPicked = oilSel ? oilSel.value : null;
+      if (oilSel) { oilSel.value = '가스'; oilSel.onchange(); }
+      var afterPick = G.ruleList(roC).filter(function (q) { return q.id === roId; })[0];
+      chk('ui.sentenceCanPickWhichOil',
+        !!oilSel && oilOpts.length === 4 && oilPicked === '경유' &&
+        !!afterPick && afterPick.sentence.indexOf('가스') >= 0,
+        '기름 고르개 ' + (oilSel ? '있음' : '없음') + ' · 선택지 ' + oilOpts.join('/') +
+        '(넷이어야) · 처음 값 "' + oilPicked + '" · 가스로 바꾼 뒤 문장 "' +
+        (afterPick ? afterPick.sentence : '?') + '" (문장이 안 따라오면 고르개는 장식이다)');
+      G.ui.closeLogic();
+
       // --- 18.87 넓은 화면에서는 키보드가 먼저 -------------------------------
       // 폰을 앞세우려고 데스크톱을 뒤집으면 안 된다 — 같은 판을 PC 로도 연다.
       // 그리고 접어 둔 조각을 **지우지 않았는지**도 여기서 본다.

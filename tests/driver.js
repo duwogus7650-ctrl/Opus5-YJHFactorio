@@ -3857,6 +3857,81 @@
           ') · 둘이 같으면 고르는 것이 안 먹는 것이다');
       }
 
+      // ================= 11.872 문장으로 석유를 읽는다 =====================
+      // 도움말은 분해를 설명하면서 "중유가 60% 넘으면 분해를 켜고 20% 아래면 끈다" 를
+      // 권한다. 그런데 문장 편집기의 읽을 것에는 증기·물뿐이라 **그 문장을 쓸 수 없었다** —
+      // 코딩을 안 해 본 사람의 진입로가 게임의 최신 내용에 닿는 순간 끊긴 것이다.
+      // 판정은 '목록에 생겼나' 가 아니라 **세계가 실제로 움직였나** 로 한다.
+      labSetup();
+      G.clearTrees();
+      G.research('steel'); G.research('logistics'); G.research('logic-mem'); G.research('oil');
+      var rAt = G.oilSpot ? G.oilSpot() : null;
+      if (rAt) {
+        var rPj = G.build('pumpjack', rAt.x, rAt.y, 0);
+        for (var rp = 0; rp < 3; rp++) G.build('pipe', rAt.x + 3, rAt.y + rp, 0);
+        var rRef = G.build('refinery', rAt.x + 4, rAt.y, 0);
+        for (var rq = 0; rq < 3; rq++) G.build('pipe', rAt.x + 7, rAt.y + rq, 0);
+        var rCh = G.build('chemplant', rAt.x + 8, rAt.y, 0);
+        G.setRecipe(rCh, 'crack-heavy');
+        var rCtl = G.place('controller', rAt.x, rAt.y + 8, 0);
+        // "정제소의 중유가 20% 를 넘으면 분해 화학공장을 켠다"
+        var rOil = G.ruleAdd(rCtl, { name: '중유많음',
+          when: { src: 'oilPct', ent: rRef, oil: '중유', cmp: '>', value: 5 },
+          then: { act: 'run', ent: rCh, onWhenTrue: true } });
+        var rComp = G.ruleCompile(rCtl);
+        var rInfo = G.ruleList(rCtl).filter(function (q) { return q.id === rOil; })[0] || {};
+        var rSent = rInfo.sentence || '';
+        chk('rule.oilIsReadableAsASentence',
+          !!rComp && rComp.skipped.length === 0 && rComp.nodes >= 3 &&
+          rSent.indexOf('중유') >= 0 && rSent.indexOf('석유 잔량') < 0,
+          '문장 "' + rSent + '" · 노드 ' + (rComp ? rComp.nodes : 0) + '개 · 건너뛴 것 ' +
+          (rComp ? rComp.skipped.map(function (q) { return q.name + '(' + q.why + ')'; }).join(',') || '없음' : '?') +
+          " ('석유 잔량' 이라고만 읽히면 무엇을 보는지 모른다 — 기름 이름이 주어여야 한다)");
+
+        // **세계가 실제로 움직이는가.** 그리고 **기본값과 다른 기름으로 잰다** —
+        // 코드가 고른 기름을 못 읽으면 '중유' 로 되돌아가는데, 하필 중유로 재고 있었더니
+        // 그 되돌아감이 안 보였다(돌연변이가 그대로 빠져나갔다).
+        // 여기서는 경유로 재고, 중유와 경유가 **반대 방향으로** 가게 만들어 둘을 가른다:
+        // 공급을 끊고 중유 분해를 돌리면 중유는 줄고(4/s 먹는다) 경유는 는다(3/s 나온다).
+        G.ruleSet(rCtl, rOil, { when: { oil: '경유' } });
+        G.ruleCompile(rCtl);
+        G.setEnabled(rCh, false);          // 중유·경유가 쌓이게 둔다
+        G.run(200);
+        G.setEnabled(rPj, false); G.setEnabled(rRef, false);   // 공급을 끊는다
+        G.setEnabled(rCh, true);
+        G.run(120);                        // 중유는 줄고 경유는 는다
+        var rHeavy = G.fluid(rPj).heavy, rLight = G.fluid(rPj).light, rCap = G.fluid(rPj).cap;
+        G.run(0.3);
+        var onWhenHigh = G.ent(rCh).enabled && G.ent(rCh).logicForced;
+        // 문턱을 올려 같은 회로가 거짓이 되게 한다 — 음성 대조군이다.
+        G.ruleSet(rCtl, rOil, { when: { value: 99 } });
+        G.ruleCompile(rCtl);
+        G.run(0.3);
+        var offWhenLow = G.ent(rCh).enabled;
+        chk('rule.oilSentenceMovesTheWorld',
+          rLight > rCap * 0.05 && rHeavy < rCap * 0.05 &&
+          onWhenHigh === true && offWhenLow === false,
+          '경유 ' + r2(rLight) + ' · 중유 ' + r2(rHeavy) + ' / ' + rCap + ' (문턱 5%=' +
+          r2(rCap * 0.05) + ' · 경유는 넘고 중유는 못 넘게 벌려 둔다 — 그래야 엉뚱한 기름을 ' +
+          '읽고 있는지가 드러난다) → 화학공장 ' + (onWhenHigh ? '켜짐' : '꺼짐') +
+          '(켜져야) · 문턱을 99% 로 올리면 ' + (offWhenLow ? '켜짐' : '꺼짐') +
+          '(꺼져야 · 안 꺼지면 위 검사는 원래 켜져 있던 것을 본 것이다)');
+
+        // 연구 전에는 목록에 없어야 한다 — 연구 뒤에 열리는 것이 이 게임의 규약이다.
+        labSetup();
+        G.research('steel'); G.research('logic-mem');   // oil 은 일부러 뺀다
+        var rCtl2 = G.place('controller', 60, 60, 0);
+        G.ruleAdd(rCtl2, { name: '연구전',
+          when: { src: 'oilPct', ent: null, oil: '중유', cmp: '>', value: 20 },
+          then: { act: 'lamp', text: 'x' } });
+        var rComp2 = G.ruleCompile(rCtl2);
+        chk('rule.oilSourceLocksBehindResearch',
+          !!rComp2 && rComp2.skipped.length > 0,
+          '석유 연구 전에 컴파일 → 건너뛴 것 ' +
+          (rComp2 ? rComp2.skipped.map(function (q) { return q.name + '(' + q.why + ')'; }).join(',') : '?') +
+          ' (안 건너뛰면 연구 전에 쓸 수 있다는 뜻이다)');
+      }
+
       // ================= 11.873 계기 줄 파형 ==============================
       // 노드 파형은 편집기를 열어야 보인다. 그런데 오래 지켜봐야 하는 값(증기%,
       // 전력 만족도)은 **편집기를 닫아 놓고 공장을 짓는 동안** 흘러간다 —

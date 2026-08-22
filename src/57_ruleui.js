@@ -147,6 +147,10 @@ function ruleCardHtml(r, i) {
       h.push('<span class="kw">채널</span>' + selHtml('', 'when.ch', r.id,
         BUS_CHANNELS.map(function (c) { return [c, c]; }), w.ch || 'A'));
     }
+    if (s && s.needs.indexOf('oil') >= 0) {
+      h.push(selHtml('', 'when.oil', r.id,
+        RULE_OILS.map(function (c) { return [c, c]; }), w.oil || '중유'));
+    }
     if (!(s && s.bool)) {
       // 계산 한 단. **표에만 있고 화면에 없던 자리다** — 컴파일러도 되읽기도 지원하는데
       // 고를 방법이 없어서 카드로 만든 규칙만 쓸 수 있었다. 진입점이 없는 기능은 없는

@@ -1652,8 +1652,34 @@
       // 가운데 값으로 판정하다가 태블릿에서 6.42 / 6.92 / 7.16 이 나와 문턱(7)을 사이에 두고
       // 판정이 뒤집혔다 — 같은 코드가 돌 때마다 GREEN 도 RED 도 되는 게이트는, 진짜 RED 를
       // 가리는 쪽으로만 작동한다(문턱은 그대로 두었다. 흔들림을 없앤 것이지 낮춘 것이 아니다).
+
       var runs = [G.frameCost(30), G.frameCost(30), G.frameCost(30),
                   G.frameCost(30), G.frameCost(30)];
+      // **이 기계가 지금 얼마나 빨리 그리는가**를 함께 잰다. 렌더가 느려진 것과 기계가
+      // 바쁜 것은 다른 일인데, 절대 시간만 찍어 두면 둘이 구분되지 않는다 — 실제로 같은
+      // 빌드가 아침에 6.34, 저녁에 7.49 로 나와 판정이 뒤집혔다(다른 작업이 이 PC 를
+      // 쓰고 있었다). 그 사실은 숫자만 보고는 알 수 없었다.
+      //
+      // **같은 자원을 재야 한다.** 처음엔 산술 루프를 기준으로 삼았는데 그때 5.9ms 로
+      // 멀쩡히 나왔다 — CPU 는 한가한데 그리기가 느렸던 것이다(화면을 나눠 쓰고 있었다).
+      // 엉뚱한 자원을 재는 계기는 없느니만 못하다. 그래서 고정된 **그리기** 한 뭉치를 잰다.
+      // **판정에는 쓰지 않는다** — 기준을 기계 속도로 나누면 느린 기계에서 회귀가 묻힌다.
+      function refDraw() {
+        // **작은 캔버스로는 안 잡힌다.** 처음엔 512x512 로 쟀는데, 화면을 나눠 쓰는
+        // 프로그램(게임)이 돌고 있는데도 2.8ms 로 멀쩡히 나왔다 — 그건 CPU 쪽 그리기라
+        // 화면 장치의 혼잡을 못 본다. 게임 화면과 비슷한 크기로 그려야 같은 병목을 탄다.
+        var cv = document.createElement('canvas');
+        cv.width = 1536; cv.height = 1024;
+        var cx = cv.getContext('2d');
+        var t0 = performance.now();
+        for (var i = 0; i < 20000; i++) {
+          cx.fillStyle = (i & 1) ? '#3a4a5a' : '#a08050';
+          cx.fillRect((i * 37) % 1400, (i * 61) % 950, 48, 36);
+        }
+        cx.getImageData(0, 0, 1, 1);          // 실제로 그려질 때까지 기다린다
+        return performance.now() - t0;
+      }
+      var refMs = Math.min(refDraw(), refDraw());
       var sorted = runs.slice().sort(function (a2, b2) { return a2.totalMs - b2.totalMs; });
       var cost = sorted[0];
       // **절대 시간으로 문턱을 잡으면 안 된다.** 처음엔 10ms 로 뒀다가 태블릿에서
@@ -1673,7 +1699,11 @@
         cost.totalMs.toFixed(2) + 'ms → ' + perMpx.toFixed(2) +
         ' ms/Mpx (문턱 7 · 60fps 예산 16.7ms 는 이 화면에서 ' +
         (16.7 / mpx).toFixed(1) + ' ms/Mpx 에 해당)' +
-        ' · 5회 측정 ' + allPer + ' ms/Mpx (가장 빠른 값으로 판정 — 소음은 느려지는 쪽으로만 붙는다)');
+        ' · 5회 측정 ' + allPer + ' ms/Mpx (가장 빠른 값으로 판정 — 소음은 느려지는 쪽으로만 붙는다)' +
+        ' · 이 기계의 고정 그리기 ' + refMs.toFixed(1) + 'ms' +
+        ' (판정에는 안 쓴다 · 렌더와 **같은 자원**을 재는 값이라, 이것이 크면 렌더가 ' +
+        '느려진 것이 아니라 이 PC 가 지금 화면을 나눠 쓰고 있는 것이다. ' +
+        '기준값 실측: 게임이 돌던 중 21~24ms — 한가한 판에서의 값은 아직 안 재 봤다)');
       out.errors = G.errors();
       chk('runtime.noErrors', out.errors.length === 0, out.errors.join(' | ') || '없음');
       chk('selftest.mustFail', VW < 0, '뷰포트 폭이 음수일 리 없다', true);

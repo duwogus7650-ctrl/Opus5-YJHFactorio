@@ -58,8 +58,21 @@ var RULE_SOURCES = {
   'steamPct':  { label: '증기 잔량', node: 'fluid', port: 0, needs: ['ent'],
                  entFilter: ['pipe', 'pump', 'boiler', 'engine'], unit: '%', tech: 'steel' },
   'waterAmt':  { label: '물 잔량', node: 'fluid', port: 2, needs: ['ent'],
-                 entFilter: ['pipe', 'pump', 'boiler', 'engine'], tech: 'steel' }
+                 entFilter: ['pipe', 'pump', 'boiler', 'engine'], tech: 'steel' },
+  // **석유도 문장으로 읽을 수 있어야 한다.** 도움말은 분해를 설명하면서 "중유가 60%
+  // 넘으면 분해를 켜고 20% 아래면 끈다" 를 권하는데, 정작 문장 편집기에는 증기·물만
+  // 있어서 그 문장을 쓸 수 없었다 — 코딩을 안 해 본 사람의 진입로가 게임의 최신
+  // 내용에 닿는 순간 끊긴 것이다. 대상 필터도 석유 건물까지 넓힌다.
+  'oilPct':    { label: '석유 잔량', node: 'fluid', port: 4, needs: ['ent', 'oil'],
+                 entFilter: ['pipe', 'pump', 'tank', 'xpump', 'pumpjack', 'refinery', 'chemplant'],
+                 unit: '%', tech: 'oil' },
+  'oilAmt':    { label: '석유 양', node: 'fluid', port: 5, needs: ['ent', 'oil'],
+                 entFilter: ['pipe', 'pump', 'tank', 'xpump', 'pumpjack', 'refinery', 'chemplant'],
+                 tech: 'oil' }
 };
+// 문장에서 고를 수 있는 기름. 노드의 opsel 과 **같은 목록이어야 한다** —
+// 두 곳에 따로 적으면 한쪽만 늘어난다.
+var RULE_OILS = ['원유', '중유', '경유', '가스'];
 var RULE_SOURCE_IDS = Object.keys(RULE_SOURCES);
 
 // 행동: 무엇을 시킬 것인가.
@@ -220,6 +233,7 @@ function compileCondition(g, w, x0, y0, named) {
   if (s.needs.indexOf('item') >= 0) src.cfg.item = w.item || null;
   if (s.needs.indexOf('radius') >= 0) src.cfg.radius = +w.radius || 30;
   if (s.needs.indexOf('ch') >= 0) src.cfg.ch = w.ch || 'A';
+  if (s.needs.indexOf('oil') >= 0) src.cfg.oil = w.oil || '중유';
 
   var vNid = src.nid, vPort = s.port, x = x0 + RULE_COL;
 
@@ -415,6 +429,10 @@ function ruleSubject(w, s) {
   if (s.needs.indexOf('item') >= 0 && w.item && ITEMS[w.item]) subj = ITEMS[w.item].name;
   if (s.needs.indexOf('ent') >= 0) subj = entName(w.ent) + ' 의 ' + subj;
   if (s.needs.indexOf('ch') >= 0) subj = '채널 ' + (w.ch || 'A') + ' 로 ' + subj;
+  // 기름은 이름이 곧 주어다 — '정제소 #8 의 석유 잔량' 으로는 무엇을 보는지 모른다.
+  if (s.needs.indexOf('oil') >= 0) {
+    subj = entName(w.ent) + ' 의 ' + (w.oil || '중유') + (s.unit === '%' ? ' 비율' : '');
+  }
   return subj;
 }
 // 계산 한 단을 사람 말로. 단항(눅이기)은 조사가 달라서 따로 쓴다.
