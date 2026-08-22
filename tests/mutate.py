@@ -268,6 +268,12 @@ MUTATIONS = [
      ("#help .kbdfold summary::before{content:'';display:inline-block;").encode('utf-8'),
      ['mobile.helpLeadsWithTouch'], 'mobile.js'),
 
+    # 상수만 바꾸고 튜토리얼을 안 고치면 게임이 조용히 거짓말을 한다.
+    ('tutor: 분해 환율을 바꿔도 튜토리얼은 그대로다', '05_data.js',
+     b'  crackHeavyIn: 4,',
+     b'  crackHeavyIn: 5,',
+     ['tut.oilStepNumbersMatchSpec'], 'driver.js'),
+
     # --- 문장으로 읽는 석유 --------------------------------------------------
     # 컴파일러가 어느 기름인지 안 넘기면, 무엇을 골라도 늘 같은 것을 읽는다.
     ('rule: 문장이 고른 기름을 회로에 안 넘긴다', '37_rules.js',

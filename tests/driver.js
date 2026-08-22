@@ -4603,6 +4603,26 @@
           }
         }
       }
+      // **튜토리얼에 박힌 숫자도 상수와 대조한다.** 이 단계는 한 번 낡은 적이 있다 —
+      // 정제소가 가스 하나만 낼 때 쓴 '가스가 넘치면 정제소를 쉬게 한다' 가, 셋으로
+      // 쪼개진 뒤로는 실제로 일어나지 않는 상황을 연습시키고 있었다.
+      // **내용이 낡는 것은 기계로 못 잡는다**(문법은 멀쩡했다). 잡을 수 있는 것은 숫자다:
+      // 분해 환율을 바꾸면 이 문구가 조용히 거짓말이 되는데, 그건 여기서 걸린다.
+      var rwT = G.specRaw();
+      var oilStep = stepById['oil-control'];
+      var oilTxt = oilStep ? (oilStep.need + ' ' + oilStep.why + ' ' + (oilStep.how || []).join(' ')) : '';
+      var crackFrag = '중유 ' + rwT.crackHeavyIn + ' → 경유 ' + rwT.crackHeavyOut;
+      chk('tut.oilStepNumbersMatchSpec',
+        !!oilStep && oilTxt.indexOf(crackFrag) >= 0,
+        '분해 단계 문구에 "' + crackFrag + '" 이 ' +
+        (oilTxt.indexOf(crackFrag) >= 0 ? '있다' : '없다 → "' + oilTxt.slice(0, 60) + '…"') +
+        ' (상수만 바꾸고 튜토리얼을 안 고치면 게임이 조용히 거짓말을 한다)');
+      // 음성 대조군 — 일부러 틀린 조각은 못 찾아야 한다. 안 그러면 이 대조는 죽은 것이다.
+      var badFrag = '중유 ' + (rwT.crackHeavyIn + 1) + ' → 경유 ' + rwT.crackHeavyOut;
+      chk('tut.oilNumberCheckDetectsWrong', oilTxt.indexOf(badFrag) < 0,
+        '틀린 조각 "' + badFrag + '" 찾음=' + (oilTxt.indexOf(badFrag) >= 0) +
+        ' (true 면 대조가 아무거나 통과시키는 것이다)');
+
       chk('tut.needTextMatchesCosts', needChecked >= 20 && needBad.length === 0,
         '튜토리얼 "필요" 문구와 실제 비용 ' + needChecked + '항목을 대조 — ' +
         (needBad.length === 0 ? '전부 일치' : '어긋남 ' + needBad.length + '건: ' + needBad.join(' · ')));
