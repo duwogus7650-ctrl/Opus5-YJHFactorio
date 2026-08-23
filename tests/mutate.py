@@ -293,6 +293,31 @@ MUTATIONS = [
      b"      if (false) h.push(selHtml('', 'when.oil', r.id,",
      ['ui.sentenceCanPickWhichOil'], 'uismoke.js'),
 
+    # --- 배선 손맛 · 튜토리얼 순서 ------------------------------------------
+    # 제어기를 다시 구리 라인 뒤로 밀면, 이 게임의 본체를 만지기까지 한참 걸린다.
+    ('tutor: 제어기를 시작 자재로는 못 짓게 만든다', '05_data.js',
+     b"w: 2, h: 2, cost: { 'circuit': 5, 'iron-plate': 5 },",
+     b"w: 2, h: 2, cost: { 'circuit': 50, 'iron-plate': 5 },",
+     ['tut.controllerIsAffordableFromTheStart'], 'driver.js'),
+
+    # 손잡이를 다시 줄이면 이 게임의 본체가 손기술 시험이 된다.
+    ('wire: 배선 손잡이를 다시 15px 로 줄인다', 'shell.html',
+     b'  #graphInner .port{min-height:26px}',
+     b'  #graphInner .port{min-height:0}',
+     ['mobile.wiringHandlesFitAFinger'], 'mobile.js'),
+
+    # 빗나감 보정을 없애면 정확히 그 줄 위에서 떼야 한다.
+    ('wire: 빗나가면 아예 안 붙는다', '55_logicui.js',
+     b'            if (!dot) dot = nearestInPort(t.clientX, t.clientY, WIRE_SNAP_PX);',
+     b'            if (false) dot = nearestInPort(t.clientX, t.clientY, WIRE_SNAP_PX);',
+     ['mobile.wiringForgivesANearMiss'], 'mobile.js'),
+
+    # 보정을 너무 크게 잡으면 옆 포트까지 끌어와 틀린 데 붙는다.
+    ('wire: 빗나감 보정을 아무 데나 붙을 만큼 키운다', '55_logicui.js',
+     b'var WIRE_SNAP_PX = 16;',
+     b'var WIRE_SNAP_PX = 400;',
+     ['mobile.wiringForgivesANearMiss'], 'mobile.js'),
+
     # --- 도움말 순서 ------------------------------------------------------
     # 좁은 화면에서도 키보드부터 읽히면, 폰 사용자는 자기가 할 수 없는 것만 다섯 줄을 읽는다.
     ('help: 좁은 화면에서도 키보드 조작이 먼저 나온다', '50_ui.js',

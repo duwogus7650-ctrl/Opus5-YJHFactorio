@@ -1273,6 +1273,66 @@
         (probeOver || panelOver ? '판 밖으로 밀려남(break-word 가 빠졌다)' : '판 안에 담김'));
       G.ui.closeHelp();
 
+      // ---------- 8.992 배선이 손에 붙는가 -----------------------------------
+      // 사용자 평가: "손에 조금 안 붙어"(2026-08-23). 재 보니 배선 손잡이인 포트 줄이
+      // 높이 15px 이었다 — 이 게임이 스스로 정하고 게이트로 강제하는 손가락 기준은 44px 인데,
+      // 정작 **이 게임의 본체인 배선**이 그 3분의 1이었다. 게다가 줄 간격이 18px 이라
+      // 손가락 하나 폭에 서로 다른 포트가 둘 들어왔다.
+      // 44px 은 여기서 못 쓴다(출구 아홉짜리 노드면 포트만 400px). 26px 로 키워 간격보다
+      // 크게 만들고, 나머지 반은 **빗나감 보정**이 맡는다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.powerCheat(true); G.giveAll(9999);
+      G.research('logistics'); G.research('logic-mem');
+      var wC = G.place('controller', 60, 60, 0);
+      var wSrc = G.gAdd(wC, 'const', 20, 20);
+      var wDst = G.gAdd(wC, 'cmp', 20, 260);
+      G.ui.openLogic(wC); G.ui.showGraph(); G.ui.renderGraph();
+      var wOut = document.querySelector('.node[data-nid="' + wSrc + '"] .port.out[data-out="0"]');
+      var wIn = document.querySelector('.node[data-nid="' + wDst + '"] .port.in[data-in="0"]');
+      var wPorts = document.querySelectorAll('#graphInner .port');
+      var wSmall = [], wRects = [];
+      for (var wp = 0; wp < wPorts.length; wp++) {
+        var wq = wPorts[wp].getBoundingClientRect();
+        wRects.push(wq);
+        if (wq.height < 24) wSmall.push(Math.round(wq.height));
+      }
+      // 이웃 포트끼리 겹치지 않는가 — 겹치는 표적은 키워도 오탭이 준 것이 아니다.
+      var wOverlap = 0;
+      for (var wi = 0; wi < wRects.length; wi++) {
+        for (var wj = wi + 1; wj < wRects.length; wj++) {
+          var A = wRects[wi], B = wRects[wj];
+          if (A.left < B.right && A.right > B.left && A.top < B.bottom && A.bottom > B.top) wOverlap++;
+        }
+      }
+      chk('mobile.wiringHandlesFitAFinger',
+        wPorts.length >= 3 && wSmall.length === 0 && wOverlap === 0,
+        '포트 줄 ' + wPorts.length + '개 · 24px 미만 ' + (wSmall.join(',') || '없음') +
+        ' · 서로 겹친 짝 ' + wOverlap +
+        '개 (0개여야 · 겹치면 손가락 하나에 두 포트가 들어와 엉뚱한 데 붙는다)');
+
+      // **빗나가도 붙는가.** 입력 줄에서 살짝 벗어난 자리에서 손을 떼 본다.
+      var wBefore = G.gLinks(wC).length;
+      if (wOut && wIn) {
+        var ob = wOut.getBoundingClientRect(), ib = wIn.getBoundingClientRect();
+        swipe(wOut, ob.left + ob.width / 2, ob.top + ob.height / 2,
+              ib.left + ib.width / 2, ib.top - 10);      // 10px 위 — 줄 밖이다
+      }
+      var wNear = G.gLinks(wC).length - wBefore;
+      // **음성 대조군** — 아주 멀리서 떼면 붙으면 안 된다. 그건 그만두려던 것이다.
+      G.gUnlink(wC, wDst, 0); G.ui.renderGraph();
+      var wOut2 = document.querySelector('.node[data-nid="' + wSrc + '"] .port.out[data-out="0"]');
+      var wIn2 = document.querySelector('.node[data-nid="' + wDst + '"] .port.in[data-in="0"]');
+      var wBefore2 = G.gLinks(wC).length;
+      if (wOut2 && wIn2) {
+        var ob2 = wOut2.getBoundingClientRect(), ib2 = wIn2.getBoundingClientRect();
+        swipe(wOut2, ob2.left + ob2.width / 2, ob2.top + ob2.height / 2,
+              ib2.left + ib2.width / 2, ib2.top - 90);   // 90px 위 — 그만두려던 것이다
+      }
+      var wFar = G.gLinks(wC).length - wBefore2;
+      chk('mobile.wiringForgivesANearMiss', wNear === 1 && wFar === 0,
+        '입력 줄에서 10px 벗어나 뗐을 때 생긴 배선 ' + wNear + '개(1이어야) · ' +
+        '90px 벗어나 뗐을 때 ' + wFar + '개(0이어야 — 아무 데나 붙으면 틀린 데 붙는다)');
+      G.ui.closeLogic();
+
       // ---------- 8.993 도움말이 폰에게 먼저 말하는가 ------------------------
       // 예전에는 조작 절이 WASD·휠·우클릭·R·Q·F2 다섯 줄로 시작하고, **여섯 번째 줄**
       // 에서야 '폰에는 키보드가 없다' 가 나왔다. 폰으로 연 사람은 자기가 할 수 없는 것만

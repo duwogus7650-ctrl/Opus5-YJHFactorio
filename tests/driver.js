@@ -4603,6 +4603,32 @@
           }
         }
       }
+      // **이 게임의 본체를 뒤에 두지 않는다.** 사용자 평가: 제어기까지 "살짝 오래 걸린다"
+      // (2026-08-23). 재 보니 제어기는 8번째 단계였고, 그 앞에 구리 라인(구리→전선→회로)이
+      // 통째로 있었다 — 정작 시작 자재에는 회로가 10개 들어 있어 **첫 순간부터 지을 수 있었다.**
+      // 막고 있던 것은 재료가 아니라 순서였다. 그래서 제어기를 조립기 바로 뒤로 옮겼다.
+      // 순서는 눈에 안 보이는 설계라, 안 박아 두면 다음 편집에서 조용히 되밀린다.
+      var tIds = G.tutorialSteps().map(function (q) { return q.id; });
+      var iCtrl = tIds.indexOf('controller'), iWire = tIds.indexOf('wire');
+      var iCopper = tIds.indexOf('copper'), iResearch = tIds.indexOf('research');
+      chk('tut.controllerComesBeforeTheCopperDetour',
+        iCtrl >= 0 && iWire >= 0 && iCopper >= 0 && iResearch >= 0 &&
+        iCtrl < iCopper && iWire < iCopper && iCtrl <= 5 && iWire === iCtrl + 1,
+        '단계 순서 — 제어기 ' + (iCtrl + 1) + '번째 · 배선 ' + (iWire + 1) + '번째 · 구리 ' +
+        (iCopper + 1) + '번째 · 연구소 ' + (iResearch + 1) + '번째 ' +
+        '(제어기는 6번째 안에 · 구리보다 앞에 · 배선은 제어기 바로 다음이어야 한다)');
+      // 시작 자재만으로 제어기를 지을 수 있는가 — 못 지으면 위 순서는 지킬 수 없는 약속이다.
+      var ctlCost = G.buildingInfo('controller').cost, startShort = [];
+      var startInv = G.startInventory ? G.startInventory() : null;
+      for (var ck2 in ctlCost) {
+        var have = startInv ? (startInv[ck2] || 0) : -1;
+        if (have < ctlCost[ck2]) startShort.push(ck2 + ' ' + have + '/' + ctlCost[ck2]);
+      }
+      chk('tut.controllerIsAffordableFromTheStart',
+        !!startInv && startShort.length === 0,
+        '제어기 비용 ' + JSON.stringify(ctlCost) + ' · 시작 자재로 모자란 것 ' +
+        (startShort.join(',') || '없음') + ' (모자라면 6번째 단계에서 못 짓고 막힌다)');
+
       // **튜토리얼에 박힌 숫자도 상수와 대조한다.** 이 단계는 한 번 낡은 적이 있다 —
       // 정제소가 가스 하나만 낼 때 쓴 '가스가 넘치면 정제소를 쉬게 한다' 가, 셋으로
       // 쪼개진 뒤로는 실제로 일어나지 않는 상황을 연습시키고 있었다.

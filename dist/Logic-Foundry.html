@@ -559,6 +559,16 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
    남았다(실측). 좁은 화면의 시트 배치는 위 max-width 분기가, 손가락 조작에 필요한
    버튼과 표적 크기는 여기가 담당한다. */
 @media (pointer: coarse){
+  /* **배선 손잡이를 손가락에 맞춘다.** 포트 줄이 높이 15px 이라 이 게임의 본체인
+     배선이 손기술 시험이 됐다("손에 조금 안 붙어" — 사용자, 2026-08-23).
+     44px 은 여기서는 쓸 수 없다: 출구가 아홉인 8단계 상태기계라면 포트만 400px 이 되어
+     노드 하나가 화면을 넘는다. 26px 은 지금의 1.7배이고 줄 간격(18px)보다 커서
+     **이웃 포트와 겹치지 않는다** — 겹치는 표적은 키워도 오탭이 준 것이 아니다.
+     나머지 반은 빗나감 보정이 맡는다(WIRE_SNAP_PX).
+     **폭이 아니라 입력 장치로 가른다.** 처음엔 max-width:720px 안에 넣었다가 768px
+     태블릿에서 15px 그대로였다 — 손가락 굵기는 화면이 넓다고 가늘어지지 않는다. */
+  #graphInner .port{min-height:26px}
+
   #mobBar{display:flex;position:fixed;left:0;right:0;bottom:0;height:56px;z-index:25;
           background:linear-gradient(180deg,var(--face) 0,#c9c4bb 100%);
           border-top:1px solid var(--edge);align-items:stretch;
@@ -740,7 +750,7 @@ var VERSION = '1.0.0';
 // 왜 있나: 폰이 캐시된 예전 사본을 열고 있어도 화면만 봐서는 알 수 없다 —
 // '복제 버튼이 안 보인다'가 코드 문제인지 사본 문제인지 가르는 데 반나절이 든다.
 // 도움말 맨 아래에 이 값을 찍어 두면 한 줄로 갈린다.
-var BUILD_ID = '8f111ffa';
+var BUILD_ID = 'ecc880c6';
 
 var TILE = 32;            // 타일 한 변 픽셀 (레퍼런스 스크린샷과 동일 배율)
 var W = 160;              // 월드 가로 타일 수
@@ -8103,33 +8113,6 @@ var TUTORIAL_STEPS = [
     check: function () { return (prodStats.byRecipe['gear'] || 0) >= 1; }
   },
   {
-    id: 'copper',
-    title: '구리도 캔다 — 구리판을 만든다',
-    why: '여기서부터 구리가 필요하다. 연구팩도, 회로기판도 구리로 만든다.',
-    how: [
-      '지도에서 <b>주황색 돌무더기</b>가 구리광맥이다',
-      '철과 <b>똑같이</b> 잇는다: 채광기 → 벨트 → 인서터 → 용광로',
-      '용광로는 구리광석이 들어오면 구리판으로 알아서 바꾼다',
-      '철 라인과 <b>같은 용광로를 쓰지 마라</b> — 한 용광로는 한 가지만 굽는다'
-    ],
-    check: function () { return (prodStats.byRecipe['copper-plate'] || 0) >= 1; }
-  },
-  {
-    id: 'research',
-    title: '연구소를 돌려 연구를 시작한다',
-    why: '연구가 새 건물과 제어기 노드를 연다.',
-    how: [
-      '<b>적색 연구팩 = 구리판 1 + 톱니 1</b>',
-      '우측 <b>[손 조립]</b>에서 클릭하면 대기열에 하나 걸린다 — <b>손도 시간이 걸린다</b>',
-      '손은 한 번에 하나씩만 만든다. 여러 대로 늘리려면 조립기를 세워야 한다',
-      '조립기로 자동화한다면 재료가 <b>조립기 안에</b> 있어야 한다 — 인서터로 넣거나 조립기를 클릭해 <b>[보유 자재 넣기]</b>',
-      '<b>9 연구소</b>를 놓고 인서터로 연구팩을 넣는다',
-      '<b>T</b>를 눌러 무엇을 연구할지 고른다'
-    ],
-    need: '연구소 = 톱니 10 + 회로기판 10 + 벨트 4',
-    check: function () { return !!currentResearch && researchProgress >= 1; }
-  },
-  {
     id: 'controller',
     title: '제어기를 놓고 편집기를 연다',
     why: '★ 여기서부터가 이 게임의 본체다. 제어기는 전기를 쓰지 않는다.',
@@ -8156,6 +8139,33 @@ var TUTORIAL_STEPS = [
     check: function () {
       return !!anyEntity(function (e) { return e.logicForced && e.fEnable; });
     }
+  },
+  {
+    id: 'copper',
+    title: '구리도 캔다 — 구리판을 만든다',
+    why: '여기서부터 구리가 필요하다. 연구팩도, 회로기판도 구리로 만든다.',
+    how: [
+      '지도에서 <b>주황색 돌무더기</b>가 구리광맥이다',
+      '철과 <b>똑같이</b> 잇는다: 채광기 → 벨트 → 인서터 → 용광로',
+      '용광로는 구리광석이 들어오면 구리판으로 알아서 바꾼다',
+      '철 라인과 <b>같은 용광로를 쓰지 마라</b> — 한 용광로는 한 가지만 굽는다'
+    ],
+    check: function () { return (prodStats.byRecipe['copper-plate'] || 0) >= 1; }
+  },
+  {
+    id: 'research',
+    title: '연구소를 돌려 연구를 시작한다',
+    why: '연구가 새 건물과 제어기 노드를 연다.',
+    how: [
+      '<b>적색 연구팩 = 구리판 1 + 톱니 1</b>',
+      '우측 <b>[손 조립]</b>에서 클릭하면 대기열에 하나 걸린다 — <b>손도 시간이 걸린다</b>',
+      '손은 한 번에 하나씩만 만든다. 여러 대로 늘리려면 조립기를 세워야 한다',
+      '조립기로 자동화한다면 재료가 <b>조립기 안에</b> 있어야 한다 — 인서터로 넣거나 조립기를 클릭해 <b>[보유 자재 넣기]</b>',
+      '<b>9 연구소</b>를 놓고 인서터로 연구팩을 넣는다',
+      '<b>T</b>를 눌러 무엇을 연구할지 고른다'
+    ],
+    need: '연구소 = 톱니 10 + 회로기판 10 + 벨트 4',
+    check: function () { return !!currentResearch && researchProgress >= 1; }
   },
   {
     id: 'defend',
@@ -8861,6 +8871,26 @@ function outPortName(n, d, po) {
   return d.outs[po];
 }
 
+// 손가락이 빗나갔을 때 붙여 줄 거리. 포트 줄 간격(18px)의 절반보다 커야 의미가 있고,
+// 간격보다 크면 옆 포트까지 끌어와 **틀린 데 붙는다** — 그건 안 붙는 것보다 나쁘다.
+// 그래서 간격보다 작게 잡는다.
+var WIRE_SNAP_PX = 16;
+
+// 화면 좌표에서 가장 가까운 입력 포트. 없으면 null.
+function nearestInPort(x, y, maxDist) {
+  var ins = document.querySelectorAll('#graphInner .port.in[data-in]');
+  var best = null, bestD = maxDist;
+  for (var i = 0; i < ins.length; i++) {
+    var q = ins[i].getBoundingClientRect();
+    // 사각형까지의 거리 — 중심까지 재면 긴 줄에서 한쪽 끝이 불리해진다.
+    var dx = Math.max(q.left - x, 0, x - q.right);
+    var dy = Math.max(q.top - y, 0, y - q.bottom);
+    var d = Math.sqrt(dx * dx + dy * dy);
+    if (d < bestD) { bestD = d; best = ins[i]; }
+  }
+  return best;
+}
+
 function buildNodeDom(inner, g, n) {
   var d = NODE_DEFS[n.kind];
   var el = document.createElement('div');
@@ -9088,6 +9118,12 @@ function buildNodeDom(inner, g, n) {
           if (t && linking) {
             var el2 = document.elementFromPoint(t.clientX, t.clientY);
             var dot = el2 && el2.closest ? el2.closest('[data-in]') : null;
+            // **빗나가도 붙는다.** 입력 포트 줄은 높이 15px 인데 손가락 끝은 그보다 훨씬
+            // 굵다 — 정확히 그 줄 위에서 떼기를 요구하면 배선이 손기술 시험이 된다.
+            // 이 게임의 본체가 배선이라, 여기서 자꾸 놓치면 게임이 안 붙는다.
+            // 빗나갔으면 **가장 가까운 입력**을 찾아 준다. 다만 아무 데나 붙지는 않는다 —
+            // 너무 멀면 그건 '그만두려던 것' 이지 '조준을 못한 것' 이 아니다.
+            if (!dot) dot = nearestInPort(t.clientX, t.clientY, WIRE_SNAP_PX);
             var host = dot && dot.closest ? dot.closest('.node') : null;
             if (dot && host) {
               var toNid = parseInt(host.getAttribute('data-nid'), 10);
@@ -10502,6 +10538,8 @@ window.__GAME = {
     return { name: T.name, desc: T.desc || '', effect: TECH_EFFECTS[tid] || null,
              unlock: (T.unlock || []).slice(), cost: T.cost, needs: (T.needs || []).slice() };
   },
+  // 시작 자재 — '첫 단계에서 지을 수 있는가' 를 시험이 물을 창구다.
+  startInventory: function () { return JSON.parse(JSON.stringify(START_INV)); },
   buildingTypes: function () { return Object.keys(BUILDINGS); },
   buildingInfo: function (t) {
     var B = BUILDINGS[t];

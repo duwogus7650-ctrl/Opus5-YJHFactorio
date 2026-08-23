@@ -559,6 +559,16 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
    남았다(실측). 좁은 화면의 시트 배치는 위 max-width 분기가, 손가락 조작에 필요한
    버튼과 표적 크기는 여기가 담당한다. */
 @media (pointer: coarse){
+  /* **배선 손잡이를 손가락에 맞춘다.** 포트 줄이 높이 15px 이라 이 게임의 본체인
+     배선이 손기술 시험이 됐다("손에 조금 안 붙어" — 사용자, 2026-08-23).
+     44px 은 여기서는 쓸 수 없다: 출구가 아홉인 8단계 상태기계라면 포트만 400px 이 되어
+     노드 하나가 화면을 넘는다. 26px 은 지금의 1.7배이고 줄 간격(18px)보다 커서
+     **이웃 포트와 겹치지 않는다** — 겹치는 표적은 키워도 오탭이 준 것이 아니다.
+     나머지 반은 빗나감 보정이 맡는다(WIRE_SNAP_PX).
+     **폭이 아니라 입력 장치로 가른다.** 처음엔 max-width:720px 안에 넣었다가 768px
+     태블릿에서 15px 그대로였다 — 손가락 굵기는 화면이 넓다고 가늘어지지 않는다. */
+  #graphInner .port{min-height:26px}
+
   #mobBar{display:flex;position:fixed;left:0;right:0;bottom:0;height:56px;z-index:25;
           background:linear-gradient(180deg,var(--face) 0,#c9c4bb 100%);
           border-top:1px solid var(--edge);align-items:stretch;

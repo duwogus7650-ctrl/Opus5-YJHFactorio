@@ -729,6 +729,8 @@ window.__GAME = {
     return { name: T.name, desc: T.desc || '', effect: TECH_EFFECTS[tid] || null,
              unlock: (T.unlock || []).slice(), cost: T.cost, needs: (T.needs || []).slice() };
   },
+  // 시작 자재 — '첫 단계에서 지을 수 있는가' 를 시험이 물을 창구다.
+  startInventory: function () { return JSON.parse(JSON.stringify(START_INV)); },
   buildingTypes: function () { return Object.keys(BUILDINGS); },
   buildingInfo: function (t) {
     var B = BUILDINGS[t];

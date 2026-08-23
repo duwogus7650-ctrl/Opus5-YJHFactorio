@@ -301,6 +301,26 @@ function outPortName(n, d, po) {
   return d.outs[po];
 }
 
+// 손가락이 빗나갔을 때 붙여 줄 거리. 포트 줄 간격(18px)의 절반보다 커야 의미가 있고,
+// 간격보다 크면 옆 포트까지 끌어와 **틀린 데 붙는다** — 그건 안 붙는 것보다 나쁘다.
+// 그래서 간격보다 작게 잡는다.
+var WIRE_SNAP_PX = 16;
+
+// 화면 좌표에서 가장 가까운 입력 포트. 없으면 null.
+function nearestInPort(x, y, maxDist) {
+  var ins = document.querySelectorAll('#graphInner .port.in[data-in]');
+  var best = null, bestD = maxDist;
+  for (var i = 0; i < ins.length; i++) {
+    var q = ins[i].getBoundingClientRect();
+    // 사각형까지의 거리 — 중심까지 재면 긴 줄에서 한쪽 끝이 불리해진다.
+    var dx = Math.max(q.left - x, 0, x - q.right);
+    var dy = Math.max(q.top - y, 0, y - q.bottom);
+    var d = Math.sqrt(dx * dx + dy * dy);
+    if (d < bestD) { bestD = d; best = ins[i]; }
+  }
+  return best;
+}
+
 function buildNodeDom(inner, g, n) {
   var d = NODE_DEFS[n.kind];
   var el = document.createElement('div');
@@ -528,6 +548,12 @@ function buildNodeDom(inner, g, n) {
           if (t && linking) {
             var el2 = document.elementFromPoint(t.clientX, t.clientY);
             var dot = el2 && el2.closest ? el2.closest('[data-in]') : null;
+            // **빗나가도 붙는다.** 입력 포트 줄은 높이 15px 인데 손가락 끝은 그보다 훨씬
+            // 굵다 — 정확히 그 줄 위에서 떼기를 요구하면 배선이 손기술 시험이 된다.
+            // 이 게임의 본체가 배선이라, 여기서 자꾸 놓치면 게임이 안 붙는다.
+            // 빗나갔으면 **가장 가까운 입력**을 찾아 준다. 다만 아무 데나 붙지는 않는다 —
+            // 너무 멀면 그건 '그만두려던 것' 이지 '조준을 못한 것' 이 아니다.
+            if (!dot) dot = nearestInPort(t.clientX, t.clientY, WIRE_SNAP_PX);
             var host = dot && dot.closest ? dot.closest('.node') : null;
             if (dot && host) {
               var toNid = parseInt(host.getAttribute('data-nid'), 10);
