@@ -35,6 +35,7 @@ function openLogic(e) {
 }
 function closeLogic() {
   logicOpen = false;
+  armed = null;                          // 겨눔은 편집기를 나가면 사라진다
   scopeWatch(-1);                       // 안 보는 파형을 계속 담을 이유가 없다
   document.getElementById('logic').style.display = 'none';
   if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
@@ -306,6 +307,33 @@ function outPortName(n, d, po) {
 // 그래서 간격보다 작게 잡는다.
 var WIRE_SNAP_PX = 16;
 
+// **겨눔(armed)** — 출력을 톡 누르면 여기에 담기고, 이을 곳을 한 번 더 누르면 이어진다.
+// 끌기와 나란히 산다: 끌면 끌기, 톡 누르면 겨눔. 폰에서 긴 끌기를 강요하지 않기 위한 길이다.
+var armed = null;
+
+function armWire(nid, port) {
+  armed = { nid: nid, port: port };
+  linking = null;
+  renderGraph();
+  toast('이을 곳을 누르세요 — 같은 곳을 다시 누르면 취소', 'warn');
+}
+function disarmWire() {
+  if (!armed) return false;
+  armed = null; linking = null; renderGraph();
+  return true;
+}
+// 겨눈 채로 입력 포트를 누르면 이어진다. 이었으면 true.
+function armedConnect(toNid, toPort) {
+  if (!armed) return false;
+  markGraphHandEdited();
+  if (!graphLink(curCtrl.graph, armed.nid, armed.port, toNid, toPort)) {
+    toast('자기 자신에는 연결할 수 없다', 'bad');
+  }
+  armed = null; renderGraph();
+  return true;
+}
+function armedPort() { return armed; }
+
 // 화면 좌표에서 가장 가까운 입력 포트. 없으면 null.
 function nearestInPort(x, y, maxDist) {
   var ins = document.querySelectorAll('#graphInner .port.in[data-in]');
@@ -424,6 +452,8 @@ function buildNodeDom(inner, g, n) {
     var pr2 = document.createElement('div'); pr2.className = 'port out';
     var dot2 = document.createElement('div'); dot2.className = 'dot';
     dot2.setAttribute('data-out', String(po));
+    var am = armedPort();
+    if (am && am.nid === n.nid && am.port === po) pr2.classList.add('armed');
     var nm2 = document.createElement('span'); nm2.textContent = outPortName(n, d, po);
     nm2.setAttribute('data-pn', n.nid + ':' + po);   // 설정이 바뀌면 updateLive 가 고쳐 쓴다
     var pv = document.createElement('span'); pv.className = 'pv'; pv.setAttribute('data-pv', n.nid + ':' + po);
@@ -532,10 +562,15 @@ function buildNodeDom(inner, g, n) {
     outs[k].addEventListener('touchstart', (function (nid, port) {
       return function (ev) {
         ev.preventDefault(); ev.stopPropagation();
+        // **이미 겨누고 있었다면 같은 곳을 다시 누른 것 = 취소.**
+        if (armed && armed.nid === nid && armed.port === port) { disarmWire(); return; }
         linking = { nid: nid, port: port };
+        var t0 = (ev.touches && ev.touches[0]) || null;
+        var startX = t0 ? t0.clientX : 0, startY = t0 ? t0.clientY : 0, moved = false;
         function tmv(e2) {
           var t = e2.touches[0]; if (!t || !linking) return;
           e2.preventDefault();
+          if (Math.abs(t.clientX - startX) > 6 || Math.abs(t.clientY - startY) > 6) moved = true;
           var r = document.getElementById('graphWrap').getBoundingClientRect();
           updateLinks({ x: (t.clientX - r.left - gpan.x) / gpan.z,
                         y: (t.clientY - r.top - gpan.y) / gpan.z });
@@ -545,6 +580,7 @@ function buildNodeDom(inner, g, n) {
           window.removeEventListener('touchend', tup);
           window.removeEventListener('touchcancel', tup);
           var t = (e2.changedTouches && e2.changedTouches[0]) || null;
+          var madeLink = false;
           if (t && linking) {
             var el2 = document.elementFromPoint(t.clientX, t.clientY);
             var dot = el2 && el2.closest ? el2.closest('[data-in]') : null;
@@ -558,11 +594,19 @@ function buildNodeDom(inner, g, n) {
             if (dot && host) {
               var toNid = parseInt(host.getAttribute('data-nid'), 10);
               var toPort = parseInt(dot.getAttribute('data-in'), 10);
+              markGraphHandEdited();
               if (!graphLink(curCtrl.graph, linking.nid, linking.port, toNid, toPort)) {
                 toast('자기 자신에는 연결할 수 없다', 'bad');
               }
+              madeLink = true;
             }
           }
+          // **끌지 않고 톡 눌렀으면 거기서 끝내지 않는다.** 폰에서 첫 배선은 화면 높이의
+          // 3분의 1(257px)을 가로질러 끌어야 했다 — 그 거리를 손가락으로 끄는 일 자체가
+          // 미끄러진다("손에 조금 안 붙어"). 눌러서 겨누고, 이을 곳을 한 번 더 누르면 된다.
+          // 끌기도 그대로 둔다 — 마우스에서는 끌기가 더 빠르고, 익힌 사람의 손버릇을
+          // 빼앗을 이유가 없다.
+          if (!moved && !madeLink) { armWire(nid, port); return; }
           linking = null; renderGraph();
         }
         window.addEventListener('touchmove', tmv, { passive: false });
@@ -583,10 +627,17 @@ function buildNodeDom(inner, g, n) {
         }
       };
     })(n.nid, parseInt(ins[m].getAttribute('data-in'), 10));
+    // **입력을 누르는 것은 두 가지 뜻이다 — 한 곳에서 가른다.**
+    //   겨누고 있으면 → 잇는다 (끌지 않고 잇는 길)
+    //   아니면        → 그 자리의 배선을 끊는다 (원래 있던 뜻)
+    // 처음엔 잇기를 touchstart 에 따로 달았다가, 뒤따라 합성되는 click 이 방금 이은
+    // 것을 도로 끊었다 — 같은 누름이 두 핸들러를 지나며 서로를 지웠다.
+    // 한 자리에서 갈라야 그런 일이 안 생긴다.
     ins[m].onclick = (function (nid, port) {
       return function (ev) {
         ev.stopPropagation();
         if (linking) return;
+        if (armedPort()) { armedConnect(nid, port); return; }
         markGraphHandEdited();
         graphUnlink(curCtrl.graph, nid, port);
         renderGraph();
@@ -738,6 +789,8 @@ function bindLogicPane() {
   var gt = { mode: null, lx: 0, ly: 0, d: 0, cx: 0, cy: 0 };
   wrap.addEventListener('touchstart', function (ev) {
     if (ev.target !== wrap && ev.target.id !== 'links' && ev.target.id !== 'graphInner') return;
+    // 겨눈 채로 빈 곳을 누르면 그만둔다 — 그만두는 길이 없으면 겨눔은 덫이 된다.
+    if (armedPort()) { disarmWire(); return; }
     if (ev.touches.length >= 2) {
       var r0 = wrap.getBoundingClientRect();
       gt.mode = 'pinch';

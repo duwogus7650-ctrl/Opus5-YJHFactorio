@@ -1333,6 +1333,69 @@
         '90px 벗어나 뗐을 때 ' + wFar + '개(0이어야 — 아무 데나 붙으면 틀린 데 붙는다)');
       G.ui.closeLogic();
 
+      // ---------- 8.991 끌지 않고도 이을 수 있는가 ---------------------------
+      // 폰에서 첫 배선은 화면 높이의 3분의 1(257px)을 가로질러 끌어야 했다 — 그 거리를
+      // 손가락으로 끄는 일 자체가 미끄러진다. 눌러서 겨누고, 이을 곳을 한 번 더 누르면 된다.
+      // **끌기도 살아 있어야 한다** — 익힌 사람의 손버릇을 빼앗는 것은 고치는 것이 아니다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.powerCheat(true); G.giveAll(9999);
+      G.research('logistics'); G.research('logic-mem');
+      var tpC = G.place('controller', 60, 60, 0);
+      var tpA = G.gAdd(tpC, 'const', 20, 20);
+      var tpB = G.gAdd(tpC, 'cmp', 20, 300);
+      G.ui.openLogic(tpC); G.ui.showGraph(); G.ui.renderGraph();
+      function portAt(nid, dir, i) {
+        return document.querySelector('.node[data-nid="' + nid + '"] .port.' + dir +
+                                      '[data-' + dir + '="' + i + '"]');
+      }
+      var tapMissing = [];
+      function tapPort(el, label) {
+        // **못 찾은 것과 눌렀는데 안 된 것은 다르다.** 조용히 지나가면 게이트가
+        // 어느 쪽인지 말하지 못한다 — 그러면 고칠 곳을 못 찾는다.
+        if (!el) { tapMissing.push(label || '?'); return; }
+        var q = el.getBoundingClientRect();
+        tap(el, q.left + q.width / 2, q.top + q.height / 2);
+      }
+      // 1) 출력을 톡 누르면 '겨눔' 이 눈에 보여야 한다 — 안 보이면 눌린 줄 모른다.
+      tapPort(portAt(tpA, 'out', 0), '출력0');
+      var armedEl = document.querySelector('#graphInner .port.armed');
+      var tapBefore = G.gLinks(tpC).length;
+      // 2) 이을 곳을 누르면 이어진다.
+      tapPort(portAt(tpB, 'in', 0), '입력0');
+      var tapMade = G.gLinks(tpC).length - tapBefore;
+      chk('mobile.wiringByTapThenTap',
+        !!armedEl && tapMade === 1 && !document.querySelector('#graphInner .port.armed'),
+        '출력을 톡 누름 → 겨눔 표시 ' + (armedEl ? '보임' : '없음(눌린 줄 모른다)') +
+        ' · 입력을 누름 → 생긴 배선 ' + tapMade + '개(1이어야) · 이은 뒤 겨눔이 남았나=' +
+        !!document.querySelector('#graphInner .port.armed') +
+        ' · 화면에서 못 찾은 포트 ' + (tapMissing.join(',') || '없음'));
+
+      // 3) **그만두는 길**이 있어야 한다 — 겨눠 놓고 빈 곳을 누르면 풀려야 한다.
+      G.gUnlink(tpC, tpB, 0); G.ui.renderGraph();
+      tapPort(portAt(tpA, 'out', 0), '출력0(재)');
+      var armed2 = !!document.querySelector('#graphInner .port.armed');
+      var wrapEl = document.getElementById('graphWrap');
+      var wq = wrapEl.getBoundingClientRect();
+      tap(wrapEl, wq.left + wq.width - 12, wq.top + wq.height - 12);   // 빈 구석
+      var stillArmed = !!document.querySelector('#graphInner .port.armed');
+      var cancelMade = G.gLinks(tpC).length;
+      // **끊는 길도 그대로 살아 있어야 한다.** 같은 누름이 두 뜻을 갖게 됐으니,
+      // 겨누지 않은 상태에서 입력을 누르면 예전처럼 그 배선이 끊겨야 한다 —
+      // 새 기능을 넣으며 있던 기능을 조용히 덮으면 그건 고친 것이 아니다.
+      G.gLink(tpC, tpA, 0, tpB, 0); G.ui.renderGraph();
+      var cutBefore = G.gLinks(tpC).length;
+      tapPort(portAt(tpB, 'in', 0), '입력0(끊기)');
+      var cutAfter = G.gLinks(tpC).length;
+      chk('mobile.wiringTapStillDisconnects',
+        cutBefore === 1 && cutAfter === 0,
+        '겨누지 않은 채 입력을 누름 → 배선 ' + cutBefore + '개 → ' + cutAfter +
+        '개 (끊겨야 한다 · 안 끊기면 새 기능이 있던 기능을 덮은 것이다)');
+
+      chk('mobile.wiringTapCanBeCancelled',
+        armed2 && !stillArmed && cancelMade === 0,
+        '겨눈 뒤 빈 곳을 누름 → 겨눔이 풀렸나=' + !stillArmed + '(풀려야) · 그 사이 생긴 배선 ' +
+        cancelMade + '개(0이어야 · 안 풀리면 겨눔이 덫이 된다)');
+      G.ui.closeLogic();
+
       // ---------- 8.993 도움말이 폰에게 먼저 말하는가 ------------------------
       // 예전에는 조작 절이 WASD·휠·우클릭·R·Q·F2 다섯 줄로 시작하고, **여섯 번째 줄**
       // 에서야 '폰에는 키보드가 없다' 가 나왔다. 폰으로 연 사람은 자기가 할 수 없는 것만

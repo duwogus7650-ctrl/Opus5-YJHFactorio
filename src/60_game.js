@@ -704,7 +704,8 @@ window.__GAME = {
   // 이미 있는 동작(선을 잡아 떼기)이고 모델 쪽 훅만 없었다.
   // 배선 목록 — 시험이 '없어진 자리의 배선이 걷혔는가' 를 물을 창구다.
   gLinks: function (ctrlId) {
-    var e = entities[ctrlId]; if (!e || !e.graph) return [];
+    var e = entities[ctrlId];
+    if (!e || !e.graph) return [];
     return e.graph.links.map(function (l) { return { fn: l.fn, fp: l.fp, tn: l.tn, tp: l.tp }; });
   },
   gUnlink: function (ctrlId, tn, tp) {

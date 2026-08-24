@@ -346,6 +346,10 @@ button.danger{background:linear-gradient(180deg,#c4471a,#9c3009);color:#f7efe9;b
   box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
 .port:hover .dot{background:var(--stop);border-color:var(--stop)}
 .dot.on{background:var(--run);border-color:var(--run)}
+/* 겨눈 출력 — 톡 눌러 배선을 시작한 자리. 보이지 않는 상태는 상태가 아니다:
+   눌러 놓고 화면이 그대로면 사용자는 눌린 줄 모른다. */
+.port.armed{background:rgba(226,178,28,.28);outline:1px solid var(--hazard);border-radius:2px}
+.port.armed .dot{background:var(--hazard);border-color:var(--hazard)}
 /* 포트 값도 계기창 안에 */
 /* 파형 칸 — 노드 상자 안의 작은 계기. 어두운 바탕은 의도다: 밝은 판 위에서
    여기만 계기판처럼 보여야 '값' 이 아니라 '기록' 임이 한눈에 갈린다. */

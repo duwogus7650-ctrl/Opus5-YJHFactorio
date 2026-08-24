@@ -294,6 +294,24 @@ MUTATIONS = [
      ['ui.sentenceCanPickWhichOil'], 'uismoke.js'),
 
     # --- 배선 손맛 · 튜토리얼 순서 ------------------------------------------
+    # 톡 눌러 겨누는 길이 없으면, 폰에서는 화면 3분의 1을 가로질러 끌어야만 이어진다.
+    ('wire: 톡 눌러도 겨누지 않는다', '55_logicui.js',
+     b'          if (!moved && !madeLink) { armWire(nid, port); return; }',
+     b'          if (false) { armWire(nid, port); return; }',
+     ['mobile.wiringByTapThenTap'], 'mobile.js'),
+
+    # 겨눈 채로 입력을 눌러도 안 이어지면, 겨눔은 빠져나갈 수 없는 상태가 된다.
+    ('wire: 겨눠 놓고 입력을 눌러도 안 잇는다', '55_logicui.js',
+     b'        if (armedPort()) { armedConnect(nid, port); return; }',
+     b'        if (false) { armedConnect(nid, port); return; }',
+     ['mobile.wiringByTapThenTap'], 'mobile.js'),
+
+    # 그만두는 길이 없으면 겨눔은 덫이 된다.
+    ('wire: 겨눈 것을 그만둘 수 없다', '55_logicui.js',
+     b'    if (armedPort()) { disarmWire(); return; }',
+     b'    if (false) { disarmWire(); return; }',
+     ['mobile.wiringTapCanBeCancelled'], 'mobile.js'),
+
     # 제어기를 다시 구리 라인 뒤로 밀면, 이 게임의 본체를 만지기까지 한참 걸린다.
     ('tutor: 제어기를 시작 자재로는 못 짓게 만든다', '05_data.js',
      b"w: 2, h: 2, cost: { 'circuit': 5, 'iron-plate': 5 },",
