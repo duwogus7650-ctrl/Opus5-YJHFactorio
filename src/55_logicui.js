@@ -51,6 +51,48 @@ function closeLogicIfEditing(id) {
 }
 
 // --- 팔레트 ------------------------------------------------------------------
+// **새 노드는 겹치지 않게 아래로 쌓는다.**
+// 예전에는 화면 한복판에 14px 씩 어긋나게 놓았는데, 노드 폭이 184px 이라 다섯 개를
+// 놓으면 열 쌍이 전부 겹치고 최악은 92% 가 가려졌다(실측). 놓자마자 떼어내는 일부터
+// 해야 하는 편집기는 손에 붙지 않는다.
+// 세로로 쌓는 이유: 이 게임의 회로는 입력 → 판단 → 출력으로 위에서 아래로 읽힌다.
+// 높이는 종류마다 다르므로(8단계 상태기계는 아주 길다) **그려진 것을 재서** 정한다.
+var NODE_STACK_GAP = 18;
+function nextNodeSpot() {
+  var g = curCtrl.graph, wrap = document.getElementById('graphWrap');
+  if (!g.nodes.length) {
+    return { x: Math.max(10, (24 - gpan.x) / gpan.z), y: Math.max(10, (24 - gpan.y) / gpan.z) };
+  }
+  var lowest = null, colX = null;
+  for (var i = 0; i < g.nodes.length; i++) {
+    var n = g.nodes[i];
+    var el = document.querySelector('.node[data-nid="' + n.nid + '"]');
+    var h = el ? el.offsetHeight : 120;          // 아직 안 그려졌으면 어림값
+    var bottom = n.y + h;
+    if (lowest === null || bottom > lowest) lowest = bottom;
+    if (colX === null || n.x < colX) colX = n.x;  // 가장 왼쪽 줄에 맞춘다
+  }
+  void wrap;
+  return { x: colX, y: lowest + NODE_STACK_GAP };
+}
+
+// 그래프 판을 움직여 그 노드가 보이게 한다.
+function scrollNodeIntoView(nid) {
+  var wrap = document.getElementById('graphWrap');
+  var el = document.querySelector('.node[data-nid="' + nid + '"]');
+  var n = graphNode(curCtrl.graph, nid);
+  if (!wrap || !el || !n) return;
+  var h = el.offsetHeight, w = el.offsetWidth;
+  var top = n.y * gpan.z + gpan.y, bot = top + h * gpan.z;
+  var left = n.x * gpan.z + gpan.x, right = left + w * gpan.z;
+  var pad = 12;
+  if (bot > wrap.clientHeight - pad) gpan.y -= (bot - (wrap.clientHeight - pad));
+  if (top < pad) gpan.y += (pad - top);
+  if (right > wrap.clientWidth - pad) gpan.x -= (right - (wrap.clientWidth - pad));
+  if (left < pad) gpan.x += (pad - left);
+  applyPan(); updateLinks();
+}
+
 function renderPalette() {
   var host = document.getElementById('pal');
   if (!host) return;
@@ -74,11 +116,12 @@ function renderPalette() {
       return function () {
         if (!nodeAvailable(kind)) { toast(TECHS[NODE_DEFS[kind].tech].name + ' 연구가 필요하다', 'bad'); return; }
         markGraphHandEdited();
-        var wrap = document.getElementById('graphWrap');
-        var nx = (wrap.clientWidth / 2 - gpan.x) / gpan.z + (curCtrl.graph.nodes.length % 4) * 14;
-        var ny = (wrap.clientHeight / 2 - gpan.y) / gpan.z + (curCtrl.graph.nodes.length % 5) * 16;
-        graphAddNode(curCtrl.graph, kind, Math.max(10, nx - 89), Math.max(10, ny - 40));
+        var spot = nextNodeSpot();
+        var made = graphAddNode(curCtrl.graph, kind, spot.x, spot.y);
         renderGraph();
+        // **놓은 것이 보여야 한다.** 아래로 쌓다 보면 새 노드가 화면 밖에 생기고,
+        // 그러면 눌렀는데 아무 일도 안 일어난 것처럼 보인다.
+        scrollNodeIntoView(made.nid);
       };
     })(items[j].getAttribute('data-k'));
   }

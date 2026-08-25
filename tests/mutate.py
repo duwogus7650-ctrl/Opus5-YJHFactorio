@@ -294,6 +294,18 @@ MUTATIONS = [
      ['ui.sentenceCanPickWhichOil'], 'uismoke.js'),
 
     # --- 배선 손맛 · 튜토리얼 순서 ------------------------------------------
+    # 한복판에 겹쳐 쌓으면, 놓자마자 떼어내는 일부터 해야 한다.
+    ('place: 새 노드를 다시 한복판에 겹쳐 놓는다', '55_logicui.js',
+     b'  return { x: colX, y: lowest + NODE_STACK_GAP };',
+     b'  return { x: colX, y: lowest - 100 };',
+     ['mobile.newNodesDoNotPileUp'], 'mobile.js'),
+
+    # 놓은 것이 화면 밖이면 눌러도 아무 일 없는 것처럼 보인다.
+    ('place: 놓은 노드를 화면 안으로 안 데려온다', '55_logicui.js',
+     b'        scrollNodeIntoView(made.nid);',
+     b'        void made;',
+     ['mobile.newNodeIsVisibleAfterAdding'], 'mobile.js'),
+
     # 톡 눌러 겨누는 길이 없으면, 폰에서는 화면 3분의 1을 가로질러 끌어야만 이어진다.
     ('wire: 톡 눌러도 겨누지 않는다', '55_logicui.js',
      b'          if (!moved && !madeLink) { armWire(nid, port); return; }',

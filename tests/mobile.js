@@ -1333,6 +1333,58 @@
         '90px 벗어나 뗐을 때 ' + wFar + '개(0이어야 — 아무 데나 붙으면 틀린 데 붙는다)');
       G.ui.closeLogic();
 
+      // ---------- 8.990 놓은 노드가 서로 겹치지 않는가 -----------------------
+      // 팔레트를 누르면 노드가 화면 한복판에 14px 씩만 어긋나게 놓였다 — 노드 폭이
+      // 184px 이라 다섯 개를 놓으면 **열 쌍이 전부 겹치고 최악은 92% 가 가렸다**(실측).
+      // 놓자마자 떼어내는 일부터 해야 하는 편집기는 손에 붙지 않는다.
+      // **사람이 하는 길로 잰다** — 팔레트 항목을 눌러서 놓는다.
+      G.reset(4242); G.clearEntities(); G.clearEnemies(); G.powerCheat(true); G.giveAll(9999);
+      G.research('logistics'); G.research('logic-mem');
+      var plC = G.place('controller', 60, 60, 0);
+      G.ui.openLogic(plC); G.ui.showGraph(); G.ui.renderGraph();
+      // **판을 넘길 만큼 쌓아야 한다.** 다섯 개는 695px 판 안에 다 들어가서, 화면 안으로
+      // 데려오는 코드를 지워도 마지막 노드가 여전히 보였다 — 그 게이트는 아무것도 안 봤다.
+      var plWant = ['chest', 'const', 'cmp', 'latch', 'enable', 'timer', 'math', 'lamp'];
+      var plAdded = 0;
+      for (var pw2 = 0; pw2 < plWant.length; pw2++) {
+        var pit = document.querySelector('#pal .pitem[data-k="' + plWant[pw2] + '"]');
+        if (pit) { var pq = pit.getBoundingClientRect(); tap(pit, pq.left + pq.width / 2, pq.top + pq.height / 2); plAdded++; }
+      }
+      G.ui.renderGraph();
+      var plNodes = document.querySelectorAll('#graphInner .node');
+      var plBoxes = [], plPairs = 0, plWorst = 0;
+      for (var pb = 0; pb < plNodes.length; pb++) plBoxes.push(plNodes[pb].getBoundingClientRect());
+      for (var pi2 = 0; pi2 < plBoxes.length; pi2++) {
+        for (var pj = pi2 + 1; pj < plBoxes.length; pj++) {
+          var A = plBoxes[pi2], B = plBoxes[pj];
+          var ox = Math.max(0, Math.min(A.right, B.right) - Math.max(A.left, B.left));
+          var oy = Math.max(0, Math.min(A.bottom, B.bottom) - Math.max(A.top, B.top));
+          if (ox > 0 && oy > 0) {
+            plPairs++;
+            var fr = (ox * oy) / Math.min(A.width * A.height, B.width * B.height);
+            if (fr > plWorst) plWorst = fr;
+          }
+        }
+      }
+      chk('mobile.newNodesDoNotPileUp',
+        plAdded === 8 && plNodes.length === 8 && plPairs === 0,
+        '팔레트로 놓은 노드 ' + plAdded + '개(8개여야 · 0이면 팔레트를 못 누른 것이다) · ' +
+        '화면의 노드 ' + plNodes.length + '개 · 서로 겹친 짝 ' + plPairs + '쌍(0이어야) · ' +
+        '가장 심한 겹침 ' + Math.round(plWorst * 100) + '%');
+
+      // **놓은 것이 보여야 한다.** 아래로 쌓다 보면 새 노드가 화면 밖에 생기는데,
+      // 그러면 눌렀는데 아무 일도 안 일어난 것처럼 보인다.
+      var plWrap = document.getElementById('graphWrap').getBoundingClientRect();
+      var plLast = plNodes[plNodes.length - 1];
+      var plLastBox = plLast ? plLast.getBoundingClientRect() : null;
+      var plVisible = !!plLastBox && plLastBox.top >= plWrap.top - 1 &&
+                      plLastBox.top < plWrap.bottom && plLastBox.left >= plWrap.left - 1;
+      chk('mobile.newNodeIsVisibleAfterAdding', plVisible,
+        '마지막으로 놓은 노드의 윗변 ' + (plLastBox ? Math.round(plLastBox.top) : '?') +
+        ' · 판은 ' + Math.round(plWrap.top) + '..' + Math.round(plWrap.bottom) +
+        ' (판 밖이면 눌러도 아무 일 없는 것처럼 보인다)');
+      G.ui.closeLogic();
+
       // ---------- 8.991 끌지 않고도 이을 수 있는가 ---------------------------
       // 폰에서 첫 배선은 화면 높이의 3분의 1(257px)을 가로질러 끌어야 했다 — 그 거리를
       // 손가락으로 끄는 일 자체가 미끄러진다. 눌러서 겨누고, 이을 곳을 한 번 더 누르면 된다.
